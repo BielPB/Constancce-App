@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Stethoscope, Dumbbell, Apple, Mail, UserPlus, Check, RefreshCw, X } from "lucide-react";
+import { Stethoscope, Dumbbell, Apple, Mail, UserPlus, Check, RefreshCw, X, Inbox } from "lucide-react";
 import { ProBadge } from "../../components/ui.jsx";
 import {
   fetchProfessionalLinks,
   inviteClient,
   respondProfessionalLink,
   removeProfessionalLink,
+  fetchPrescriptions,
+  respondPrescription,
 } from "../../lib/professionalLinks.js";
+
+const uid = () => Math.random().toString(36).slice(2, 10);
 
 const LINK_TYPE_LABEL = {
   personal: "Personal treinador",
@@ -18,11 +22,16 @@ const LINK_TYPE_ICON = {
   nutricionista: Apple,
 };
 
-export default function ProfessionalView({ session, profile, setProfile, isPro, onUpgrade }) {
+const KIND_LABEL = { workout: "Treino", diet: "Dieta" };
+
+export default function ProfessionalView({ session, profile, setProfile, isPro, onUpgrade, saveWorkoutTemplate }) {
   const [links, setLinks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [prescriptions, setPrescriptions] = useState([]);
+  const [prescriptionsLoading, setPrescriptionsLoading] = useState(true);
+  const [prescriptionBusyId, setPrescriptionBusyId] = useState(null);
   const [email, setEmail] = useState("");
 
   const roles = profile?.professionalRoles || [];
@@ -45,6 +54,50 @@ export default function ProfessionalView({ session, profile, setProfile, isPro, 
     }
   }, [session]);
   useEffect(() => { load(); }, [load]);
+
+  const loadPrescriptions = useCallback(async () => {
+    if (!session?.user?.id) return;
+    setPrescriptionsLoading(true);
+    try { setPrescriptions((await fetchPrescriptions(session)) || []); }
+    catch (_) { setPrescriptions([]); }
+    finally { setPrescriptionsLoading(false); }
+  }, [session]);
+  useEffect(() => { loadPrescriptions(); }, [loadPrescriptions]);
+
+  const applyPrescription = async (prescription) => {
+    setPrescriptionBusyId(prescription.prescription_id);
+    try {
+      if (prescription.kind === "workout") {
+        const template = prescription.payload || {};
+        const saved = saveWorkoutTemplate({
+          ...template,
+          id: uid(),
+          exercises: (template.exercises || []).map((exercise) => ({ ...exercise, id: uid() })),
+          receivedAt: new Date().toISOString().slice(0, 10),
+        });
+        if (saved === false) return;
+      } else if (prescription.kind === "diet") {
+        const items = Array.isArray(prescription.payload) ? prescription.payload : [prescription.payload];
+        setProfile((prev) => ({
+          ...prev,
+          dietSavedMeals: [
+            ...items.filter(Boolean).map((template) => ({ ...template, id: uid() })),
+            ...(prev?.dietSavedMeals || []),
+          ],
+        }));
+      }
+      await respondPrescription(session, prescription.prescription_id, "applied");
+      await loadPrescriptions();
+    } finally {
+      setPrescriptionBusyId(null);
+    }
+  };
+
+  const dismissPrescription = async (prescription) => {
+    setPrescriptionBusyId(prescription.prescription_id);
+    try { await respondPrescription(session, prescription.prescription_id, "dismissed"); await loadPrescriptions(); }
+    finally { setPrescriptionBusyId(null); }
+  };
 
   const toggleRole = (role) => {
     const current = new Set(profile?.professionalRoles || []);
@@ -93,6 +146,8 @@ export default function ProfessionalView({ session, profile, setProfile, isPro, 
     finally { setActionLoading(false); }
   };
 
+  const pendingPrescriptions = prescriptions.filter((p) => p.status === "sent");
+
   const receivedInvites = links.filter((l) => l.status === "pending" && l.direction === "as_client");
   const sentInvites = links.filter((l) => l.status === "pending" && l.direction === "as_professional");
   const myClients = links.filter((l) => l.status === "accepted" && l.direction === "as_professional");
@@ -129,6 +184,47 @@ export default function ProfessionalView({ session, profile, setProfile, isPro, 
         </div>
         <Stethoscope size={22} className="text-brass" />
       </div>
+
+      {!prescriptionsLoading && pendingPrescriptions.length > 0 && (
+        <div className="surface rounded-2xl p-4 md:p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Inbox size={15} className="text-brass" />
+            <p className="text-xs text-faint uppercase tracking-widest">Prescrições recebidas</p>
+            <span className="chip">{pendingPrescriptions.length}</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {pendingPrescriptions.map((p) => (
+              <div key={p.prescription_id} className="surface-2 rounded-xl p-3 flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold truncate">{KIND_LABEL[p.kind] || p.kind}: {p.payload?.name || "Sem nome"}</p>
+                    <p className="text-faint text-xs truncate">Enviado por {p.professional_name || p.professional_email}</p>
+                  </div>
+                  <span className="chip">{p.kind === "workout" ? <Dumbbell size={11} /> : <Apple size={11} />}</span>
+                </div>
+                {p.note && <p className="text-dim text-xs surface rounded-lg p-2">"{p.note}"</p>}
+                <div className="flex gap-2">
+                  <button
+                    disabled={prescriptionBusyId === p.prescription_id}
+                    className="btn-primary rounded-lg px-3 py-2 text-xs flex-1"
+                    onClick={() => applyPrescription(p)}
+                  >
+                    <Check size={13} className="inline mr-1" />
+                    {prescriptionBusyId === p.prescription_id ? "Aplicando…" : "Adicionar à minha conta"}
+                  </button>
+                  <button
+                    disabled={prescriptionBusyId === p.prescription_id}
+                    className="btn-ghost rounded-lg px-3 py-2 text-xs"
+                    onClick={() => dismissPrescription(p)}
+                  >
+                    Dispensar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="surface rounded-2xl p-4 md:p-5">
         <p className="text-xs text-faint uppercase tracking-widest mb-3">Minhas funções</p>

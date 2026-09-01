@@ -12,6 +12,7 @@ import { useWorkoutRestTimer } from "./src/hooks/useWorkoutRestTimer.js";
 import { computeUsageStreaks, normalizeUsageDays } from "./src/lib/usageStreak.js";
 import { PRO_LIMITS, PRO_FEATURE_COPY, accessSummary } from "./src/lib/plans.js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, authHeaders, rpcRequest } from "./src/lib/supabaseRpc.js";
+import { fetchProfessionalLinks, sendPrescription } from "./src/lib/professionalLinks.js";
 import { DIET_FOOD_BASE } from "./src/data/dietFoodBase.js";
 import { Progress, Modal, Field, EmptyState, StatMini, Toast, ProBadge, ProLockCard } from "./src/components/ui.jsx";
 import {
@@ -8197,6 +8198,7 @@ function WorkoutRepsInput({ value, disabled, onCommit }) {
 }
 
 function WorkoutsView({
+  session,
   templates,
   sessions,
   saveTemplate,
@@ -8236,6 +8238,12 @@ function WorkoutsView({
   const [shareNotice, setShareNotice] = useState("");
   const [selectedHistoryDate, setSelectedHistoryDate] = useState(null);
   const [exerciseGuide, setExerciseGuide] = useState(null);
+  const [prescribeTemplate, setPrescribeTemplate] = useState(null);
+  const [prescribeClients, setPrescribeClients] = useState([]);
+  const [prescribeClientId, setPrescribeClientId] = useState("");
+  const [prescribeNote, setPrescribeNote] = useState("");
+  const [prescribeLoading, setPrescribeLoading] = useState(false);
+  const [prescribeNotice, setPrescribeNotice] = useState(null);
 
   useEffect(() => {
     if (autoOpen) {
@@ -8508,6 +8516,41 @@ function WorkoutsView({
     const min = Math.floor(seconds / 60);
     const sec = String(seconds % 60).padStart(2, "0");
     return `${min}:${sec}`;
+  };
+
+  const openPrescribeWorkout = async (template) => {
+    if (!isPro) {
+      onUpgrade("professional");
+      return;
+    }
+    setPrescribeTemplate(template);
+    setPrescribeClientId("");
+    setPrescribeNote("");
+    setPrescribeNotice(null);
+    try {
+      const links = (await fetchProfessionalLinks(session)) || [];
+      setPrescribeClients(links.filter((l) => l.status === "accepted" && l.direction === "as_professional" && l.link_type === "personal"));
+    } catch (_) {
+      setPrescribeClients([]);
+    }
+  };
+
+  const confirmPrescribeWorkout = async () => {
+    if (!prescribeTemplate || !prescribeClientId) return;
+    setPrescribeLoading(true);
+    setPrescribeNotice(null);
+    try {
+      await sendPrescription(session, prescribeClientId, "workout", prescribeTemplate, prescribeNote);
+      setPrescribeNotice({ type: "ok", text: "Treino enviado para o aluno." });
+    } catch (err) {
+      const raw = (err.message || "").toLowerCase();
+      const text = raw.includes("pro_required")
+        ? "É preciso ser PRO para prescrever treinos."
+        : "Não foi possível enviar o treino.";
+      setPrescribeNotice({ type: "error", text });
+    } finally {
+      setPrescribeLoading(false);
+    }
   };
 
   const shareWorkout = async (template) => {
@@ -9019,6 +9062,14 @@ function WorkoutsView({
                         title={isPro ? "Compartilhar treino" : "Compartilhar · PRO"}
                       >
                         {isPro ? <Share2 size={14} /> : <Lock size={13} />}
+                      </button>
+
+                      <button
+                        className="btn-ghost rounded-lg p-2"
+                        onClick={() => openPrescribeWorkout(template)}
+                        title={isPro ? "Enviar para aluno" : "Enviar para aluno · PRO"}
+                      >
+                        {isPro ? <Stethoscope size={14} /> : <Lock size={13} />}
                       </button>
 
                       <button
@@ -9784,6 +9835,59 @@ function WorkoutsView({
               </button>
             )}
           </div>
+        </Modal>
+      )}
+
+      {prescribeTemplate && (
+        <Modal title="Enviar treino para aluno" onClose={() => setPrescribeTemplate(null)} width={520}>
+          <p className="text-dim text-xs mb-3">Prescrevendo <strong>{prescribeTemplate.name}</strong>.</p>
+
+          {prescribeClients.length === 0 ? (
+            <p className="text-faint text-xs">
+              Nenhum aluno vinculado ainda. Convide alguém na tela "Personal & Nutri" e espere a pessoa aceitar.
+            </p>
+          ) : (
+            <>
+              <Field label="Aluno">
+                <select
+                  className="w-full p-3 ring-focus"
+                  value={prescribeClientId}
+                  onChange={(event) => setPrescribeClientId(event.target.value)}
+                >
+                  <option value="">Selecione…</option>
+                  {prescribeClients.map((client) => (
+                    <option key={client.link_id} value={client.link_id}>
+                      {client.display_name || client.email}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Nota para o aluno (opcional)">
+                <textarea
+                  rows={3}
+                  className="w-full p-3 ring-focus resize-none"
+                  placeholder="Ex: reduzi a carga do supino por causa do ombro."
+                  value={prescribeNote}
+                  onChange={(event) => setPrescribeNote(event.target.value)}
+                />
+              </Field>
+
+              {prescribeNotice && (
+                <p className={`text-xs mb-3 ${prescribeNotice.type === "error" ? "text-ember" : "text-moss"}`}>
+                  {prescribeNotice.text}
+                </p>
+              )}
+
+              <button
+                disabled={!prescribeClientId || prescribeLoading}
+                className="btn-primary w-full rounded-xl py-3 disabled:opacity-40"
+                onClick={confirmPrescribeWorkout}
+              >
+                {prescribeLoading ? "Enviando…" : "Enviar treino"}
+              </button>
+            </>
+          )}
         </Modal>
       )}
 
@@ -18989,11 +19093,11 @@ function ConstancceApp() {
       case "tasks": return <TasksView tasks={tasks} saveTask={saveTask} deleteTask={deleteTask} setStatus={setTaskStatus} moveTask={moveTaskKanban} autoOpen={quickTrigger.tasks} isPro={isPro} onUpgrade={requestPro} />;
       case "calendar": return <CalendarView habits={habits} completions={completions} tasks={tasks} saveTask={saveTask} setTaskStatus={setTaskStatus} workoutTemplates={workoutTemplates} workoutSessions={workoutSessions} saveWorkoutTemplate={saveWorkoutTemplate} scheduleWorkoutSession={scheduleWorkoutSession} goals={goals} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
       case "goals": return <GoalsView goals={goals} saveGoal={saveGoal} addProgress={addGoalProgress} updateProgress={updateProgress} toggleGoalChecklist={toggleGoalChecklist} deleteGoal={deleteGoal} goalProgressLog={goalProgressLog} tasks={tasks} habits={habits} autoOpen={quickTrigger.goals} isPro={isPro} onUpgrade={requestPro} />;
-      case "workouts": return <WorkoutsView templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateReps={updateWorkoutReps} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ remaining: workoutRest.remaining, total: workoutRest.total, running: workoutRest.running }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} resumeSessionId={workoutResumeSessionId || workoutRest.timer?.sessionId || null} />;
+      case "workouts": return <WorkoutsView session={session} templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateReps={updateWorkoutReps} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ remaining: workoutRest.remaining, total: workoutRest.total, running: workoutRest.running }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} resumeSessionId={workoutResumeSessionId || workoutRest.timer?.sessionId || null} />;
       case "food": return <FoodView foodBase={dietFoodBase} foods={foods} mealLog={mealLog} addMeal={addMeal} updateMeal={updateMeal} toggleMealConsumed={toggleMealConsumed} deleteMeal={deleteMeal} deleteFood={deleteFood} profile={profile} setProfile={setProfile} session={session} autoOpen={quickTrigger.food} isPro={isPro} onUpgrade={requestPro} />;
       case "finance": return <FinanceView transactions={transactions} addTransaction={addTransaction} addGoalProgress={addGoalProgress} deleteTransaction={deleteTransaction} profile={profile} setProfile={setProfile} goals={goals} autoOpen={quickTrigger.finance} isPro={isPro} onUpgrade={requestPro} />;
       case "friends": return <FriendsView session={session} profile={profile} game={game} streaks={streaks} isPro={isPro} onUpgrade={requestPro} />;
-      case "professional": return <ProfessionalView session={session} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
+      case "professional": return <ProfessionalView session={session} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} saveWorkoutTemplate={saveWorkoutTemplate} />;
       case "progress": return <ProgressView streaks={streaks} stats={stats} game={game} session={session} profile={profile} isPro={isPro} onUpgrade={requestPro} />;
       case "achievements": return <AchievementsView unlocked={unlocked} stats={stats} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
       case "notifications": return <NotificationsView items={notifications} profile={profile} setProfile={setProfile} notificationPermission={notificationPermission} pushEnabled={pushEnabled} pushSupported={pushSupported} notificationBusy={notificationBusy} onEnableNotifications={handleEnableNotifications} onDisableNotifications={handleDisableNotifications} isPro={isPro} onUpgrade={requestPro} />;
