@@ -1,0 +1,88 @@
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  font-family: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 1.1.19 — horário obrigatório de tarefas */
+.task-time-input {
+  color-scheme: dark;
+}
+
+.task-time-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  cursor: pointer;
+  position: absolute;
+  right: 0;
+  width: 44px;
+  height: 100%;
+}
+
+.task-time-icon {
+  color: #FFFFFF;
+  z-index: 1;
+}
+
+
+/* 1.1.20 — campo de horário responsivo no mobile/iOS */
+.task-time-field {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.task-time-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .task-time-field {
+    inline-size: 100%;
+    max-inline-size: 100%;
+  }
+
+  .task-time-input {
+    inline-size: 100%;
+    max-inline-size: 100%;
+    min-inline-size: 0;
+    height: 52px;
+    padding-left: 44px;
+    padding-right: 44px;
+    font-size: 16px; /* evita zoom automático do Safari */
+    line-height: 1.2;
+  }
+
+  .task-time-input::-webkit-date-and-time-value {
+    text-align: center;
+    min-width: 0;
+  }
+
+  .task-time-input::-webkit-datetime-edit,
+  .task-time-input::-webkit-datetime-edit-fields-wrapper {
+    min-width: 0;
+    padding: 0;
+  }
+
+  .task-time-icon {
+    right: 14px;
+  }
+}

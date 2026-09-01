@@ -1,0 +1,16 @@
+CONSTANCCE — DEPLOY VERCEL
+
+Estrutura corrigida sem pasta src.
+
+Arquivos essenciais na raiz:
+- index.html
+- main.jsx
+- App.jsx
+- index.css
+- package.json
+- vite.config.js
+
+No GitHub, substitua os arquivos da raiz pelos deste pacote.
+Na Vercel, faça Redeploy.
+
+O index.html referencia ./main.jsx diretamente, evitando o erro de /src/main.jsx ausente.

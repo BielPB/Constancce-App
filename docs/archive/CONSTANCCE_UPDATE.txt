@@ -1,0 +1,7 @@
+CONSTANCCE FIX 2026-08-23
+- Nome visível: Constancce
+- Sidebar desktop fixa
+- Autosave local imediato + sync Supabase em segundo plano
+- Sem aviso textual de offline
+- Foto de perfil por usuário
+- Favicon/ícones com foguinho/chama

@@ -1,0 +1,22 @@
+CORREÇÃO: TELAS/MODAIS VOLTANDO SOZINHOS
+
+Causa:
+`CurrentView` era declarado dentro do componente principal e renderizado como
+`<CurrentView />`. A cada alteração de estado do App (inclusive `syncStatus`
+durante o salvamento automático), React recebia uma nova função de componente
+e desmontava/remontava a tela atual.
+
+Isso zerava os estados locais, como:
+- dia selecionado no calendário;
+- modal de edição aberto;
+- tarefa em edição;
+- formulário em andamento;
+- seleção interna de telas.
+
+Correção:
+A seleção da tela agora é executada como função de renderização
+`renderCurrentView()`, mantendo os componentes reais (CalendarView, TasksView,
+HabitsView etc.) estáveis entre rerenders.
+
+O autosave e a sincronização com Supabase permanecem ativos e não interferem
+mais no estado visual.

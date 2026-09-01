@@ -1,0 +1,10 @@
+Correção aplicada ao botão "Já paguei · verificar acesso".
+
+Agora:
+- mostra "Verificando pagamento…" enquanto consulta;
+- consulta o Supabase sem cache;
+- repete a consulta por alguns segundos para aguardar o webhook;
+- informa quando o pagamento está pendente;
+- informa quando nenhum pagamento aprovado foi encontrado;
+- libera o app automaticamente quando `plan = lifetime`;
+- mostra confirmação visual quando o acesso vitalício é liberado.

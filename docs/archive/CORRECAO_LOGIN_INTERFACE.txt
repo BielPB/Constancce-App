@@ -1,0 +1,13 @@
+CONSTANCCE — CORREÇÃO DE INTERFACE E LOGIN
+
+- Tailwind agora analisa também App.jsx/main.jsx na raiz.
+- Interface original preservada.
+- Login por Supabase preservado.
+- Mensagem específica se VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY não estiverem configuradas.
+- Estrutura de raiz compatível com o deploy que corrigiu o erro /src/main.jsx.
+
+VERCEL:
+Confirme em Project Settings > Environment Variables:
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+Depois faça Redeploy.

@@ -1,0 +1,15 @@
+CONSTANCCE — ATUALIZAÇÃO DE TAREFAS
+
+Alterações aplicadas nesta versão:
+- Tarefas com recorrência: Não repetir, Todo dia, Dias específicos, Toda semana e Todo mês.
+- Dias específicos permite selecionar Seg, Ter, Qua, Qui, Sex, Sáb e Dom.
+- Tarefas recorrentes registram conclusão por data e continuam disponíveis nas próximas ocorrências.
+- Tela Tarefas convertida para Kanban por prioridade: Baixa, Média, Alta e Urgente.
+- Filtros: Hoje, Amanhã, Esta semana, Todas e Concluídas.
+- Filtro adicional por categoria.
+- Contador de tarefas em cada coluna.
+- Layout responsivo para desktop e mobile.
+- Dashboard, calendário, score diário, missões e notificações passam a reconhecer tarefas recorrentes.
+
+Observação de validação:
+O código foi alterado diretamente na versão enviada pelo usuário. O npm run build não pôde ser concluído neste ambiente porque as dependências não estavam instaladas e npm install excedeu o tempo disponível.

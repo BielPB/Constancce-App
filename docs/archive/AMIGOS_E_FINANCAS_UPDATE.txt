@@ -1,0 +1,8 @@
+CONSTANCCE — ATUALIZAÇÃO AMIGOS + GRÁFICO FINANCEIRO
+
+1. Antes de publicar, execute SUPABASE_FRIENDS_SETUP.sql uma única vez no SQL Editor do Supabase.
+2. Depois publique os arquivos desta versão na Vercel/GitHub como já faz normalmente.
+3. Cada usuário precisa abrir esta nova versão pelo menos uma vez para que seu perfil competitivo seja criado. Depois disso ele poderá ser encontrado pelo e-mail na aba Amigos.
+4. Convites precisam ser aceitos pelo outro usuário antes de aparecerem no ranking.
+5. O ranking exibe apenas dados de gamificação (nome, foto, nível, patente, XP, score e streak). Hábitos, finanças, alimentação, tarefas e metas continuam privados.
+6. Em Finanças, o gráfico possui filtros de 7 dias, 30 dias, 3 meses, 6 meses e 1 ano.

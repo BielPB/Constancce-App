@@ -1,0 +1,15 @@
+CONSTANCCE — DEPLOY CORRETO
+Versão corrigida para substituir TODO o conteúdo da raiz do repositório.
+
+Validações desta versão:
+- Nome visível: Constancce
+- Login: Constancce
+- Sidebar: Constancce
+- Sidebar desktop: fixed
+- Conteúdo desktop: rolagem independente
+- Aviso textual de offline: removido
+- Autosave local imediato + sincronização Supabase em segundo plano
+- Foto de perfil: upload/remover no Perfil
+- Favicon/PWA: chama/foguinho
+
+IMPORTANTE: substitua também a pasta src inteira.

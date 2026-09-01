@@ -1,0 +1,3 @@
+Erro corrigido: App.jsx não depende mais de ./src/assets/constancce-logo.png.
+Logo e favicon incorporados diretamente no código.
+Referências quebradas restantes: []

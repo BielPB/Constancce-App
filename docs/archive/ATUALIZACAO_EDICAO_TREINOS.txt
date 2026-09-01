@@ -1,0 +1,22 @@
+CONSTANCCE — EDIÇÃO DE TREINOS
+
+Adicionado:
+- botão de lápis em cada treino;
+- formulário abre preenchido ao editar;
+- alteração de nome do treino;
+- alteração dos nomes dos exercícios;
+- alteração de séries;
+- alteração de repetições;
+- inclusão e exclusão de exercícios durante a edição;
+- salvamento mantém o mesmo ID do treino;
+- editar não cria uma cópia/duplicata do treino;
+- histórico continua vinculado ao treino pelo mesmo templateId.
+
+Preservado:
+- tarefas com horário;
+- Kanban;
+- notificações Web Push;
+- menu mobile;
+- pagamento;
+- finanças;
+- demais funcionalidades.

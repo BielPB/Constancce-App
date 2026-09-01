@@ -1,0 +1,19 @@
+CONSTANCCE — ORGANIZAÇÃO DE TREINOS
+
+Adicionado:
+- reordenação manual dos treinos;
+- desktop: arrastar e soltar um treino sobre outro;
+- celular: botões para mover o treino para cima ou para baixo;
+- feedback visual durante o drag;
+- a ordem é salva no array workoutTemplates e sincronizada pelo device_sync;
+- a ordem permanece após sair/entrar ou usar outro dispositivo sincronizado.
+
+Preservado:
+- editar treino;
+- copiar treino;
+- excluir treino;
+- iniciar/ver treino;
+- histórico;
+- tarefas com horário e Kanban;
+- notificações;
+- demais funcionalidades.

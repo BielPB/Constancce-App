@@ -1,0 +1,22 @@
+AJUSTE MOBILE
+
+Corrigido:
+- Botão + agora fica flutuando acima da barra inferior e respeita safe-area do celular.
+- No desktop, o botão + permanece no canto inferior direito.
+- Barra mobile alterada para 6 colunas responsivas.
+- Removidos min-widths que faziam o menu estourar em telas estreitas.
+
+Nova ordem:
+1. Hoje
+2. Treinos
+3. Hábitos
+4. Finanças
+5. Perfil
+6. Mais (ícone de 3 pontos)
+
+Preservado:
+- notificações Web Push;
+- pagamento;
+- finanças;
+- correção do reset/voltar automático;
+- demais funcionalidades.

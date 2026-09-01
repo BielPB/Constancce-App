@@ -1,0 +1,10 @@
+CONSTANCCE — AJUSTE MOBILE DA ABA TREINOS
+
+Corrigido somente para dispositivos mobile:
+- o nome do treino não é mais truncado com "...";
+- nomes longos podem ocupar duas ou mais linhas;
+- os controles do treino ficam em uma linha separada abaixo do nome;
+- ações podem quebrar de linha em telas muito estreitas sem comprimir o título;
+- desktop mantém o comportamento anterior, incluindo truncamento quando necessário.
+
+Preservadas todas as funcionalidades anteriores.

@@ -1,0 +1,20 @@
+CONSTANCCE — AJUSTE DA ABA TAREFAS
+
+Alterações:
+- removido o filtro "Esta semana" do Kanban;
+- visão "Minha semana" preservada;
+- calendário semanal ficou mais compacto;
+- os 7 dias não são mais forçados à altura do dia com a maior tarefa;
+- largura mínima geral reduzida;
+- espaçamento interno dos dias reduzido;
+- tarefas no calendário usam cards menores;
+- títulos longos exibem até 3 linhas no calendário, com título completo disponível no hover;
+- visual mobile também ficou mais compacto.
+
+Preservado:
+- Kanban;
+- drag and drop;
+- Modo Foco;
+- tarefas com horário;
+- lembretes;
+- demais funcionalidades do Constancce.

@@ -1,0 +1,14 @@
+Aba Finanças redesenhada com base na referência enviada.
+
+Incluído:
+- dashboard mensal;
+- cards de Entradas, Saídas, Saldo e % economizada;
+- navegação entre meses;
+- exportação CSV do período;
+- gráfico de gastos por categoria;
+- gráfico de evolução dos últimos 6 meses;
+- orçamento editável por categoria;
+- lançamentos recentes do mês;
+- layout responsivo para desktop e mobile.
+
+A lógica de cadastro e exclusão de transações existente foi preservada.

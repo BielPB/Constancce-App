@@ -1,0 +1,50 @@
+CONSTANCCE — FINANÇAS, PROGRESSO E CONQUISTAS
+
+FINANÇAS
+- resumo mensal com entradas, saídas, saldo e percentual comprometido;
+- comparação com o mês anterior;
+- previsão de fechamento mantendo o ritmo atual de gastos;
+- valor disponível até o limite mensal;
+- saúde financeira 0–100 baseada nos dados registrados;
+- limite mensal editável;
+- orçamento por categoria com alertas em 80% e acima do limite;
+- contas recorrentes mensais;
+- recorrências são lançadas automaticamente quando chega o dia definido;
+- integração visual com metas financeiras;
+- estimativa de aporte mensal das metas;
+- histórico e gráficos preservados.
+
+PROGRESSO
+- score dos últimos 30 dias comparado aos 30 anteriores;
+- seletor 7D / 30D / 90D / 1A;
+- comparação por área entre períodos;
+- ponto forte e área de atenção;
+- insights automáticos gerados pelos próprios dados do usuário;
+- recordes pessoais;
+- melhor dia, melhor hábito e hábito mais negligenciado;
+- comparação de XP/score/streak com amigos;
+- heatmap e temporada preservados.
+
+CONQUISTAS
+- categorias: Constância, Hábitos, Tarefas, Treinos, Metas, Finanças e Secretas;
+- raridades: Comum, Rara, Épica e Lendária;
+- progresso visível nas conquistas ainda bloqueadas;
+- novas conquistas financeiras, de metas, tarefas, hábitos e treinos;
+- conquistas secretas;
+- desafios mensais;
+- progresso geral da coleção.
+
+SEM NOVO SQL
+As novas informações de orçamento, recorrências e preferências ficam dentro do
+profile já sincronizado pelo device_sync. Não é necessário criar novas tabelas.
+
+PRESERVADO
+- notificações Web Push;
+- Supabase/Auth/Amigos;
+- Mercado Pago;
+- tarefas com horário e Kanban;
+- metas financeiras acumulativas;
+- treinos editáveis, copiáveis, ordenáveis;
+- nome completo dos treinos no mobile;
+- menu mobile responsivo;
+- correção de remount/voltar automático.

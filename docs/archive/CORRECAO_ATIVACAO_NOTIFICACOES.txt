@@ -1,0 +1,12 @@
+CORREÇÃO — ATIVAÇÃO DE NOTIFICAÇÕES
+
+- O pop-up fecha assim que a permissão nativa é concedida.
+- Se a permissão já estiver como "Permitido", o pop-up não reaparece.
+- O Service Worker não fica aguardando indefinidamente.
+- O registro PushManager foi reforçado.
+- O app diferencia permissão concedida de assinatura push concluída.
+- Quando a permissão já existe, o botão mostra "Concluir ativação".
+- Falhas do Supabase/VAPID exibem mensagem específica em vez de prender o modal.
+
+Para receber notificações com o app fechado, o backend de Web Push no Supabase
+ainda precisa estar publicado/configurado (Edge Functions + VAPID + Cron).

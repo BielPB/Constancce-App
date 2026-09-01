@@ -1,0 +1,20 @@
+CONSTANCCE — COPIAR TREINO
+
+Adicionado:
+- botão de copiar em cada treino;
+- ao clicar, abre um NOVO treino preenchido com os dados do treino original;
+- nome recebe automaticamente " - Cópia";
+- exercícios, séries e repetições são copiados;
+- o usuário pode editar tudo antes de salvar;
+- o novo treino recebe um ID próprio;
+- cada exercício copiado recebe um ID próprio;
+- o treino original não é alterado;
+- o histórico do treino original continua separado do treino copiado.
+
+Preservado:
+- edição de treinos;
+- tarefas com horário;
+- Kanban;
+- notificações;
+- menu mobile;
+- pagamentos e demais funcionalidades.

@@ -1,0 +1,10 @@
+CONSTANCCE — CORREÇÃO MOBILE DA ABA METAS
+
+Corrigido:
+- título da meta não fica mais espremido/vertical no celular;
+- nome da meta usa toda a largura disponível;
+- nomes longos quebram por palavras em linhas horizontais normais;
+- botões de editar/excluir mantêm somente a largura necessária;
+- desktop permanece inalterado.
+
+Todas as funcionalidades das versões anteriores foram preservadas.

@@ -1,0 +1,29 @@
+[functions.create-mercadopago-checkout]
+verify_jwt = true
+
+[functions.mercadopago-webhook]
+verify_jwt = false
+
+
+[functions.push-subscription]
+verify_jwt = true
+
+
+[functions.send-due-notifications]
+verify_jwt = false
+
+
+[functions.delete-account]
+verify_jwt = true
+
+[functions.food-search]
+verify_jwt = true
+
+[functions.client-telemetry]
+verify_jwt = true
+
+[functions.domain-sync]
+verify_jwt = true
+
+[functions.activity-event]
+verify_jwt = true

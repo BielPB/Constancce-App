@@ -1,0 +1,32 @@
+CONSTANCCE — DEPLOY DESTA VERSÃO
+
+FRONTEND / VERCEL
+- Faça o deploy normalmente usando a raiz deste projeto.
+- As variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY permanecem iguais.
+- O Service Worker será atualizado para a nova versão com cache offline.
+
+SUPABASE — EDGE FUNCTIONS
+1) Atualize/reimplante:
+   supabase/functions/send-due-notifications/index.ts
+
+2) Crie/implante a nova função:
+   supabase/functions/delete-account/index.ts
+
+Configuração esperada em supabase/config.toml:
+[functions.send-due-notifications]
+verify_jwt = false
+
+[functions.delete-account]
+verify_jwt = true
+
+CRON
+- NÃO precisa criar outro Cron.
+- O Cron existente a cada 15 minutos continua chamando send-due-notifications.
+
+SECRETS
+- NÃO precisa gerar novas chaves VAPID.
+- PUSH_CRON_SECRET continua o mesmo.
+- SUPABASE_URL, SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY são fornecidos pelo ambiente das Edge Functions.
+
+SQL
+- Nenhum SQL novo é obrigatório para esta versão.

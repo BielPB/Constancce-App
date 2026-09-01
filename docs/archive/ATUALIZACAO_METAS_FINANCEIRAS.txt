@@ -1,0 +1,24 @@
+CONSTANCCE — METAS FINANCEIRAS E PROGRESSO ACUMULATIVO
+
+Adicionado:
+- edição de metas existentes;
+- novo tipo "Financeira (R$)";
+- definição da meta final e do valor já acumulado;
+- cálculo automático do valor restante;
+- cálculo do número estimado de meses até o prazo;
+- estimativa automática de quanto guardar por mês;
+- campo "Adicionar valor" no card da meta;
+- o valor digitado é SOMADO ao progresso existente, e não substitui;
+- exemplo: R$ 200 + R$ 500 = R$ 700 de R$ 1.000;
+- progresso e percentual são recalculados automaticamente após cada adição;
+- botão para concluir a meta quando atingir 100%;
+- edição mantém o mesmo ID e não duplica a meta;
+- layout responsivo para desktop e celular.
+
+Preservado:
+- checklists de metas;
+- treinos editáveis, copiáveis e organizáveis;
+- tarefas com horário e Kanban;
+- notificações Web Push;
+- menu mobile;
+- pagamentos, finanças e demais funcionalidades.

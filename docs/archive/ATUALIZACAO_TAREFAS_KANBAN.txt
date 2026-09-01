@@ -1,0 +1,25 @@
+CONSTANCCE — ATUALIZAÇÃO DE TAREFAS
+
+NOVO
+- Horário opcional ao criar ou editar uma tarefa.
+- Horário exibido no card e no calendário.
+- Tarefas da mesma prioridade são ordenadas por horário.
+- Kanban com 5 destinos:
+  1. Baixa
+  2. Média
+  3. Alta
+  4. Urgente
+  5. Concluídas
+- Desktop: arrastar e soltar cards entre as colunas.
+- Celular: controle "Mover para" dentro do card, evitando problemas de drag em telas touch.
+- Mover para Concluídas marca a tarefa como concluída.
+- Mover de Concluídas para uma prioridade volta a tarefa para pendente.
+- Alterações continuam salvas no device_sync.
+
+PRESERVADO
+- Notificações Web Push
+- Menu mobile responsivo
+- Botão + corrigido
+- Pagamento Mercado Pago
+- Finanças
+- Correção do reset/voltar automático
