@@ -63,6 +63,92 @@ function FirstVisitTip({ id, icon: Icon = Sparkles, title, children }) {
   );
 }
 
+// Substitui window.confirm por um Modal próprio do app (o nativo do navegador
+// quebra a identidade visual). Uso: const [confirm, confirmDialog] = useConfirm();
+// depois `if (!(await confirm("mensagem"))) return;` e renderizar {confirmDialog}.
+function useConfirm() {
+  const [state, setState] = useState(null);
+
+  const confirm = useCallback((message, options = {}) => (
+    new Promise((resolve) => setState({ message, resolve, ...options }))
+  ), []);
+
+  const dialog = state ? (
+    <Modal
+      title={state.title || "Confirmar ação"}
+      onClose={() => { state.resolve(false); setState(null); }}
+      width={400}
+    >
+      <p className="text-sm text-dim leading-relaxed">{state.message}</p>
+      <div className="grid grid-cols-2 gap-2 mt-4">
+        <button
+          type="button"
+          className="btn-ghost rounded-xl py-2.5 text-sm"
+          onClick={() => { state.resolve(false); setState(null); }}
+        >
+          {state.cancelLabel || "Cancelar"}
+        </button>
+        <button
+          type="button"
+          className={`rounded-xl py-2.5 text-sm font-medium ${state.danger === false ? "btn-primary" : "btn-ghost text-ember"}`}
+          onClick={() => { state.resolve(true); setState(null); }}
+        >
+          {state.confirmLabel || (state.danger === false ? "Confirmar" : "Excluir")}
+        </button>
+      </div>
+    </Modal>
+  ) : null;
+
+  return [confirm, dialog];
+}
+
+// Substitui window.prompt por um Modal próprio do app, mesma ideia do useConfirm.
+function usePrompt() {
+  const [state, setState] = useState(null);
+  const [value, setValue] = useState("");
+
+  const promptFor = useCallback((message, defaultValue = "") => (
+    new Promise((resolve) => { setValue(defaultValue); setState({ message, resolve }); })
+  ), []);
+
+  const dialog = state ? (
+    <Modal
+      title="Confirmar"
+      onClose={() => { state.resolve(null); setState(null); }}
+      width={380}
+    >
+      <p className="text-sm text-dim mb-2">{state.message}</p>
+      <input
+        autoFocus
+        className="w-full p-2.5 ring-focus"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") { state.resolve(value); setState(null); }
+        }}
+      />
+      <div className="grid grid-cols-2 gap-2 mt-4">
+        <button
+          type="button"
+          className="btn-ghost rounded-xl py-2.5 text-sm"
+          onClick={() => { state.resolve(null); setState(null); }}
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          className="btn-primary rounded-xl py-2.5 text-sm font-medium"
+          onClick={() => { state.resolve(value); setState(null); }}
+        >
+          OK
+        </button>
+      </div>
+    </Modal>
+  ) : null;
+
+  return [promptFor, dialog];
+}
+
 
 /* ---------------------------------------------------------------
    AUTENTICAÇÃO + ARMAZENAMENTO POR CONTA
@@ -2643,7 +2729,7 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
       </div>
 
       {showStreakInfo && (
-        <Modal title="Seu streak de uso" onClose={() => setShowStreakInfo(false)} width={500}>
+        <Modal title="Sua sequência de uso" onClose={() => setShowStreakInfo(false)} width={500}>
           <div className="grid grid-cols-3 gap-2">
             <div className="surface-2 rounded-xl p-3 text-center">
               <p className="text-faint text-[10px] uppercase tracking-widest">Atual</p>
@@ -2705,9 +2791,10 @@ function HabitForm({ initial, onSave, onClose }) {
   const [target, setTarget] = useState(initial?.frequency?.target || 3);
   const [countsForStreak, setCountsForStreak] = useState(initial?.countsForStreak ?? true);
   const [checklist, setChecklist] = useState(initial?.checklist || []);
+  const [confirm, confirmDialog] = useConfirm();
   const addChecklistItem = () => setChecklist((prev) => [...prev, { id: uid(), text: "" }]);
   const updateChecklistItem = (id, text) => setChecklist((prev) => prev.map((x) => x.id === id ? { ...x, text } : x));
-  const removeChecklistItem = (id) => { if (!window.confirm("Tem certeza que deseja remover esta etapa?")) return; setChecklist((prev) => prev.filter((x) => x.id !== id)); };
+  const removeChecklistItem = async (id) => { if (!(await confirm("Tem certeza que deseja remover esta etapa?"))) return; setChecklist((prev) => prev.filter((x) => x.id !== id)); };
   const toggleDay = (d) => setDays((prev) => prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort());
 
   return (
@@ -2745,7 +2832,7 @@ function HabitForm({ initial, onSave, onClose }) {
           <input type="number" min={1} className="w-full p-3 ring-focus" value={target} onChange={(e) => setTarget(Number(e.target.value))} />
         </Field>
       )}
-      <Field label="Conta para o streak?">
+      <Field label="Conta para a sequência?">
         <div className="flex gap-2">
           <button onClick={() => setCountsForStreak(true)} className="px-4 py-1.5 rounded-full text-sm" style={{ border: `1px solid ${countsForStreak ? "var(--brass)" : "var(--border)"}`, background: countsForStreak ? "var(--surface-2)" : "transparent" }}>Sim</button>
           <button onClick={() => setCountsForStreak(false)} className="px-4 py-1.5 rounded-full text-sm" style={{ border: `1px solid ${!countsForStreak ? "var(--brass)" : "var(--border)"}`, background: !countsForStreak ? "var(--surface-2)" : "transparent" }}>Não</button>
@@ -2771,6 +2858,7 @@ function HabitForm({ initial, onSave, onClose }) {
         })}>
         Salvar hábito
       </button>
+      {confirmDialog}
     </Modal>
   );
 }
@@ -6031,6 +6119,7 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
   const [milestones, setMilestones] = useState(initial?.milestones?.length ? initial.milestones : [25, 50, 75, 100]);
   const [imageDataUrl, setImageDataUrl] = useState(initial?.imageDataUrl || "");
   const goalImageRef = useRef(null);
+  const [confirm, confirmDialog] = useConfirm();
   const [checklist, setChecklist] = useState(() =>
     initial?.checklist?.length
       ? initial.checklist.map((item) => ({ ...item }))
@@ -6052,8 +6141,8 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
   const updateChecklistItem = (id, text) =>
     setChecklist((prev) => prev.map((item) => item.id === id ? { ...item, text } : item));
 
-  const removeChecklistItem = (id) => {
-    if (!window.confirm("Tem certeza que deseja remover esta etapa?")) return;
+  const removeChecklistItem = async (id) => {
+    if (!(await confirm("Tem certeza que deseja remover esta etapa?"))) return;
     setChecklist((prev) => prev.filter((item) => item.id !== id));
   };
 
@@ -6396,6 +6485,7 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
       >
         {initial ? "Salvar alterações" : "Criar meta"}
       </button>
+      {confirmDialog}
     </Modal>
   );
 }
@@ -6547,6 +6637,11 @@ function GoalAddValue({ goal, onAdjust }) {
       {mode === "remove" && current > 0 && (
         <p className="text-[9px] text-faint mt-1.5">
           Disponível para remover: {valueLabel(current)}
+        </p>
+      )}
+      {current <= 0 && (
+        <p className="text-[9px] text-faint mt-1.5">
+          Nada para remover ainda — adicione progresso primeiro.
         </p>
       )}
 
@@ -7863,6 +7958,7 @@ const workoutTrainingInsights = (templates, sessions) => {
 
 function WorkoutTemplateForm({ initial, onSave, onClose, exerciseLibrary = [], defaultScheduleDays = [] }) {
   const isCopy = Boolean(initial?.__copyMode);
+  const [confirm, confirmDialog] = useConfirm();
   const [name, setName] = useState(initial?.name || "");
   const [scheduleDays, setScheduleDays] = useState(initial?.scheduleDays || defaultScheduleDays);
   const [exercises, setExercises] = useState(() =>
@@ -7914,8 +8010,8 @@ function WorkoutTemplateForm({ initial, onSave, onClose, exerciseLibrary = [], d
         : [...prev, day].sort()
     );
 
-  const removeExercise = (id) => {
-    if (!window.confirm("Tem certeza que deseja remover este exercício?")) return;
+  const removeExercise = async (id) => {
+    if (!(await confirm("Tem certeza que deseja remover este exercício?"))) return;
     setExercises((prev) => prev.filter((exercise) => exercise.id !== id));
   };
 
@@ -8102,6 +8198,7 @@ function WorkoutTemplateForm({ initial, onSave, onClose, exerciseLibrary = [], d
       >
         {isCopy ? "Criar treino copiado" : initial ? "Salvar alterações" : "Salvar treino"}
       </button>
+      {confirmDialog}
     </Modal>
   );
 }
@@ -8247,6 +8344,7 @@ function WorkoutsView({
   resumeSessionId,
 }) {
   const [section, setSection] = useState("today");
+  const [promptFor, promptDialog] = usePrompt();
   const [showForm, setShowForm] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [activeTemplateId, setActiveTemplateId] = useState(null);
@@ -9681,8 +9779,8 @@ function WorkoutsView({
                     {!activeSession.completed && (
                       <button
                         className="btn-ghost rounded-lg px-2 py-1 text-[10px] flex items-center gap-1 shrink-0"
-                        onClick={() => {
-                          const nextName = window.prompt(
+                        onClick={async () => {
+                          const nextName = await promptFor(
                             "Substituir apenas neste treino por:",
                             displayName
                           );
@@ -10108,6 +10206,7 @@ function WorkoutsView({
           }}
         />
       )}
+      {promptDialog}
     </div>
   );
 }
@@ -10705,6 +10804,8 @@ function FoodView({
   onUpgrade,
 }) {
   const [section, setSection] = useState("today");
+  const [confirm, confirmDialog] = useConfirm();
+  const [promptFor, promptDialog] = usePrompt();
   const [showForm, setShowForm] = useState(false);
   const [formSeed, setFormSeed] = useState(null);
   const [formMode, setFormMode] = useState("search");
@@ -10827,7 +10928,7 @@ function FoodView({
     addMeal(meals);
   };
 
-  const saveMealTemplate = (group) => {
+  const saveMealTemplate = async (group) => {
     if (!group?.items?.length) return;
     if (!isPro && savedMeals.length >= PRO_LIMITS.dietSavedMeals) {
       onUpgrade("diet");
@@ -10835,7 +10936,7 @@ function FoodView({
     }
 
     const defaultName = `${group.mealType} padrão`;
-    const requested = window.prompt("Nome da refeição salva:", defaultName);
+    const requested = await promptFor("Nome da refeição salva:", defaultName);
     const name = String(requested || "").trim();
     if (!name) return;
 
@@ -10857,8 +10958,8 @@ function FoodView({
     }));
   };
 
-  const deleteSavedMeal = (id) => {
-    if (!window.confirm("Remover esta refeição salva?")) return;
+  const deleteSavedMeal = async (id) => {
+    if (!(await confirm("Excluir esta refeição salva?"))) return;
     setProfile((current) => ({
       ...current,
       dietSavedMeals: (current?.dietSavedMeals || []).filter((item) => item.id !== id),
@@ -11475,6 +11576,8 @@ function FoodView({
           )}
         </Modal>
       )}
+      {confirmDialog}
+      {promptDialog}
     </div>
   );
 }
@@ -13000,7 +13103,8 @@ function FinanceProAssistant({
   );
 }
 
-function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTransaction, profile, setProfile, goals, autoOpen, isPro, onUpgrade }) {
+function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTransaction, removeTransactionRecord, profile, setProfile, goals, autoOpen, isPro, onUpgrade }) {
+  const [confirm, confirmDialog] = useConfirm();
   const [showForm, setShowForm] = useState(false);
   const [showRecurringForm, setShowRecurringForm] = useState(false);
   const [showBillForm, setShowBillForm] = useState(false);
@@ -13225,8 +13329,8 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
     }));
   };
 
-  const deleteRecurring = (id) => {
-    if (!window.confirm("Tem certeza que deseja remover esta recorrência?")) return;
+  const deleteRecurring = async (id) => {
+    if (!(await confirm("Tem certeza que deseja remover esta recorrência?"))) return;
     setProfile((current) => ({
       ...current,
       financeRecurring: (current?.financeRecurring || []).filter((item) => item.id !== id),
@@ -13349,8 +13453,8 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
     setShowBillForm(false);
   };
 
-  const removeBill = (id) => {
-    if (!window.confirm("Remover esta conta a pagar?")) return;
+  const removeBill = async (id) => {
+    if (!(await confirm("Excluir esta conta a pagar?"))) return;
     setProfile((current) => ({ ...current, financeBills: (current?.financeBills || []).filter((bill) => bill.id !== id) }));
   };
 
@@ -13372,12 +13476,12 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
     }));
   };
 
-  const unpayBill = (bill) => {
-    if (!window.confirm(`Desmarcar "${bill.description}" como paga? O lançamento financeiro criado por este pagamento também será removido.`)) return;
+  const unpayBill = async (bill) => {
+    if (!(await confirm(`Desmarcar "${bill.description}" como paga? O lançamento financeiro criado por este pagamento também será removido.`, { confirmLabel: "Desmarcar" }))) return;
 
     transactions
       .filter((tx) => tx.billId === bill.id)
-      .forEach((tx) => deleteTransaction(tx.id));
+      .forEach((tx) => removeTransactionRecord(tx.id));
 
     setProfile((current) => ({
       ...current,
@@ -14241,6 +14345,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
           onSave={saveBill}
         />
       )}
+      {confirmDialog}
     </div>
   );
 }
@@ -14628,7 +14733,7 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               {[
-                ["Maior streak", `${streaks.best}d`, Flame],
+                ["Maior sequência", `${streaks.best}d`, Flame],
                 ["Maior score", `${stats.highestDayScore || 0}%`, TrendingUp],
                 ["Tarefas em 1 dia", stats.maxTasksInDay || 0, ListChecks],
                 ["Sequência de treinos", `${stats.workoutBestStreak || 0}d`, Dumbbell],
@@ -14682,6 +14787,7 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
 }
 
 function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgrade }) {
+  const [confirm, confirmDialog] = useConfirm();
   const [selectedReward, setSelectedReward] = useState(null);
   const bestStreak = Math.max(0, Number(stats?.bestStreak || 0));
 
@@ -14772,7 +14878,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
         </div>
 
         <p className="text-[10px] text-faint mt-3">
-          A conquista usa o seu maior streak registrado. Depois de liberar um nível, ele continua conquistado mesmo que sua sequência atual seja reiniciada.
+          A conquista usa a sua maior sequência registrada. Depois de liberar um nível, ele continua conquistado mesmo que sua sequência atual seja reiniciada.
         </p>
       </div>
 
@@ -14879,8 +14985,8 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
                   ) : (
                     <button
                       className="btn-primary w-full rounded-xl py-3 text-sm"
-                      onClick={() => {
-                        if (!window.confirm(`Solicitar o ${selectedReward.prize}?`)) return;
+                      onClick={async () => {
+                        if (!(await confirm(`Solicitar o ${selectedReward.prize}?`, { danger: false, confirmLabel: "Solicitar" }))) return;
                         setProfile((current) => ({
                           ...current,
                           rewardClaims: [
@@ -14907,6 +15013,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
           )}
         </Modal>
       )}
+      {confirmDialog}
     </div>
   );
 }
@@ -14964,6 +15071,7 @@ function ChallengeProgressAdder({ challenge, onAdd }) {
 }
 
 function ChallengesView({ session, profile, setProfile, game, streaks, autoOpen, isPro, onUpgrade }) {
+  const [confirm, confirmDialog] = useConfirm();
   const [showForm, setShowForm] = useState(false);
   const [friends, setFriends] = useState([]);
   const [loadingFriends, setLoadingFriends] = useState(true);
@@ -15013,8 +15121,8 @@ function ChallengesView({ session, profile, setProfile, game, streaks, autoOpen,
     }));
   };
 
-  const removeChallenge = (id) => {
-    if (!window.confirm("Excluir este desafio?")) return;
+  const removeChallenge = async (id) => {
+    if (!(await confirm("Excluir este desafio?"))) return;
     setProfile((p) => ({ ...p, personalChallenges: (p?.personalChallenges || []).filter((x) => x.id !== id) }));
   };
 
@@ -15099,7 +15207,7 @@ function ChallengesView({ session, profile, setProfile, game, streaks, autoOpen,
           >
             <option value="xp">Mais XP</option>
             <option value="score">Maior score</option>
-            <option value="streak">Maior streak</option>
+            <option value="streak">Maior sequência</option>
           </select>
         </div>
 
@@ -15118,6 +15226,7 @@ function ChallengesView({ session, profile, setProfile, game, streaks, autoOpen,
       </div>
 
       {showForm && <ChallengeForm onClose={() => setShowForm(false)} onSave={saveChallenge} />}
+      {confirmDialog}
     </div>
   );
 }
@@ -15148,10 +15257,10 @@ function TimelineView({ habits, completions, tasks, goals, workoutSessions, goal
       if (!goal || !goal.target || goal.completed) return;
       const pct = Math.round(Number(log.value || 0) / Number(goal.target) * 100);
       const milestone = [25, 50, 75].find((m) => Math.abs(pct - m) <= 3);
-      if (milestone) rows.push({ id: `milestone-${log.id}`, date: log.date, title: `${milestone}% da meta ${goal.name}`, desc: "Checkpoint intermediário alcançado.", icon: Target });
+      if (milestone) rows.push({ id: `milestone-${log.id}`, date: log.date, title: `${milestone}% da meta ${goal.name}`, desc: "Marco intermediário alcançado.", icon: Target });
     });
 
-    if (stats.bestStreak >= 7) rows.push({ id: "streak-current-best", date: today(), title: `Recorde de ${stats.bestStreak} dias`, desc: "Seu maior streak registrado até agora.", icon: Flame });
+    if (stats.bestStreak >= 7) rows.push({ id: "streak-current-best", date: today(), title: `Recorde de ${stats.bestStreak} dias`, desc: "Sua maior sequência de dias perfeitos registrada até agora.", icon: Flame });
 
     const sorted = rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
     return isPro ? sorted.slice(0, 120) : sorted.filter((event) => event.date >= proCutoffDate()).slice(0, 60);
@@ -15206,12 +15315,13 @@ function FriendsView({ session, profile, game, streaks, isPro, onUpgrade }) {
   const [actionLoading, setActionLoading] = useState(false);
   const [notice, setNotice] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [confirm, confirmDialog] = useConfirm();
 
   const load = useCallback(async () => {
     if (!session?.user?.id) return;
     setLoading(true);
     try { setRows((await fetchFriends(session)) || []); setNotice(null); }
-    catch (e) { setNotice({ type:'error', text:'Não foi possível carregar seus amigos. Verifique se o SQL de Amigos foi executado no Supabase.' }); }
+    catch (e) { setNotice({ type:'error', text:'Não foi possível carregar seus amigos agora. Tente novamente em instantes.' }); }
     finally { setLoading(false); }
   }, [session]);
   useEffect(()=>{ load(); },[load]);
@@ -15230,7 +15340,7 @@ function FriendsView({ session, profile, game, streaks, isPro, onUpgrade }) {
     finally { setActionLoading(false); }
   };
   const respond = async (id, accept) => { setActionLoading(true); try { await respondFriendRequest(session,id,accept); await load(); } finally { setActionLoading(false); } };
-  const remove = async (id) => { if (!window.confirm('Remover este amigo?')) return; setActionLoading(true); try { await removeFriendship(session,id); setSelected(null); await load(); } finally { setActionLoading(false); } };
+  const remove = async (id) => { if (!(await confirm('Remover este amigo?', { confirmLabel: "Remover" }))) return; setActionLoading(true); try { await removeFriendship(session,id); setSelected(null); await load(); } finally { setActionLoading(false); } };
   const accepted=rows.filter((r)=>r.status==='accepted');
   const received=rows.filter((r)=>r.status==='pending'&&r.direction==='received');
   const sent=rows.filter((r)=>r.status==='pending'&&r.direction==='sent');
@@ -15254,6 +15364,7 @@ function FriendsView({ session, profile, game, streaks, isPro, onUpgrade }) {
       </button>)}</div>}
     </div>
     {selected&&<Modal title="Perfil do amigo" onClose={()=>setSelected(null)}><div className="flex flex-col gap-4"><div className="flex items-center gap-4"><Avatar r={selected} size="w-16 h-16"/><div className="min-w-0"><p className="font-display text-xl truncate">{selected.display_name||'Usuário'}</p><p className="text-faint text-xs truncate">{selected.email}</p><p className="text-brass text-xs mt-1">{selected.rank_name||'Recruta'} · Nível {selected.level||1}</p></div></div><div className="grid grid-cols-2 gap-2"><StatMini label="XP" value={Number(selected.xp||0).toLocaleString('pt-BR')}/><StatMini label="Score atual" value={`${selected.score||0}/100`}/><StatMini label="Dias perfeitos" value={`${selected.streak_current||0}d`}/><StatMini label="Recorde" value={`${selected.streak_best||0}d`}/></div><button className="btn-ghost rounded-xl py-2.5 text-sm text-ember" onClick={()=>remove(selected.friendship_id)}>Remover amigo</button></div></Modal>}
+    {confirmDialog}
   </div>;
 }
 
@@ -16191,6 +16302,7 @@ function ConstancceApp() {
     habitChecklistLog, setHabitChecklistLog,
   } = useConstancceData();
   const [view, setView] = useState("dashboard");
+  const [confirm, confirmDialog] = useConfirm();
   // A base curada fica embutida no bundle para a Dieta nunca abrir vazia.
   // A TACO completa é carregada em segundo plano e mesclada depois.
   const [dietFoodBase, setDietFoodBase] = useState(() => dietDedupFoods(DIET_FOOD_BASE));
@@ -17032,7 +17144,7 @@ function ConstancceApp() {
       return true;
     } catch (error) {
       captureClientError(error, { module: "task-sync-v6", action: "pull" });
-      setTaskSyncError(String(error?.message || "task_pull_failed"));
+      setTaskSyncError("verifique sua conexão");
       setTaskSyncStatus(typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "error");
       return false;
     }
@@ -17954,7 +18066,7 @@ function ConstancceApp() {
       fireToast("Digite sua senha atual no Perfil antes de excluir a conta.", <ShieldCheck size={16} className="text-ember" />);
       return;
     }
-    if (!window.confirm("Excluir sua conta e seus dados? Esta ação não pode ser desfeita.")) return;
+    if (!(await confirm("Excluir sua conta e seus dados? Esta ação não pode ser desfeita.", { confirmLabel: "Excluir conta" }))) return;
     try {
       await edgeFunctionRequest(session, "delete-account", { password: currentPassword });
       await handleLogout();
@@ -17998,7 +18110,7 @@ function ConstancceApp() {
     });
     return true;
   };
-  const deleteHabit = (id) => { if (!window.confirm("Tem certeza que deseja excluir este hábito?")) return; const nextChecklistLog = habitChecklistLog.filter((x) => x.habitId !== id); setHabitChecklistLog(nextChecklistLog); setHabits((prev) => { const next = prev.filter((h) => h.id !== id); persist({ habits: next, habitChecklistLog: nextChecklistLog }); return next; }); };
+  const deleteHabit = async (id) => { if (!(await confirm("Tem certeza que deseja excluir este hábito?"))) return; const nextChecklistLog = habitChecklistLog.filter((x) => x.habitId !== id); setHabitChecklistLog(nextChecklistLog); setHabits((prev) => { const next = prev.filter((h) => h.id !== id); persist({ habits: next, habitChecklistLog: nextChecklistLog }); return next; }); };
   const toggleActive = (id) => setHabits((prev) => { const next = prev.map((h) => h.id === id ? { ...h, active: !h.active, pausedAt: h.active ? today() : h.pausedAt, resumedAt: !h.active ? today() : h.resumedAt } : h); persist({ habits: next }); return next; });
 
   const commitTaskMutation = (nextTasks, op) => {
@@ -18034,7 +18146,7 @@ function ConstancceApp() {
     });
     return true;
   };
-  const deleteTask = (id) => { if (!window.confirm("Tem certeza que deseja excluir esta tarefa?")) return; setTasks((prev) => { const next = prev.filter((t) => t.id !== id); commitTaskMutation(next, makeTaskDelete(id, taskRevisionRef.current?.[id] || 0, newMutationId())); return next; }); };
+  const deleteTask = async (id) => { if (!(await confirm("Tem certeza que deseja excluir esta tarefa?"))) return; setTasks((prev) => { const next = prev.filter((t) => t.id !== id); commitTaskMutation(next, makeTaskDelete(id, taskRevisionRef.current?.[id] || 0, newMutationId())); return next; }); };
   const setTaskStatus = (id, status, dateStr = today()) => setTasks((prev) => {
     const next = prev.map((task) => {
       if (task.id !== id) return task;
@@ -18112,7 +18224,7 @@ function ConstancceApp() {
     });
     return true;
   };
-  const deleteGoal = (id) => { if (!window.confirm("Tem certeza que deseja excluir esta meta?")) return; setGoals((prev) => { const next = prev.filter((g) => g.id !== id); persist({ goals: next }); return next; }); };
+  const deleteGoal = async (id) => { if (!(await confirm("Tem certeza que deseja excluir esta meta?"))) return; setGoals((prev) => { const next = prev.filter((g) => g.id !== id); persist({ goals: next }); return next; }); };
   const toggleGoalChecklist = (goalId, itemId) => setGoals((prev) => {
     const next = prev.map((g) => {
       if (g.id !== goalId) return g;
@@ -18277,7 +18389,7 @@ function ConstancceApp() {
     persist({ workoutTemplates: next });
     return next;
   });
-  const deleteWorkoutTemplate = (id) => { if (!window.confirm("Tem certeza que deseja excluir este treino?")) return; setWorkoutTemplates((prev) => { const next = prev.filter((tp) => tp.id !== id); persist({ workoutTemplates: next }); return next; }); };
+  const deleteWorkoutTemplate = async (id) => { if (!(await confirm("Tem certeza que deseja excluir este treino?"))) return; setWorkoutTemplates((prev) => { const next = prev.filter((tp) => tp.id !== id); persist({ workoutTemplates: next }); return next; }); };
   const startOrGetSession = (templateId) => {
     const t = today();
     setWorkoutSessions((prev) => {
@@ -18437,8 +18549,8 @@ function ConstancceApp() {
     return next;
   });
 
-  const undoCompleteSession = (sessionId) => {
-    if (!window.confirm("Desfazer a conclusão deste treino? As séries e cargas registradas serão mantidas, mas o treino voltará para Em andamento.")) return;
+  const undoCompleteSession = async (sessionId) => {
+    if (!(await confirm("Desfazer a conclusão deste treino? As séries e cargas registradas serão mantidas, mas o treino voltará para Em andamento.", { confirmLabel: "Desfazer" }))) return;
 
     setWorkoutSessions((prev) => {
       const next = prev.map((sessionRow) =>
@@ -18520,8 +18632,8 @@ function ConstancceApp() {
     });
   };
 
-  const deleteMeal = (id) => {
-    if (!window.confirm("Tem certeza que deseja excluir esta refeição?")) return;
+  const deleteMeal = async (id) => {
+    if (!(await confirm("Tem certeza que deseja excluir esta refeição?"))) return;
     setMealLog((prev) => {
       const next = prev.filter((meal) => meal.id !== id);
       persist({ mealLog: next });
@@ -18529,8 +18641,8 @@ function ConstancceApp() {
     });
   };
 
-  const deleteFood = (id) => {
-    if (!window.confirm("Remover este alimento personalizado? Os registros antigos serão mantidos.")) return;
+  const deleteFood = async (id) => {
+    if (!(await confirm("Excluir este alimento personalizado? Os registros antigos serão mantidos."))) return;
     setFoods((prev) => {
       const next = prev.filter((food) => food.id !== id);
       persist({ foods: next });
@@ -18551,7 +18663,8 @@ function ConstancceApp() {
     });
     return true;
   };
-  const deleteTransaction = (id) => { if (!window.confirm("Tem certeza que deseja excluir este lançamento?")) return; setTransactions((prev) => { const next = prev.filter((t) => t.id !== id); persist({ transactions: next }); return next; }); };
+  const removeTransactionRecord = (id) => { setTransactions((prev) => { const next = prev.filter((t) => t.id !== id); persist({ transactions: next }); return next; }); };
+  const deleteTransaction = async (id) => { if (!(await confirm("Tem certeza que deseja excluir este lançamento?"))) return; removeTransactionRecord(id); };
 
   // Materializa automaticamente as recorrências mensais quando o dia programado chega.
   useEffect(() => {
@@ -19256,7 +19369,7 @@ function ConstancceApp() {
       case "goals": return <GoalsView goals={goals} saveGoal={saveGoal} addProgress={addGoalProgress} updateProgress={updateProgress} toggleGoalChecklist={toggleGoalChecklist} deleteGoal={deleteGoal} goalProgressLog={goalProgressLog} tasks={tasks} habits={habits} autoOpen={quickTrigger.goals} isPro={isPro} onUpgrade={requestPro} />;
       case "workouts": return <WorkoutsView session={session} templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateReps={updateWorkoutReps} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ remaining: workoutRest.remaining, total: workoutRest.total, running: workoutRest.running }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} resumeSessionId={workoutResumeSessionId || workoutRest.timer?.sessionId || null} />;
       case "food": return <FoodView foodBase={dietFoodBase} foods={foods} mealLog={mealLog} addMeal={addMeal} updateMeal={updateMeal} toggleMealConsumed={toggleMealConsumed} deleteMeal={deleteMeal} deleteFood={deleteFood} profile={profile} setProfile={setProfile} session={session} autoOpen={quickTrigger.food} isPro={isPro} onUpgrade={requestPro} />;
-      case "finance": return <FinanceView transactions={transactions} addTransaction={addTransaction} addGoalProgress={addGoalProgress} deleteTransaction={deleteTransaction} profile={profile} setProfile={setProfile} goals={goals} autoOpen={quickTrigger.finance} isPro={isPro} onUpgrade={requestPro} />;
+      case "finance": return <FinanceView transactions={transactions} addTransaction={addTransaction} addGoalProgress={addGoalProgress} deleteTransaction={deleteTransaction} removeTransactionRecord={removeTransactionRecord} profile={profile} setProfile={setProfile} goals={goals} autoOpen={quickTrigger.finance} isPro={isPro} onUpgrade={requestPro} />;
       case "friends": return <FriendsView session={session} profile={profile} game={game} streaks={habitStreaks} isPro={isPro} onUpgrade={requestPro} />;
       case "professional": return <ProfessionalView session={session} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} saveWorkoutTemplate={saveWorkoutTemplate} />;
       case "progress": return <ProgressView streaks={habitStreaks} stats={stats} game={game} session={session} profile={profile} isPro={isPro} onUpgrade={requestPro} />;
@@ -19509,6 +19622,7 @@ function ConstancceApp() {
       )}
 
       <Toast toast={toast} />
+      {confirmDialog}
     </div>
   );
 }

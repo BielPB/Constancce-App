@@ -84,7 +84,7 @@ test("foguinho da tela Hoje usa streak de presença no app", async () => {
   assert.match(usage, /computeUsageStreaks/);
   assert.match(app, /appUsageDays/);
   assert.match(app, /streaks=\{usageStreaks\}/);
-  assert.match(app, /Seu streak de uso/);
+  assert.match(app, /Sua sequência de uso/);
   assert.match(app, /Cada dia em que você abre e usa o Constancce/);
 });
 
