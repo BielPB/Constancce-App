@@ -11,6 +11,7 @@ import { useConstancceData } from "./src/hooks/useConstancceData.js";
 import { useWorkoutRestTimer } from "./src/hooks/useWorkoutRestTimer.js";
 import { computeUsageStreaks, normalizeUsageDays } from "./src/lib/usageStreak.js";
 import { PRO_LIMITS, PRO_FEATURE_COPY, accessSummary } from "./src/lib/plans.js";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, authHeaders, rpcRequest } from "./src/lib/supabaseRpc.js";
 import { DIET_FOOD_BASE } from "./src/data/dietFoodBase.js";
 import { Progress, Modal, Field, EmptyState, StatMini, Toast, ProBadge, ProLockCard } from "./src/components/ui.jsx";
 import {
@@ -64,8 +65,6 @@ function FirstVisitTip({ id, icon: Icon = Sparkles, title, children }) {
 /* ---------------------------------------------------------------
    AUTENTICAÇÃO + ARMAZENAMENTO POR CONTA
 ----------------------------------------------------------------*/
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const SUPABASE_CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 const LEGACY_DATA_KEY = "constancia_local_data";
 const AUTH_SESSION_KEY = "constancia_auth_session";
@@ -487,14 +486,6 @@ async function sendPasswordRecovery(email) {
 const SYNC_TABLE_URL = `${SUPABASE_URL}/rest/v1/device_sync`;
 const DOMAIN_SYNC_TABLE_URL = `${SUPABASE_URL}/rest/v1/constancce_domain_sync`;
 
-function authHeaders(session, extra = {}) {
-  return {
-    apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${session.access_token}`,
-    ...extra,
-  };
-}
-
 async function fetchAtomicTasksForUser(session) {
   const userId = session?.user?.id;
   if (!userId) throw new Error("missing_user");
@@ -812,19 +803,6 @@ async function recordActivityEvent(session, eventType, eventKey, metadata = {}) 
 }
 
 const PUBLIC_PROFILE_URL = `${SUPABASE_URL}/rest/v1/constancce_profiles`;
-async function rpcRequest(session, fn, body = {}) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
-    method: "POST",
-    headers: authHeaders(session, { "Content-Type": "application/json" }),
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    const message = data?.message || data?.hint || data?.details || `rpc_${fn}_failed`;
-    throw new Error(message);
-  }
-  return data;
-}
 async function upsertPublicProfile(session, publicData) {
   const userId = session?.user?.id;
   if (!userId) return;
