@@ -35,6 +35,7 @@ export default function ProfessionalView({ session, profile, setProfile, isPro, 
   const [prescriptionBusyId, setPrescriptionBusyId] = useState(null);
   const [adherence, setAdherence] = useState({});
   const [email, setEmail] = useState("");
+  const [registration, setRegistration] = useState("");
 
   const roles = profile?.professionalRoles || [];
   const [linkType, setLinkType] = useState(roles[0] || "personal");
@@ -127,8 +128,9 @@ export default function ProfessionalView({ session, profile, setProfile, isPro, 
     setActionLoading(true);
     setNotice(null);
     try {
-      await inviteClient(session, email, linkType);
+      await inviteClient(session, email, linkType, registration);
       setEmail("");
+      setRegistration("");
       setNotice({ type: "ok", text: "Convite enviado. Quando a pessoa aceitar, você poderá enviar treinos/dietas para ela." });
       await load();
     } catch (err) {
@@ -289,6 +291,17 @@ export default function ProfessionalView({ session, profile, setProfile, isPro, 
               <UserPlus size={15} />{actionLoading ? "Aguarde…" : "Enviar convite"}
             </button>
           </div>
+          <input
+            type="text"
+            value={registration}
+            onChange={(e) => setRegistration(e.target.value)}
+            placeholder={linkType === "nutricionista" ? "Registro profissional (CRN) · opcional" : "Registro profissional (CREF) · opcional"}
+            maxLength={60}
+            className="w-full p-2.5 text-xs ring-focus mt-2"
+          />
+          <p className="text-[9px] text-faint mt-1">
+            O Constancce não verifica esse número — ele só fica visível para quem receber o convite, pra conferir por conta própria.
+          </p>
           {notice && <p className={`text-xs mt-3 ${notice.type === "error" ? "text-ember" : "text-moss"}`}>{notice.text}</p>}
         </form>
       )}
@@ -298,15 +311,25 @@ export default function ProfessionalView({ session, profile, setProfile, isPro, 
 
       {receivedInvites.length > 0 && (
         <div className="surface rounded-2xl p-4 md:p-5">
-          <p className="text-xs text-faint uppercase tracking-widest mb-3">Convites recebidos</p>
+          <p className="text-xs text-faint uppercase tracking-widest mb-1">Convites recebidos</p>
+          <p className="text-faint text-[10px] mb-3">
+            O Constancce não verifica credenciais profissionais. Confira o registro informado (quando houver) antes de aceitar.
+          </p>
           <div className="flex flex-col gap-2">
             {receivedInvites.map((r) => (
-              <LinkRow key={r.link_id} r={r} action={
-                <div className="flex gap-2">
-                  <button className="btn-primary rounded-lg px-3 py-2 text-xs flex-1 sm:flex-none" onClick={() => respond(r.link_id, true)}><Check size={13} className="inline mr-1" />Aceitar</button>
-                  <button className="btn-ghost rounded-lg px-3 py-2 text-xs flex-1 sm:flex-none" onClick={() => respond(r.link_id, false)}>Recusar</button>
-                </div>
-              } />
+              <LinkRow
+                key={r.link_id}
+                r={r}
+                meta={r.professional_registration && (
+                  <p className="text-faint text-[10px]">Registro informado: <span className="font-mono text-dim">{r.professional_registration}</span></p>
+                )}
+                action={
+                  <div className="flex gap-2">
+                    <button className="btn-primary rounded-lg px-3 py-2 text-xs flex-1 sm:flex-none" onClick={() => respond(r.link_id, true)}><Check size={13} className="inline mr-1" />Aceitar</button>
+                    <button className="btn-ghost rounded-lg px-3 py-2 text-xs flex-1 sm:flex-none" onClick={() => respond(r.link_id, false)}>Recusar</button>
+                  </div>
+                }
+              />
             ))}
           </div>
         </div>
@@ -369,9 +392,14 @@ export default function ProfessionalView({ session, profile, setProfile, isPro, 
         ) : (
           <div className="flex flex-col gap-2">
             {myProfessionals.map((r) => (
-              <LinkRow key={r.link_id} r={r} action={
-                <button className="btn-ghost rounded-lg px-3 py-2 text-xs text-ember" onClick={() => remove(r.link_id)}>Remover</button>
-              } />
+              <LinkRow
+                key={r.link_id}
+                r={r}
+                meta={r.professional_registration && (
+                  <p className="text-faint text-[10px]">Registro informado: <span className="font-mono text-dim">{r.professional_registration}</span></p>
+                )}
+                action={<button className="btn-ghost rounded-lg px-3 py-2 text-xs text-ember" onClick={() => remove(r.link_id)}>Remover</button>}
+              />
             ))}
           </div>
         )}

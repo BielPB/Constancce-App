@@ -4,10 +4,11 @@ export async function fetchProfessionalLinks(session) {
   return rpcRequest(session, "get_constancce_professional_links");
 }
 
-export async function inviteClient(session, email, linkType) {
+export async function inviteClient(session, email, linkType, registration) {
   return rpcRequest(session, "invite_constancce_client", {
     p_email: String(email || "").trim().toLowerCase(),
     p_link_type: linkType,
+    p_registration: registration ? String(registration).trim() : null,
   });
 }
 
