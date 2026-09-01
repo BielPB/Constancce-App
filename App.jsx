@@ -386,6 +386,14 @@ function dateLabel(dateStr, options = { weekday: "short", day: "2-digit", month:
   return new Date(dateStr + "T12:00:00").toLocaleDateString("pt-BR", options);
 }
 
+// Datas por extenso em pt-BR só devem ter a primeira letra maiúscula
+// ("Terça-feira, 1 de setembro"), nunca cada palavra — por isso não usamos
+// a classe utilitária `capitalize` (que maiusculiza palavra por palavra).
+function capitalizeFirst(text) {
+  const value = String(text || "");
+  return value ? value[0].toUpperCase() + value.slice(1) : value;
+}
+
 function weekdayIndex(dateStr = today()) {
   return new Date(dateStr + "T12:00:00").getDay();
 }
@@ -4287,9 +4295,8 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                     className="task-priority-item surface-2 rounded-xl p-3 text-left min-w-0"
                     onClick={() => setFocusTask(task)}
                   >
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
                       <span className="font-mono text-[9px] text-brass">0{index + 1}</span>
-                      <span className="text-[9px] text-faint">{taskPriorityScore(task, t)} pts</span>
                     </div>
                     <p className="text-xs md:text-sm font-medium mt-2 break-words">{task.title}</p>
                     <p className="text-[9px] text-dim mt-1">{taskPriorityReason(task, t)}</p>
@@ -5259,12 +5266,12 @@ function CalendarView({
     (showType("habits") ? selectedData.habits.length : 0) +
     (showType("goals") ? selectedData.goals.length : 0);
 
-  const selectedLabel = new Date(`${selected}T12:00:00`).toLocaleDateString("pt-BR", {
+  const selectedLabel = capitalizeFirst(new Date(`${selected}T12:00:00`).toLocaleDateString("pt-BR", {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: mode === "today" ? "numeric" : undefined,
-  });
+  }));
 
   const goToday = () => {
     setSelectedDate(today());
@@ -5371,7 +5378,7 @@ function CalendarView({
                 </span>
               )}
             </div>
-            <p className="font-display text-xl md:text-2xl mt-1 capitalize break-words">{selectedLabel}</p>
+            <p className="font-display text-xl md:text-2xl mt-1 break-words">{selectedLabel}</p>
 
             <div className="flex flex-wrap gap-1.5 mt-2">
               <span className="chip">{selectedData.tasks.length} tarefas</span>
@@ -5663,7 +5670,7 @@ function CalendarView({
               ? `${MONTHS[month]} ${year}`
               : mode === "week"
                 ? `${dateLabel(weekStart, { day: "2-digit", month: "short" })} — ${dateLabel(addDays(weekStart, 6), { day: "2-digit", month: "short" })}`
-                : selectedLabel}
+                : dateLabel(selected, { day: "2-digit", month: "short", year: "numeric" })}
           </p>
           <p className="text-[9px] md:text-[10px] text-faint mt-0.5">
             No celular, deslize para navegar
@@ -5956,8 +5963,8 @@ function CalendarView({
 
           <div className="surface-2 rounded-xl p-3 mb-3">
             <p className="text-[9px] text-faint uppercase tracking-widest">Data</p>
-            <p className="text-sm mt-1 capitalize">
-              {new Date(`${selected}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}
+            <p className="text-sm mt-1">
+              {capitalizeFirst(new Date(`${selected}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }))}
             </p>
           </div>
 
@@ -13052,7 +13059,18 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
   const previousTx = transactions.filter((tx) => String(tx.date || "").slice(0, 7) === previousKey);
   const previousIn = previousTx.filter((tx) => tx.type === "entrada").reduce((sum, tx) => sum + Number(tx.value || 0), 0);
   const previousOut = previousTx.filter((tx) => tx.type === "saida").reduce((sum, tx) => sum + Number(tx.value || 0), 0);
-  const outDeltaPct = previousOut > 0 ? Math.round(((monthOut - previousOut) / previousOut) * 100) : null;
+
+  // Enquanto o mês selecionado ainda está em andamento, comparar o total do
+  // mês anterior inteiro contra só os dias já passados deste mês distorce o
+  // número (fica sempre perto de -100% no início do mês). Nesse caso,
+  // comparamos só até o mesmo dia do mês anterior.
+  const isCurrentMonthView = selectedMonth === monthKey(today());
+  const dayOfMonthCutoff = isCurrentMonthView ? Number(today().slice(8, 10)) : null;
+  const previousOutComparable = isCurrentMonthView
+    ? previousTx.filter((tx) => tx.type === "saida" && Number(String(tx.date || "").slice(8, 10)) <= dayOfMonthCutoff)
+        .reduce((sum, tx) => sum + Number(tx.value || 0), 0)
+    : previousOut;
+  const outDeltaPct = previousOutComparable > 0 ? Math.round(((monthOut - previousOutComparable) / previousOutComparable) * 100) : null;
   const inDeltaPct = previousIn > 0 ? Math.round(((monthIn - previousIn) / previousIn) * 100) : null;
 
   const recurringItems = profile?.financeRecurring || [];
@@ -13547,7 +13565,9 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
                   <p className="font-mono text-sm md:text-base mt-1 truncate">{money(availableToSpend)}</p>
                 </div>
                 <div className="surface-2 rounded-xl p-3 min-w-0">
-                  <p className="text-[9px] text-faint uppercase tracking-widest">Mês anterior</p>
+                  <p className="text-[9px] text-faint uppercase tracking-widest">
+                    Vs. mês anterior{isCurrentMonthView ? " (até hoje)" : ""}
+                  </p>
                   <p className={`font-mono text-sm md:text-base mt-1 truncate ${outDeltaPct !== null && outDeltaPct <= 0 ? "text-moss" : outDeltaPct !== null ? "text-ember" : "text-dim"}`}>
                     {outDeltaPct === null ? "Sem base" : `${outDeltaPct >= 0 ? "+" : ""}${outDeltaPct}% gastos`}
                   </p>
@@ -14423,14 +14443,14 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
           <p className="text-[9px] text-faint mt-1">progressão total</p>
         </div>
         <div className="progress-kpi surface rounded-2xl p-3 md:p-4">
-          <p className="text-[9px] text-faint uppercase tracking-widest">Streak atual</p>
+          <p className="text-[9px] text-faint uppercase tracking-widest">Dias perfeitos seguidos</p>
           <p className="font-display text-xl mt-1">{streaks.current}d</p>
-          <p className="text-[9px] text-faint mt-1">sequência ativa</p>
+          <p className="text-[9px] text-faint mt-1">todos os hábitos do dia concluídos</p>
         </div>
         <div className="progress-kpi surface rounded-2xl p-3 md:p-4">
-          <p className="text-[9px] text-faint uppercase tracking-widest">Seu recorde</p>
+          <p className="text-[9px] text-faint uppercase tracking-widest">Recorde de dias perfeitos</p>
           <p className="font-display text-xl mt-1">{streaks.best}d</p>
-          <p className="text-[9px] text-faint mt-1">maior sequência</p>
+          <p className="text-[9px] text-faint mt-1">maior sequência já alcançada</p>
         </div>
         <div className="progress-kpi surface rounded-2xl p-3 md:p-4">
           <p className="text-[9px] text-faint uppercase tracking-widest">Melhor dia</p>
@@ -14717,7 +14737,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
       <div>
         <h2 className="font-display text-2xl md:text-3xl">Conquistas</h2>
         <p className="text-dim text-sm mt-1">
-          Os prêmios são liberados pela sua maior sequência de dias consecutivos dentro do Constancce.
+          Os prêmios são liberados pela sua maior sequência de dias perfeitos — dias em que todos os hábitos marcados para contar streak foram concluídos. Não é o mesmo número do foguinho de uso no topo do app.
         </p>
       </div>
 
@@ -15230,10 +15250,10 @@ function FriendsView({ session, profile, game, streaks, isPro, onUpgrade }) {
     <div className="surface rounded-2xl p-4 md:p-5">
       <div className="flex items-center justify-between mb-4"><div><p className="text-xs text-faint uppercase tracking-widest">Ranking entre amigos</p><p className="text-dim text-xs mt-1">Ordenado pelo XP total.</p></div><span className="chip">{accepted.length} amigo{accepted.length===1?'':'s'}</span></div>
       {loading?<div className="py-10 text-center text-dim text-sm">Carregando ranking…</div>:<div className="flex flex-col gap-2">{leaderboard.map((r,i)=><button key={r.user_id} onClick={()=>!r.isMe&&setSelected(r)} className="surface-2 p-3 md:p-4 text-left flex items-center gap-3 hover:-translate-y-[1px]">
-        <div className="font-mono text-sm w-6 text-center text-brass">#{i+1}</div><Avatar r={r}/><div className="flex-1 min-w-0"><div className="flex items-center gap-2"><p className="font-semibold text-sm truncate">{r.display_name||'Usuário'}</p>{r.isMe&&<span className="chip">Você</span>}</div><p className="text-faint text-[11px] truncate">{r.rank_name||'Recruta'} · Nível {r.level||1}</p></div><div className="text-right shrink-0"><p className="font-mono text-sm">{Number(r.xp||0).toLocaleString('pt-BR')} XP</p><p className="text-faint text-[10px]">{r.streak_current||0}d streak</p></div>
+        <div className="font-mono text-sm w-6 text-center text-brass">#{i+1}</div><Avatar r={r}/><div className="flex-1 min-w-0"><div className="flex items-center gap-2"><p className="font-semibold text-sm truncate">{r.display_name||'Usuário'}</p>{r.isMe&&<span className="chip">Você</span>}</div><p className="text-faint text-[11px] truncate">{r.rank_name||'Recruta'} · Nível {r.level||1}</p></div><div className="text-right shrink-0"><p className="font-mono text-sm">{Number(r.xp||0).toLocaleString('pt-BR')} XP</p><p className="text-faint text-[10px]">{r.streak_current||0}d perfeitos</p></div>
       </button>)}</div>}
     </div>
-    {selected&&<Modal title="Perfil do amigo" onClose={()=>setSelected(null)}><div className="flex flex-col gap-4"><div className="flex items-center gap-4"><Avatar r={selected} size="w-16 h-16"/><div className="min-w-0"><p className="font-display text-xl truncate">{selected.display_name||'Usuário'}</p><p className="text-faint text-xs truncate">{selected.email}</p><p className="text-brass text-xs mt-1">{selected.rank_name||'Recruta'} · Nível {selected.level||1}</p></div></div><div className="grid grid-cols-2 gap-2"><StatMini label="XP" value={Number(selected.xp||0).toLocaleString('pt-BR')}/><StatMini label="Score atual" value={`${selected.score||0}/100`}/><StatMini label="Streak" value={`${selected.streak_current||0}d`}/><StatMini label="Recorde" value={`${selected.streak_best||0}d`}/></div><button className="btn-ghost rounded-xl py-2.5 text-sm text-ember" onClick={()=>remove(selected.friendship_id)}>Remover amigo</button></div></Modal>}
+    {selected&&<Modal title="Perfil do amigo" onClose={()=>setSelected(null)}><div className="flex flex-col gap-4"><div className="flex items-center gap-4"><Avatar r={selected} size="w-16 h-16"/><div className="min-w-0"><p className="font-display text-xl truncate">{selected.display_name||'Usuário'}</p><p className="text-faint text-xs truncate">{selected.email}</p><p className="text-brass text-xs mt-1">{selected.rank_name||'Recruta'} · Nível {selected.level||1}</p></div></div><div className="grid grid-cols-2 gap-2"><StatMini label="XP" value={Number(selected.xp||0).toLocaleString('pt-BR')}/><StatMini label="Score atual" value={`${selected.score||0}/100`}/><StatMini label="Dias perfeitos" value={`${selected.streak_current||0}d`}/><StatMini label="Recorde" value={`${selected.streak_best||0}d`}/></div><button className="btn-ghost rounded-xl py-2.5 text-sm text-ember" onClick={()=>remove(selected.friendship_id)}>Remover amigo</button></div></Modal>}
   </div>;
 }
 
@@ -15436,7 +15456,7 @@ function ProfileView({ profile, setProfile, theme, setTheme, streaks, stats, las
         </div>
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <StatMini label="Streak" value={`${streaks.current}d`} />
+        <StatMini label="Dias perfeitos" value={`${streaks.current}d`} />
         <StatMini label="Recorde" value={`${streaks.best}d`} />
         <StatMini label="Níveis" value="4" />
       </div>
@@ -18657,7 +18677,11 @@ function ConstancceApp() {
     usageDaysForToday,
   ]);
 
-  const streaks = useMemo(() => computeStreaks(habits, completions, today()), [habits, completions]);
+  // Streak de hábitos "perfeitos": só conta um dia quando TODOS os hábitos
+  // marcados countsForStreak foram concluídos nele. Distinto do streak de USO
+  // do app (usageStreaks, mostrado no foguinho do topo) — os dois números
+  // divergem por design e não devem compartilhar o nome genérico "streak" na UI.
+  const habitStreaks = useMemo(() => computeStreaks(habits, completions, today()), [habits, completions]);
   const usageStreaks = useMemo(
     () => computeUsageStreaks(usageDaysForToday, today()),
     [usageDaysForToday]
@@ -18919,8 +18943,8 @@ function ConstancceApp() {
       goalsDone,
       goalsEarly,
       habitCompletionsTotal: completions.length,
-      bestStreak: streaks.best,
-      totalPerfectDays: streaks.totalPerfectDays,
+      bestStreak: habitStreaks.best,
+      totalPerfectDays: habitStreaks.totalPerfectDays,
       workoutsDone,
       workoutsThisMonth: workoutSessions.filter((s) => s.completed && s.date >= monthStart).length,
       tasksThisMonth: taskCompletionDates.filter((date) => date >= monthStart).length,
@@ -18933,7 +18957,7 @@ function ConstancceApp() {
       financialGoalsDone,
       financialGoalAccumulated,
     };
-  }, [habits, completions, tasks, goals, streaks, workoutSessions, mealLog, goalProgressLog, transactions, profile]);
+  }, [habits, completions, tasks, goals, habitStreaks, workoutSessions, mealLog, goalProgressLog, transactions, profile]);
 
   const game = useMemo(() => {
     const t=today();
@@ -18941,7 +18965,7 @@ function ConstancceApp() {
     const checklistXp = habitChecklistLog.filter((x) => x.done && validHabitStepIds.has(`${x.habitId}:${x.itemId}`)).length * 5 + goals.reduce((sum, g) => sum + (g.checklist || []).filter((x) => x.done).length * 10, 0);
     const milestoneXp = goals.reduce((sum, goal) => sum + goalMilestonesReached(goal) * 25, 0);
     const personalChallengeXp = (profile?.personalChallenges || []).filter((challenge) => challenge.completed).length * 100;
-    const baseXp=computeXp(completions,tasks,workoutSessions,goals,streaks) + checklistXp + milestoneXp + personalChallengeXp;
+    const baseXp=computeXp(completions,tasks,workoutSessions,goals,habitStreaks) + checklistXp + milestoneXp + personalChallengeXp;
     const rank=rankForXp(baseXp), nextRank=nextRankForXp(baseXp), level=gameLevel(baseXp);
     const weekStart=startOfWeek(t);
     const dailyPerf=getDayPerformance(t,habits,completions,tasks,workoutSessions,mealLog,goalProgressLog);
@@ -18958,7 +18982,7 @@ function ConstancceApp() {
     const bonusXp=missions.filter((m)=>m.done).reduce((a,m)=>a+m.xp,0); const earnedXp=baseXp+bonusXp; const xp=Math.max(earnedXp,Number(profile?.xpFloor||0)); const actualRank=rankForXp(xp), actualNext=nextRankForXp(xp);
     const monthStart=startOfMonth(t); const seasonXp=completions.filter((c)=>c.date>=monthStart).length*10+tasks.filter((x)=>x.status==='concluida'&&(x.completedAt||x.dueDate)>=monthStart).length*20+workoutSessions.filter((w)=>w.completed&&w.date>=monthStart).length*50+goals.filter((g)=>g.completed&&(g.completedAt||t)>=monthStart).length*150;
     return {xp,earnedXp,level:gameLevel(xp),rank:actualRank,nextRank:actualNext,rankProgress:actualNext?pctBetween(xp,actualRank.min,actualNext.min):100,score:dailyPerf.score,missions,season:{name:`Temporada ${MONTHS[new Date().getMonth()]}`,xp:seasonXp}};
-  }, [completions,tasks,workoutSessions,goals,streaks,habits,mealLog,goalProgressLog,habitChecklistLog,profile?.personalChallenges,profile?.xpFloor]);
+  }, [completions,tasks,workoutSessions,goals,habitStreaks,habits,mealLog,goalProgressLog,habitChecklistLog,profile?.personalChallenges,profile?.xpFloor]);
 
   // XP nunca diminui por exclusão/edição de um item histórico. O ledger remoto
   // registra eventos importantes e o xpFloor preserva a progressão já conquistada.
@@ -19061,24 +19085,24 @@ function ConstancceApp() {
         rank_name: game.rank?.title || "Recruta",
         xp: Number(game.xp || 0),
         score: Number(game.score || 0),
-        streak_current: Number(streaks.current || 0),
-        streak_best: Number(streaks.best || 0),
+        streak_current: Number(habitStreaks.current || 0),
+        streak_best: Number(habitStreaks.best || 0),
       }).catch(() => {});
     }, 350);
     return () => clearTimeout(timer);
-  }, [dataReady, session, profile?.name, profile?.avatarDataUrl, game.level, game.xp, game.rank, game.score, streaks.current, streaks.best]);
+  }, [dataReady, session, profile?.name, profile?.avatarDataUrl, game.level, game.xp, game.rank, game.score, habitStreaks.current, habitStreaks.best]);
 
   // achievement + record + day-complete celebrations
   useEffect(() => {
-    if (streaks.best > prevBest.current && prevBest.current > 0) fireToast("NOVO RECORDE", <Flame size={16} className="text-ember" />);
-    prevBest.current = streaks.best;
+    if (habitStreaks.best > prevBest.current && prevBest.current > 0) fireToast("NOVO RECORDE", <Flame size={16} className="text-ember" />);
+    prevBest.current = habitStreaks.best;
     const newlyUnlocked = ACHIEVEMENT_DEFS.filter((a) => !unlocked.includes(a.id) && a.check(stats));
     if (newlyUnlocked.length > 0) {
       setUnlocked((prev) => { const next = [...prev, ...newlyUnlocked.map((a) => a.id)]; persist({ unlocked: next }); return next; });
       fireToast(`MARCO DESBLOQUEADO — ${newlyUnlocked[0].label}`, <Award size={16} className="text-brass" />);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stats, streaks]);
+  }, [stats, habitStreaks]);
 
   const notifications = useMemo(() => {
     const t = today();
@@ -19092,7 +19116,7 @@ function ConstancceApp() {
     const overdue = tasks.filter((tk) => tk.status !== "concluida" && tk.dueDate < t).length;
     if (overdue > 0) items.push({ category: "tasks", icon: <CheckCircle2 size={16} className="text-ember" />, message: `${overdue} tarefa${overdue > 1 ? "s" : ""} atrasada${overdue > 1 ? "s" : ""}.` });
     if (workoutTemplates.length > 0 && !workoutSessions.some((s) => s.date === t && s.completed)) items.push({ category: "workouts", icon: <Dumbbell size={16} className="text-brass" />, message: "Seu treino está esperando por você." });
-    if (streaks.current > 0 && streaks.current === streaks.best && pendingHabits > 0) items.push({ category: "habits", icon: <Flame size={16} className="text-ember" />, message: "Você está a 1 dia de alcançar um novo recorde. Não deixe seu streak cair." });
+    if (habitStreaks.current > 0 && habitStreaks.current === habitStreaks.best && pendingHabits > 0) items.push({ category: "habits", icon: <Flame size={16} className="text-ember" />, message: "Você está a 1 dia de alcançar um novo recorde de dias perfeitos. Não deixe cair hoje." });
     goals.filter((g) => !g.completed && g.endDate).forEach((g) => {
       const daysLeft = Math.ceil((new Date(g.endDate) - new Date(t)) / 86400000);
       if (daysLeft >= 0 && daysLeft <= 5) items.push({ category: "goals", icon: <Target size={16} className="text-brass" />, message: `Meta "${g.name}" vence em ${daysLeft} dia${daysLeft === 1 ? "" : "s"}.` });
@@ -19102,7 +19126,7 @@ function ConstancceApp() {
     const limit = profile?.monthlyLimit || 3000;
     if (monthOut > limit) items.push({ category: "finance", icon: <Wallet size={16} className="text-ember" />, message: "Você ultrapassou o limite mensal de gastos." });
     return items;
-  }, [habits, completions, tasks, workoutTemplates, workoutSessions, streaks, goals, transactions, profile]);
+  }, [habits, completions, tasks, workoutTemplates, workoutSessions, habitStreaks, goals, transactions, profile]);
 
   const [pendingPrescriptionCount, setPendingPrescriptionCount] = useState(0);
   useEffect(() => {
@@ -19233,13 +19257,13 @@ function ConstancceApp() {
       case "workouts": return <WorkoutsView session={session} templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateReps={updateWorkoutReps} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ remaining: workoutRest.remaining, total: workoutRest.total, running: workoutRest.running }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} resumeSessionId={workoutResumeSessionId || workoutRest.timer?.sessionId || null} />;
       case "food": return <FoodView foodBase={dietFoodBase} foods={foods} mealLog={mealLog} addMeal={addMeal} updateMeal={updateMeal} toggleMealConsumed={toggleMealConsumed} deleteMeal={deleteMeal} deleteFood={deleteFood} profile={profile} setProfile={setProfile} session={session} autoOpen={quickTrigger.food} isPro={isPro} onUpgrade={requestPro} />;
       case "finance": return <FinanceView transactions={transactions} addTransaction={addTransaction} addGoalProgress={addGoalProgress} deleteTransaction={deleteTransaction} profile={profile} setProfile={setProfile} goals={goals} autoOpen={quickTrigger.finance} isPro={isPro} onUpgrade={requestPro} />;
-      case "friends": return <FriendsView session={session} profile={profile} game={game} streaks={streaks} isPro={isPro} onUpgrade={requestPro} />;
+      case "friends": return <FriendsView session={session} profile={profile} game={game} streaks={habitStreaks} isPro={isPro} onUpgrade={requestPro} />;
       case "professional": return <ProfessionalView session={session} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} saveWorkoutTemplate={saveWorkoutTemplate} />;
-      case "progress": return <ProgressView streaks={streaks} stats={stats} game={game} session={session} profile={profile} isPro={isPro} onUpgrade={requestPro} />;
+      case "progress": return <ProgressView streaks={habitStreaks} stats={stats} game={game} session={session} profile={profile} isPro={isPro} onUpgrade={requestPro} />;
       case "achievements": return <AchievementsView unlocked={unlocked} stats={stats} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
       case "notifications": return <NotificationsView items={notifications} profile={profile} setProfile={setProfile} notificationPermission={notificationPermission} pushEnabled={pushEnabled} pushSupported={pushSupported} notificationBusy={notificationBusy} onEnableNotifications={handleEnableNotifications} onDisableNotifications={handleDisableNotifications} isPro={isPro} onUpgrade={requestPro} />;
       case "reports": return <ReportsView habits={habits} completions={completions} tasks={tasks} workoutSessions={workoutSessions} transactions={transactions} goals={goals} isPro={isPro} onUpgrade={requestPro} today={today} startOfMonth={startOfMonth} habitValidOnDate={habitValidOnDate} addDays={addDays} money={money} months={MONTHS} />;
-      case "profile": return <ProfileView profile={profile} setProfile={setProfile} theme={theme} setTheme={setTheme} streaks={streaks} stats={stats} lastSaved={lastSaved} syncStatus={syncStatus} genericHasPending={Boolean(pendingSyncRef.current)} taskSyncStatus={taskSyncStatus} taskSyncError={taskSyncError} session={session} user={session?.user} onLogout={handleLogout} onSyncNow={handleManualSync} onDeleteAccount={handleDeleteAccount} installPrompt={installPrompt} onInstallApp={async () => { if (!installPrompt) return; await installPrompt.prompt(); setInstallPrompt(null); }} access={access} accessInfo={accessInfo} isPro={isPro} onUpgrade={requestPro} onBuyLifetime={handleLifetimeCheckout} checkoutLoading={checkoutLoading} paymentMessage={paymentMessage} accessError={accessError} />;
+      case "profile": return <ProfileView profile={profile} setProfile={setProfile} theme={theme} setTheme={setTheme} streaks={habitStreaks} stats={stats} lastSaved={lastSaved} syncStatus={syncStatus} genericHasPending={Boolean(pendingSyncRef.current)} taskSyncStatus={taskSyncStatus} taskSyncError={taskSyncError} session={session} user={session?.user} onLogout={handleLogout} onSyncNow={handleManualSync} onDeleteAccount={handleDeleteAccount} installPrompt={installPrompt} onInstallApp={async () => { if (!installPrompt) return; await installPrompt.prompt(); setInstallPrompt(null); }} access={access} accessInfo={accessInfo} isPro={isPro} onUpgrade={requestPro} onBuyLifetime={handleLifetimeCheckout} checkoutLoading={checkoutLoading} paymentMessage={paymentMessage} accessError={accessError} />;
       default: return null;
     }
   };
