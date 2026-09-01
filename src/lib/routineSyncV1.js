@@ -217,6 +217,17 @@ function mergeWorkoutSession(remote, local) {
     const len = Math.max(remoteValues.length, localValues.length);
     sets[exerciseId] = Array.from({ length: len }, (_, index) => Boolean(remoteValues[index] || localValues[index]));
   }
+  const repsDone = { ...(remote?.repsDone || {}) };
+  for (const [exerciseId, values] of Object.entries(local?.repsDone || {})) {
+    const remoteValues = Array.isArray(repsDone[exerciseId]) ? repsDone[exerciseId] : [];
+    const localValues = Array.isArray(values) ? values : [];
+    const len = Math.max(remoteValues.length, localValues.length);
+    repsDone[exerciseId] = Array.from({ length: len }, (_, index) =>
+      localWins
+        ? (localValues[index] ?? remoteValues[index] ?? null)
+        : (remoteValues[index] ?? localValues[index] ?? null)
+    );
+  }
   return {
     ...base,
     completed: Boolean(remote?.completed || local?.completed),
@@ -224,6 +235,7 @@ function mergeWorkoutSession(remote, local) {
     startedAt: [remote?.startedAt, local?.startedAt].filter(Boolean).sort()[0] || base?.startedAt || null,
     sets,
     loads: localWins ? { ...(remote?.loads || {}), ...(local?.loads || {}) } : { ...(local?.loads || {}), ...(remote?.loads || {}) },
+    repsDone,
     exerciseNotes: { ...(remote?.exerciseNotes || {}), ...(local?.exerciseNotes || {}) },
     exerciseOverrides: { ...(remote?.exerciseOverrides || {}), ...(local?.exerciseOverrides || {}) },
   };

@@ -1,4 +1,4 @@
-export const DATA_SCHEMA_VERSION = 4;
+export const DATA_SCHEMA_VERSION = 5;
 
 const array = (value) => Array.isArray(value) ? value : [];
 const object = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -58,6 +58,14 @@ export function migrateUserData(input = {}) {
       linkedHabitIds: array(goal?.linkedHabitIds),
       weeklyCheckins: array(goal?.weeklyCheckins),
       nextActionHistory: array(goal?.nextActionHistory),
+    }));
+  }
+
+  // v4 -> v5: repetições realmente realizadas por série (antes só existia a meta).
+  if (version < 5) {
+    data.workoutSessions = data.workoutSessions.map((session) => ({
+      ...session,
+      repsDone: object(session?.repsDone),
     }));
   }
 

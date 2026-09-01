@@ -1904,6 +1904,12 @@
     min-height:40px;
     touch-action:auto !important;
   }
+  .workout-reps-input{
+    font-size:16px !important;
+    line-height:1.35;
+    min-height:32px;
+    touch-action:auto !important;
+  }
   .workout-focus-exercise{
     background:
       linear-gradient(145deg, color-mix(in srgb, var(--surface-2) 92%, var(--brass) 1.5%), color-mix(in srgb, var(--surface-2) 78%, var(--bg)));
@@ -2736,6 +2742,19 @@
   caret-color:var(--brass);
 }
 .workout-load-input:focus{
+  position:relative;
+  z-index:2;
+}
+
+/* Campo de repetições realizadas: mesmo padrão do campo de carga, em miniatura. */
+.workout-reps-input{
+  caret-color:var(--brass);
+  border-radius:6px;
+  border:1px solid var(--border);
+  background:transparent;
+  color:var(--text-dim);
+}
+.workout-reps-input:focus{
   position:relative;
   z-index:2;
 }

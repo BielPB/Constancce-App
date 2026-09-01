@@ -7687,10 +7687,16 @@ const workoutTotalSetsCount = (template) =>
 const workoutSessionVolume = (session, template) => {
   if (!session || !template) return 0;
   return (template.exercises || []).reduce((sum, exercise) => {
-    const doneSets = (session.sets?.[exercise.id] || []).filter(Boolean).length;
+    const setFlags = session.sets?.[exercise.id] || [];
+    const repsLogged = session.repsDone?.[exercise.id] || [];
     const load = Number(session.loads?.[exercise.id] ?? exercise.load ?? 0);
-    const reps = workoutRepEstimate(exercise.reps);
-    return sum + doneSets * Math.max(0, load) * Math.max(0, reps);
+    const fallbackReps = workoutRepEstimate(exercise.reps);
+    return sum + setFlags.reduce((setSum, done, setIndex) => {
+      if (!done) return setSum;
+      const loggedReps = Number(repsLogged[setIndex]);
+      const reps = Number.isFinite(loggedReps) && loggedReps > 0 ? loggedReps : fallbackReps;
+      return setSum + Math.max(0, load) * Math.max(0, reps);
+    }, 0);
   }, 0);
 };
 
@@ -8154,6 +8160,63 @@ function WorkoutLoadInput({ value, disabled, onCommit }) {
   );
 }
 
+function WorkoutRepsInput({ value, disabled, onCommit }) {
+  const [draft, setDraft] = useState(() => value === "" || value == null ? "" : String(value));
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (focusedRef.current) return;
+    setDraft(value === "" || value == null ? "" : String(value));
+  }, [value]);
+
+  const commit = () => {
+    const raw = String(draft ?? "").trim();
+    if (!raw) {
+      onCommit("");
+      setDraft("");
+      return;
+    }
+
+    const number = Math.round(Number(raw));
+    if (!Number.isFinite(number) || number < 0) {
+      setDraft(value === "" || value == null ? "" : String(value));
+      return;
+    }
+
+    onCommit(number);
+    setDraft(String(number));
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      enterKeyHint="done"
+      autoComplete="off"
+      placeholder="reps"
+      className="workout-reps-input w-10 p-1 text-[10px] text-center ring-focus"
+      value={draft}
+      disabled={disabled}
+      onFocus={() => {
+        focusedRef.current = true;
+      }}
+      onChange={(event) => {
+        setDraft(event.target.value);
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+        commit();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          commit();
+          event.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
 function WorkoutsView({
   templates,
   sessions,
@@ -8165,6 +8228,7 @@ function WorkoutsView({
   toggleSet,
   toggleExercise,
   updateLoad,
+  updateReps,
   updateSession,
   completeSession,
   undoCompleteSession,
@@ -9623,31 +9687,42 @@ function WorkoutsView({
                   <div className="flex gap-1.5 flex-wrap">
                     {Array.from({ length: exercise.sets }).map((_, setIndex) => {
                       const on = activeSession.sets?.[exercise.id]?.[setIndex];
+                      const repsValue = activeSession.repsDone?.[exercise.id]?.[setIndex];
 
                       return (
-                        <button
-                          key={setIndex}
-                          disabled={activeSession.completed}
-                          onClick={() => {
-                            toggleSet(activeSession.id, exercise.id, setIndex, exercise.sets);
-                            if (!on) {
-                              onStartRest(exercise.restSeconds || 90, {
-                                sessionId: activeSession.id,
-                                templateId: activeTemplate.id,
-                                exerciseId: exercise.id,
-                                exerciseName: displayName,
-                              });
-                            }
-                          }}
-                          className="workout-set-button w-10 h-10 rounded-lg text-xs font-mono disabled:cursor-default"
-                          style={{
-                            background: on ? "var(--moss)" : "transparent",
-                            border: "1px solid var(--border)",
-                            color: on ? "#0A0D08" : "var(--text-dim)",
-                          }}
-                        >
-                          {setIndex + 1}
-                        </button>
+                        <div key={setIndex} className="flex flex-col items-center gap-1">
+                          <button
+                            disabled={activeSession.completed}
+                            onClick={() => {
+                              toggleSet(activeSession.id, exercise.id, setIndex, exercise.sets);
+                              if (!on) {
+                                onStartRest(exercise.restSeconds || 90, {
+                                  sessionId: activeSession.id,
+                                  templateId: activeTemplate.id,
+                                  exerciseId: exercise.id,
+                                  exerciseName: displayName,
+                                });
+                              }
+                            }}
+                            className="workout-set-button w-10 h-10 rounded-lg text-xs font-mono disabled:cursor-default"
+                            style={{
+                              background: on ? "var(--moss)" : "transparent",
+                              border: "1px solid var(--border)",
+                              color: on ? "#0A0D08" : "var(--text-dim)",
+                            }}
+                          >
+                            {setIndex + 1}
+                          </button>
+                          {on && (
+                            <WorkoutRepsInput
+                              value={repsValue}
+                              disabled={activeSession.completed}
+                              onCommit={(value) =>
+                                updateReps(activeSession.id, exercise.id, setIndex, value)
+                              }
+                            />
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -18008,6 +18083,7 @@ function ConstancceApp() {
           date: t,
           sets,
           loads,
+          repsDone: {},
           exerciseNotes: {},
           exerciseOverrides: {},
           effortRating: null,
@@ -18046,6 +18122,7 @@ function ConstancceApp() {
           date,
           sets,
           loads,
+          repsDone: {},
           exerciseNotes: {},
           exerciseOverrides: {},
           effortRating: null,
@@ -18078,6 +18155,16 @@ function ConstancceApp() {
     const next = prev.map((sessionRow) => sessionRow.id === sessionId
       ? { ...sessionRow, loads: { ...(sessionRow.loads || {}), [exerciseId]: value === "" ? "" : Number(value) } }
       : sessionRow);
+    persist({ workoutSessions: next });
+    return next;
+  });
+  const updateWorkoutReps = (sessionId, exerciseId, setIndex, value) => setWorkoutSessions((prev) => {
+    const next = prev.map((sessionRow) => {
+      if (sessionRow.id !== sessionId) return sessionRow;
+      const arr = [...(sessionRow.repsDone?.[exerciseId] || [])];
+      arr[setIndex] = value === "" ? null : Number(value);
+      return { ...sessionRow, repsDone: { ...(sessionRow.repsDone || {}), [exerciseId]: arr } };
+    });
     persist({ workoutSessions: next });
     return next;
   });
@@ -18921,7 +19008,7 @@ function ConstancceApp() {
       case "tasks": return <TasksView tasks={tasks} saveTask={saveTask} deleteTask={deleteTask} setStatus={setTaskStatus} moveTask={moveTaskKanban} autoOpen={quickTrigger.tasks} isPro={isPro} onUpgrade={requestPro} />;
       case "calendar": return <CalendarView habits={habits} completions={completions} tasks={tasks} saveTask={saveTask} setTaskStatus={setTaskStatus} workoutTemplates={workoutTemplates} workoutSessions={workoutSessions} saveWorkoutTemplate={saveWorkoutTemplate} scheduleWorkoutSession={scheduleWorkoutSession} goals={goals} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
       case "goals": return <GoalsView goals={goals} saveGoal={saveGoal} addProgress={addGoalProgress} updateProgress={updateProgress} toggleGoalChecklist={toggleGoalChecklist} deleteGoal={deleteGoal} goalProgressLog={goalProgressLog} tasks={tasks} habits={habits} autoOpen={quickTrigger.goals} isPro={isPro} onUpgrade={requestPro} />;
-      case "workouts": return <WorkoutsView templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ remaining: workoutRest.remaining, total: workoutRest.total, running: workoutRest.running }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} resumeSessionId={workoutResumeSessionId || workoutRest.timer?.sessionId || null} />;
+      case "workouts": return <WorkoutsView templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateReps={updateWorkoutReps} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ remaining: workoutRest.remaining, total: workoutRest.total, running: workoutRest.running }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} resumeSessionId={workoutResumeSessionId || workoutRest.timer?.sessionId || null} />;
       case "food": return <FoodView foodBase={dietFoodBase} foods={foods} mealLog={mealLog} addMeal={addMeal} updateMeal={updateMeal} toggleMealConsumed={toggleMealConsumed} deleteMeal={deleteMeal} deleteFood={deleteFood} profile={profile} setProfile={setProfile} session={session} autoOpen={quickTrigger.food} isPro={isPro} onUpgrade={requestPro} />;
       case "finance": return <FinanceView transactions={transactions} addTransaction={addTransaction} addGoalProgress={addGoalProgress} deleteTransaction={deleteTransaction} profile={profile} setProfile={setProfile} goals={goals} autoOpen={quickTrigger.finance} isPro={isPro} onUpgrade={requestPro} />;
       case "friends": return <FriendsView session={session} profile={profile} game={game} streaks={streaks} isPro={isPro} onUpgrade={requestPro} />;
