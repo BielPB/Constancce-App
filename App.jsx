@@ -22,11 +22,12 @@ import {
   ArrowDownRight, Minus, Download, Upload, ShieldCheck, LogOut, Mail, Lock, Eye, EyeOff, Camera, Users, UserPlus, Swords, RefreshCw, Check,
   Search, Clock3, Timer, Sparkles, History, Zap, SlidersHorizontal, RotateCcw, CreditCard, Repeat2,
   Palette, Share2, Archive, Image as ImageIcon,
-  Activity, Layers3, Grid3X3, BrainCircuit, Star, ArrowRightLeft, Gauge,
+  Activity, Layers3, Grid3X3, BrainCircuit, Star, ArrowRightLeft, Gauge, Stethoscope,
 } from "lucide-react";
 
 const NotificationsView = lazy(() => import("./src/features/notifications/NotificationsView.jsx"));
 const ReportsView = lazy(() => import("./src/features/reports/ReportsView.jsx"));
+const ProfessionalView = lazy(() => import("./src/features/professional/ProfessionalView.jsx"));
 
 
 
@@ -15416,6 +15417,7 @@ function ProfileView({ profile, setProfile, theme, setTheme, streaks, stats, las
           {[
             ["habits", "Hábitos"], ["tasks", "Tarefas"], ["calendar", "Calendário"], ["goals", "Metas"],
             ["workouts", "Treinos"], ["food", "Dieta"], ["finance", "Finanças"], ["friends", "Amigos"],
+            ["professional", "Personal & Nutri"],
             ["progress", "Progresso"], ["achievements", "Conquistas"], ["reports", "Relatórios"],
           ].map(([id, label]) => {
             const enabled = profile?.moduleVisibility?.[id] !== false;
@@ -15878,6 +15880,7 @@ const NAV = [
   { id: "goals", label: "Metas", icon: Target, group: "Planejamento" },
   { id: "food", label: "Dieta", icon: Apple, group: "Saúde" },
   { id: "friends", label: "Amigos", icon: Users, group: "Social" },
+  { id: "professional", label: "Personal & Nutri", icon: Stethoscope, group: "Social" },
   { id: "progress", label: "Progresso", icon: TrendingUp, group: "Evolução" },
   { id: "achievements", label: "Conquistas", icon: Trophy, group: "Evolução" },
   { id: "notifications", label: "Notificações", icon: Bell, group: "Conta" },
@@ -15892,7 +15895,7 @@ const SIDEBAR_GROUPS = [
   { label: "Saúde", ids: ["workouts", "food"] },
   { label: "Planejamento", ids: ["finance", "calendar", "goals"] },
   { label: "Evolução", ids: ["progress", "achievements", "reports"] },
-  { label: "Social", ids: ["friends"] },
+  { label: "Social", ids: ["friends", "professional"] },
   { label: "Conta", ids: ["profile", "notifications"] },
 ];
 
@@ -18990,6 +18993,7 @@ function ConstancceApp() {
       case "food": return <FoodView foodBase={dietFoodBase} foods={foods} mealLog={mealLog} addMeal={addMeal} updateMeal={updateMeal} toggleMealConsumed={toggleMealConsumed} deleteMeal={deleteMeal} deleteFood={deleteFood} profile={profile} setProfile={setProfile} session={session} autoOpen={quickTrigger.food} isPro={isPro} onUpgrade={requestPro} />;
       case "finance": return <FinanceView transactions={transactions} addTransaction={addTransaction} addGoalProgress={addGoalProgress} deleteTransaction={deleteTransaction} profile={profile} setProfile={setProfile} goals={goals} autoOpen={quickTrigger.finance} isPro={isPro} onUpgrade={requestPro} />;
       case "friends": return <FriendsView session={session} profile={profile} game={game} streaks={streaks} isPro={isPro} onUpgrade={requestPro} />;
+      case "professional": return <ProfessionalView session={session} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
       case "progress": return <ProgressView streaks={streaks} stats={stats} game={game} session={session} profile={profile} isPro={isPro} onUpgrade={requestPro} />;
       case "achievements": return <AchievementsView unlocked={unlocked} stats={stats} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
       case "notifications": return <NotificationsView items={notifications} profile={profile} setProfile={setProfile} notificationPermission={notificationPermission} pushEnabled={pushEnabled} pushSupported={pushSupported} notificationBusy={notificationBusy} onEnableNotifications={handleEnableNotifications} onDisableNotifications={handleDisableNotifications} isPro={isPro} onUpgrade={requestPro} />;

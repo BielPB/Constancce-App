@@ -1,0 +1,256 @@
+import React, { useState, useEffect, useCallback } from "react";
+import { Stethoscope, Dumbbell, Apple, Mail, UserPlus, Check, RefreshCw, X } from "lucide-react";
+import { ProBadge } from "../../components/ui.jsx";
+import {
+  fetchProfessionalLinks,
+  inviteClient,
+  respondProfessionalLink,
+  removeProfessionalLink,
+} from "../../lib/professionalLinks.js";
+
+const LINK_TYPE_LABEL = {
+  personal: "Personal treinador",
+  nutricionista: "Nutricionista",
+};
+
+const LINK_TYPE_ICON = {
+  personal: Dumbbell,
+  nutricionista: Apple,
+};
+
+export default function ProfessionalView({ session, profile, setProfile, isPro, onUpgrade }) {
+  const [links, setLinks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const [email, setEmail] = useState("");
+
+  const roles = profile?.professionalRoles || [];
+  const [linkType, setLinkType] = useState(roles[0] || "personal");
+
+  useEffect(() => {
+    if (roles.length && !roles.includes(linkType)) setLinkType(roles[0]);
+  }, [roles, linkType]);
+
+  const load = useCallback(async () => {
+    if (!session?.user?.id) return;
+    setLoading(true);
+    try {
+      setLinks((await fetchProfessionalLinks(session)) || []);
+      setNotice(null);
+    } catch (e) {
+      setNotice({ type: "error", text: "Não foi possível carregar seus vínculos. Verifique se o SQL de Personal/Nutricionista foi executado no Supabase." });
+    } finally {
+      setLoading(false);
+    }
+  }, [session]);
+  useEffect(() => { load(); }, [load]);
+
+  const toggleRole = (role) => {
+    const current = new Set(profile?.professionalRoles || []);
+    if (current.has(role)) current.delete(role); else current.add(role);
+    setProfile((prev) => ({ ...prev, professionalRoles: [...current] }));
+  };
+
+  const invite = async (e) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    if (!isPro) { onUpgrade("professional"); return; }
+    setActionLoading(true);
+    setNotice(null);
+    try {
+      await inviteClient(session, email, linkType);
+      setEmail("");
+      setNotice({ type: "ok", text: "Convite enviado. Quando a pessoa aceitar, você poderá enviar treinos/dietas para ela." });
+      await load();
+    } catch (err) {
+      const raw = (err.message || "").toLowerCase();
+      const text = raw.includes("pro_required")
+        ? "É preciso ser PRO para convidar alunos/pacientes."
+        : raw.includes("not found")
+          ? "Nenhum usuário cadastrado com esse e-mail."
+          : raw.includes("yourself")
+            ? "Você não pode convidar sua própria conta."
+            : raw.includes("already exists")
+              ? "Já existe um convite ou vínculo desse tipo com esse usuário."
+              : "Não foi possível enviar o convite.";
+      setNotice({ type: "error", text });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const respond = async (linkId, accept) => {
+    setActionLoading(true);
+    try { await respondProfessionalLink(session, linkId, accept); await load(); }
+    finally { setActionLoading(false); }
+  };
+
+  const remove = async (linkId) => {
+    if (!window.confirm("Remover este vínculo?")) return;
+    setActionLoading(true);
+    try { await removeProfessionalLink(session, linkId); await load(); }
+    finally { setActionLoading(false); }
+  };
+
+  const receivedInvites = links.filter((l) => l.status === "pending" && l.direction === "as_client");
+  const sentInvites = links.filter((l) => l.status === "pending" && l.direction === "as_professional");
+  const myClients = links.filter((l) => l.status === "accepted" && l.direction === "as_professional");
+  const myProfessionals = links.filter((l) => l.status === "accepted" && l.direction === "as_client");
+
+  const Avatar = ({ r, size = "w-11 h-11" }) =>
+    r.avatar_data_url
+      ? <img src={r.avatar_data_url} className={`${size} rounded-full object-cover border hairline`} alt="" />
+      : <div className={`${size} rounded-full flex items-center justify-center font-display`} style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>{(r.display_name || r.email || "?")[0]?.toUpperCase()}</div>;
+
+  const LinkRow = ({ r, action }) => {
+    const Icon = LINK_TYPE_ICON[r.link_type] || Stethoscope;
+    return (
+      <div className="surface-2 p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <Avatar r={r} />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold truncate">{r.display_name || "Usuário"}</p>
+            <p className="text-faint text-xs truncate">{r.email}</p>
+          </div>
+          <span className="chip flex items-center gap-1"><Icon size={11} />{LINK_TYPE_LABEL[r.link_type] || r.link_type}</span>
+        </div>
+        {action}
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="font-display text-2xl">Personal & Nutricionista</h2>
+          <p className="text-dim text-xs mt-1">Prescreva treinos e dietas para seus alunos e pacientes, ou receba de quem te acompanha.</p>
+        </div>
+        <Stethoscope size={22} className="text-brass" />
+      </div>
+
+      <div className="surface rounded-2xl p-4 md:p-5">
+        <p className="text-xs text-faint uppercase tracking-widest mb-3">Minhas funções</p>
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(LINK_TYPE_LABEL).map(([role, label]) => {
+            const Icon = LINK_TYPE_ICON[role];
+            const active = roles.includes(role);
+            return (
+              <button
+                key={role}
+                type="button"
+                onClick={() => toggleRole(role)}
+                className="rounded-xl px-3 py-2 text-xs flex items-center gap-2"
+                style={{
+                  border: `1px solid ${active ? "var(--brass)" : "var(--border)"}`,
+                  background: active ? "var(--surface-2)" : "transparent",
+                  color: active ? "var(--brass)" : "var(--text-dim)",
+                }}
+              >
+                <Icon size={13} /> Sou {label.toLowerCase()}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {roles.length > 0 && (
+        <form onSubmit={invite} className="surface rounded-2xl p-4 md:p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-faint uppercase tracking-widest">Convidar por e-mail</p>
+            {!isPro && <ProBadge />}
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="aluno@email.com" className="w-full pl-9 pr-3 py-3 ring-focus" />
+            </div>
+            {roles.length > 1 && (
+              <select value={linkType} onChange={(e) => setLinkType(e.target.value)} className="p-3 text-sm ring-focus">
+                {roles.map((role) => <option key={role} value={role}>{LINK_TYPE_LABEL[role]}</option>)}
+              </select>
+            )}
+            <button disabled={actionLoading} className="btn-primary rounded-xl px-4 py-3 text-sm flex items-center justify-center gap-2">
+              <UserPlus size={15} />{actionLoading ? "Aguarde…" : "Enviar convite"}
+            </button>
+          </div>
+          {notice && <p className={`text-xs mt-3 ${notice.type === "error" ? "text-ember" : "text-moss"}`}>{notice.text}</p>}
+        </form>
+      )}
+      {roles.length === 0 && (
+        <p className="text-faint text-xs px-1">Marque acima se você é personal treinador e/ou nutricionista para poder convidar alunos e pacientes.</p>
+      )}
+
+      {receivedInvites.length > 0 && (
+        <div className="surface rounded-2xl p-4 md:p-5">
+          <p className="text-xs text-faint uppercase tracking-widest mb-3">Convites recebidos</p>
+          <div className="flex flex-col gap-2">
+            {receivedInvites.map((r) => (
+              <LinkRow key={r.link_id} r={r} action={
+                <div className="flex gap-2">
+                  <button className="btn-primary rounded-lg px-3 py-2 text-xs flex-1 sm:flex-none" onClick={() => respond(r.link_id, true)}><Check size={13} className="inline mr-1" />Aceitar</button>
+                  <button className="btn-ghost rounded-lg px-3 py-2 text-xs flex-1 sm:flex-none" onClick={() => respond(r.link_id, false)}>Recusar</button>
+                </div>
+              } />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {sentInvites.length > 0 && (
+        <div className="surface-2 rounded-2xl p-4">
+          <p className="text-xs text-faint uppercase tracking-widest mb-2">Convites enviados</p>
+          {sentInvites.map((r) => (
+            <div key={r.link_id} className="flex items-center gap-2 text-sm py-1">
+              <RefreshCw size={13} className="text-brass" />
+              <span className="truncate flex-1">{r.display_name || r.email}</span>
+              <span className="chip">Pendente</span>
+              <button className="btn-ghost rounded-lg p-1.5" onClick={() => remove(r.link_id)}><X size={13} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="surface rounded-2xl p-4 md:p-5">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs text-faint uppercase tracking-widest">Meus alunos e pacientes</p>
+          <span className="chip">{myClients.length}</span>
+        </div>
+        {loading ? (
+          <p className="text-dim text-sm">Carregando…</p>
+        ) : myClients.length === 0 ? (
+          <p className="text-faint text-xs">Ninguém aceitou seu convite ainda.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {myClients.map((r) => (
+              <LinkRow key={r.link_id} r={r} action={
+                <button className="btn-ghost rounded-lg px-3 py-2 text-xs text-ember" onClick={() => remove(r.link_id)}>Remover</button>
+              } />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="surface rounded-2xl p-4 md:p-5">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs text-faint uppercase tracking-widest">Meus profissionais</p>
+          <span className="chip">{myProfessionals.length}</span>
+        </div>
+        {loading ? (
+          <p className="text-dim text-sm">Carregando…</p>
+        ) : myProfessionals.length === 0 ? (
+          <p className="text-faint text-xs">Você ainda não tem personal ou nutricionista vinculado.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {myProfessionals.map((r) => (
+              <LinkRow key={r.link_id} r={r} action={
+                <button className="btn-ghost rounded-lg px-3 py-2 text-xs text-ember" onClick={() => remove(r.link_id)}>Remover</button>
+              } />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

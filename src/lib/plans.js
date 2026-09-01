@@ -19,6 +19,7 @@ export const PRO_FEATURE_COPY = {
   workouts: ["Treinos ilimitados", "No Free você pode criar até 2 treinos."],
   goals: ["Metas ilimitadas", "No Free você pode manter até 1 meta ativa."],
   friends: ["Amigos ilimitados", "No Free você pode manter até 3 amigos."],
+  professional: ["Personal & Nutricionista", "Convidar alunos/pacientes e prescrever treinos ou dietas é exclusivo do PRO. Aceitar um convite e receber prescrições é grátis."],
   history: ["Histórico completo", "No Free, o histórico detalhado fica limitado aos últimos 30 dias."],
   progress: ["Progresso avançado", "Compare 30, 90 e 365 dias e descubra tendências de longo prazo."],
   finance: ["Finanças avançadas", "No Free você pode manter até 8 lançamentos financeiros. Previsões, recorrências, contas a pagar, orçamentos e análises avançadas são PRO."],
