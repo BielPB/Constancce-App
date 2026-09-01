@@ -13,6 +13,7 @@ const normalizeOrigin = (value: string) => String(value || "").trim().replace(/\
 // perderem sincronização entre dispositivos. Nenhuma origem curinga é aceita.
 const TRUSTED_CONSTANCCE_ORIGINS = [
   "https://constancceapp.com",
+  "https://www.constancceapp.com",
   "https://app.constancceapp.com",
   "https://constancce-app.vercel.app",
 ];
