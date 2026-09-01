@@ -10683,6 +10683,12 @@ function FoodView({
   const [foodLibraryQuery, setFoodLibraryQuery] = useState("");
   const [foodMacroFilter, setFoodMacroFilter] = useState("all");
   const [foodVisibleCount, setFoodVisibleCount] = useState(80);
+  const [prescribeMeal, setPrescribeMeal] = useState(null);
+  const [prescribePatients, setPrescribePatients] = useState([]);
+  const [prescribePatientId, setPrescribePatientId] = useState("");
+  const [prescribeNote, setPrescribeNote] = useState("");
+  const [prescribeLoading, setPrescribeLoading] = useState(false);
+  const [prescribeNotice, setPrescribeNotice] = useState(null);
 
   const defaults = { calorieTarget:2200, proteinTarget:150, carbTarget:250, fatTarget:70 };
   const [draftTargets, setDraftTargets] = useState({
@@ -10828,6 +10834,41 @@ function FoodView({
     }));
   };
 
+  const openPrescribeDiet = async (template) => {
+    if (!isPro) {
+      onUpgrade("professional");
+      return;
+    }
+    setPrescribeMeal(template);
+    setPrescribePatientId("");
+    setPrescribeNote("");
+    setPrescribeNotice(null);
+    try {
+      const links = (await fetchProfessionalLinks(session)) || [];
+      setPrescribePatients(links.filter((l) => l.status === "accepted" && l.direction === "as_professional" && l.link_type === "nutricionista"));
+    } catch (_) {
+      setPrescribePatients([]);
+    }
+  };
+
+  const confirmPrescribeDiet = async () => {
+    if (!prescribeMeal || !prescribePatientId) return;
+    setPrescribeLoading(true);
+    setPrescribeNotice(null);
+    try {
+      await sendPrescription(session, prescribePatientId, "diet", prescribeMeal, prescribeNote);
+      setPrescribeNotice({ type: "ok", text: "Refeição enviada para o paciente." });
+    } catch (err) {
+      const raw = (err.message || "").toLowerCase();
+      const text = raw.includes("pro_required")
+        ? "É preciso ser PRO para prescrever dietas."
+        : "Não foi possível enviar a refeição.";
+      setPrescribeNotice({ type: "error", text });
+    } finally {
+      setPrescribeLoading(false);
+    }
+  };
+
   const repeatYesterday = () => {
     if (!yesterdayLog.length) return;
     addMeal(yesterdayLog.map((item) => ({
@@ -10948,10 +10989,19 @@ function FoodView({
               </div>
               <div className="diet-saved-scroll flex gap-2 overflow-x-auto scrollbar-none pb-1">
                 {savedMeals.slice(0, isPro ? 12 : PRO_LIMITS.dietSavedMeals).map((template) => (
-                  <button key={template.id} className="diet-saved-meal surface-2 rounded-xl p-3 text-left shrink-0" onClick={() => addSavedMeal(template)}>
-                    <p className="text-sm font-medium">{template.name}</p>
-                    <p className="text-[9px] text-faint mt-1">{template.items?.length || 0} itens · toque para adicionar</p>
-                  </button>
+                  <div key={template.id} className="diet-saved-meal surface-2 rounded-xl p-3 text-left shrink-0 relative">
+                    <button className="block w-full text-left" onClick={() => addSavedMeal(template)}>
+                      <p className="text-sm font-medium pr-5">{template.name}</p>
+                      <p className="text-[9px] text-faint mt-1">{template.items?.length || 0} itens · toque para adicionar</p>
+                    </button>
+                    <button
+                      className="btn-ghost rounded-lg p-1 absolute top-2 right-2"
+                      onClick={(event) => { event.stopPropagation(); openPrescribeDiet(template); }}
+                      title={isPro ? "Enviar para paciente" : "Enviar para paciente · PRO"}
+                    >
+                      {isPro ? <Stethoscope size={12} /> : <Lock size={11} />}
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
@@ -11339,6 +11389,59 @@ function FoodView({
             ))}
           </div>
           <button className="btn-primary w-full rounded-xl py-3 mt-3" onClick={saveTargets}>Salvar metas</button>
+        </Modal>
+      )}
+
+      {prescribeMeal && (
+        <Modal title="Enviar refeição para paciente" onClose={() => setPrescribeMeal(null)} width={520}>
+          <p className="text-dim text-xs mb-3">Prescrevendo <strong>{prescribeMeal.name}</strong>.</p>
+
+          {prescribePatients.length === 0 ? (
+            <p className="text-faint text-xs">
+              Nenhum paciente vinculado ainda. Convide alguém na tela "Personal & Nutri" e espere a pessoa aceitar.
+            </p>
+          ) : (
+            <>
+              <Field label="Paciente">
+                <select
+                  className="w-full p-3 ring-focus"
+                  value={prescribePatientId}
+                  onChange={(event) => setPrescribePatientId(event.target.value)}
+                >
+                  <option value="">Selecione…</option>
+                  {prescribePatients.map((patient) => (
+                    <option key={patient.link_id} value={patient.link_id}>
+                      {patient.display_name || patient.email}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Nota para o paciente (opcional)">
+                <textarea
+                  rows={3}
+                  className="w-full p-3 ring-focus resize-none"
+                  placeholder="Ex: substitua o arroz por batata-doce nos dias de treino."
+                  value={prescribeNote}
+                  onChange={(event) => setPrescribeNote(event.target.value)}
+                />
+              </Field>
+
+              {prescribeNotice && (
+                <p className={`text-xs mb-3 ${prescribeNotice.type === "error" ? "text-ember" : "text-moss"}`}>
+                  {prescribeNotice.text}
+                </p>
+              )}
+
+              <button
+                disabled={!prescribePatientId || prescribeLoading}
+                className="btn-primary w-full rounded-xl py-3 disabled:opacity-40"
+                onClick={confirmPrescribeDiet}
+              >
+                {prescribeLoading ? "Enviando…" : "Enviar refeição"}
+              </button>
+            </>
+          )}
         </Modal>
       )}
     </div>
