@@ -8,6 +8,7 @@ import {
   removeProfessionalLink,
   fetchPrescriptions,
   respondPrescription,
+  fetchClientAdherence,
 } from "../../lib/professionalLinks.js";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -32,6 +33,7 @@ export default function ProfessionalView({ session, profile, setProfile, isPro, 
   const [prescriptions, setPrescriptions] = useState([]);
   const [prescriptionsLoading, setPrescriptionsLoading] = useState(true);
   const [prescriptionBusyId, setPrescriptionBusyId] = useState(null);
+  const [adherence, setAdherence] = useState({});
   const [email, setEmail] = useState("");
 
   const roles = profile?.professionalRoles || [];
@@ -54,6 +56,19 @@ export default function ProfessionalView({ session, profile, setProfile, isPro, 
     }
   }, [session]);
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const studentLinks = links.filter((l) => l.status === "accepted" && l.direction === "as_professional" && l.link_type === "personal");
+    if (!studentLinks.length) return;
+    let active = true;
+    Promise.all(studentLinks.map((l) =>
+      fetchClientAdherence(session, l.link_id).then((data) => [l.link_id, data]).catch(() => [l.link_id, null])
+    )).then((entries) => {
+      if (!active) return;
+      setAdherence((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+    });
+    return () => { active = false; };
+  }, [links, session]);
 
   const loadPrescriptions = useCallback(async () => {
     if (!session?.user?.id) return;
@@ -158,19 +173,22 @@ export default function ProfessionalView({ session, profile, setProfile, isPro, 
       ? <img src={r.avatar_data_url} className={`${size} rounded-full object-cover border hairline`} alt="" />
       : <div className={`${size} rounded-full flex items-center justify-center font-display`} style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>{(r.display_name || r.email || "?")[0]?.toUpperCase()}</div>;
 
-  const LinkRow = ({ r, action }) => {
+  const LinkRow = ({ r, action, meta }) => {
     const Icon = LINK_TYPE_ICON[r.link_type] || Stethoscope;
     return (
-      <div className="surface-2 p-3 flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <Avatar r={r} />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold truncate">{r.display_name || "Usuário"}</p>
-            <p className="text-faint text-xs truncate">{r.email}</p>
+      <div className="surface-2 p-3 flex flex-col gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <Avatar r={r} />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">{r.display_name || "Usuário"}</p>
+              <p className="text-faint text-xs truncate">{r.email}</p>
+            </div>
+            <span className="chip flex items-center gap-1"><Icon size={11} />{LINK_TYPE_LABEL[r.link_type] || r.link_type}</span>
           </div>
-          <span className="chip flex items-center gap-1"><Icon size={11} />{LINK_TYPE_LABEL[r.link_type] || r.link_type}</span>
+          {action}
         </div>
-        {action}
+        {meta}
       </div>
     );
   };
@@ -319,11 +337,22 @@ export default function ProfessionalView({ session, profile, setProfile, isPro, 
           <p className="text-faint text-xs">Ninguém aceitou seu convite ainda.</p>
         ) : (
           <div className="flex flex-col gap-2">
-            {myClients.map((r) => (
-              <LinkRow key={r.link_id} r={r} action={
-                <button className="btn-ghost rounded-lg px-3 py-2 text-xs text-ember" onClick={() => remove(r.link_id)}>Remover</button>
-              } />
-            ))}
+            {myClients.map((r) => {
+              const stats = adherence[r.link_id];
+              return (
+                <LinkRow
+                  key={r.link_id}
+                  r={r}
+                  action={<button className="btn-ghost rounded-lg px-3 py-2 text-xs text-ember" onClick={() => remove(r.link_id)}>Remover</button>}
+                  meta={r.link_type === "personal" && stats && (
+                    <p className="text-faint text-[10px]">
+                      {stats.workouts_completed_30d || 0} treino{stats.workouts_completed_30d === 1 ? "" : "s"} nos últimos 30 dias
+                      {stats.last_workout_date ? ` · último em ${new Date(`${stats.last_workout_date}T12:00:00`).toLocaleDateString("pt-BR")}` : ""}
+                    </p>
+                  )}
+                />
+              );
+            })}
           </div>
         )}
       </div>

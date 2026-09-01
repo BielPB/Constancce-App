@@ -43,3 +43,8 @@ export async function respondPrescription(session, prescriptionId, action) {
     p_action: action,
   });
 }
+
+export async function fetchClientAdherence(session, linkId) {
+  const rows = await rpcRequest(session, "get_constancce_client_adherence", { p_link_id: linkId });
+  return rows?.[0] || null;
+}

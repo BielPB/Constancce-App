@@ -12,7 +12,7 @@ import { useWorkoutRestTimer } from "./src/hooks/useWorkoutRestTimer.js";
 import { computeUsageStreaks, normalizeUsageDays } from "./src/lib/usageStreak.js";
 import { PRO_LIMITS, PRO_FEATURE_COPY, accessSummary } from "./src/lib/plans.js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, authHeaders, rpcRequest } from "./src/lib/supabaseRpc.js";
-import { fetchProfessionalLinks, sendPrescription } from "./src/lib/professionalLinks.js";
+import { fetchProfessionalLinks, sendPrescription, fetchPrescriptions } from "./src/lib/professionalLinks.js";
 import { DIET_FOOD_BASE } from "./src/data/dietFoodBase.js";
 import { Progress, Modal, Field, EmptyState, StatMini, Toast, ProBadge, ProLockCard } from "./src/components/ui.jsx";
 import {
@@ -7741,6 +7741,24 @@ const workoutHistoricalMaxLoad = (sessions, templateId, exerciseId, beforeDate =
   return values.length ? Math.max(...values) : 0;
 };
 
+// Estimativa de 1RM (fórmula de Epley) a partir da carga do exercício e da maior
+// quantidade de repetições realmente registrada com ela em cada sessão concluída.
+const workoutEstimated1RM = (sessions, templateId, exerciseId) => {
+  let best = 0;
+  (sessions || []).forEach((session) => {
+    if (!session.completed || session.templateId !== templateId) return;
+    const load = Number(session.loads?.[exerciseId]);
+    if (!Number.isFinite(load) || load <= 0) return;
+    const reps = (session.repsDone?.[exerciseId] || [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    if (!reps.length) return;
+    const estimate = load * (1 + Math.max(...reps) / 30);
+    if (estimate > best) best = estimate;
+  });
+  return Math.round(best);
+};
+
 const workoutWeeklyMuscleFrequency = (templates, sessions, endDate = today()) => {
   const startDate = addDays(endDate, -6);
   const map = new Map();
@@ -8498,6 +8516,7 @@ function WorkoutsView({
       template.exercises.map((exercise) => ({
         name: exercise.name,
         load: workoutHistoricalMaxLoad(sessions, template.id, exercise.id),
+        oneRepMax: workoutEstimated1RM(sessions, template.id, exercise.id),
       }))
     )
     .filter((item) => item.load > 0)
@@ -9181,7 +9200,12 @@ function WorkoutsView({
                   records.map((record, index) => (
                     <div key={`${record.name}-${index}`} className="flex items-center justify-between gap-3 text-xs">
                       <span className="truncate">{record.name}</span>
-                      <span className="font-mono text-brass shrink-0">{record.load} kg</span>
+                      <span className="text-right shrink-0">
+                        <span className="font-mono text-brass block">{record.load} kg</span>
+                        {record.oneRepMax > 0 && (
+                          <span className="font-mono text-faint text-[9px] block">~{record.oneRepMax} kg 1RM est.</span>
+                        )}
+                      </span>
                     </div>
                   ))
                 ) : (
@@ -19080,6 +19104,16 @@ function ConstancceApp() {
     return items;
   }, [habits, completions, tasks, workoutTemplates, workoutSessions, streaks, goals, transactions, profile]);
 
+  const [pendingPrescriptionCount, setPendingPrescriptionCount] = useState(0);
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    let active = true;
+    fetchPrescriptions(session)
+      .then((rows) => { if (active) setPendingPrescriptionCount((rows || []).filter((r) => r.status === "sent").length); })
+      .catch(() => { if (active) setPendingPrescriptionCount(0); });
+    return () => { active = false; };
+  }, [session?.user?.id]);
+
   if (!authReady) {
     return <div className={`app-root ${theme === "light" ? "light-mode" : "dark-mode"}`}><div className="min-h-screen flex items-center justify-center"><div className="text-center"><img src={constancceLogo} alt="Constancce" className="w-10 h-10 rounded-xl mx-auto mb-3" /><p className="text-dim text-sm">Abrindo sua conta…</p></div></div></div>;
   }
@@ -19255,6 +19289,9 @@ function ConstancceApp() {
                     <n.icon size={16} />
                     {n.label}
                     {n.id === "notifications" && notifications.length > 0 && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-ember ml-auto" />
+                    )}
+                    {n.id === "professional" && pendingPrescriptionCount > 0 && (
                       <span className="w-1.5 h-1.5 rounded-full bg-ember ml-auto" />
                     )}
                   </button>
