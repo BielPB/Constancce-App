@@ -13502,7 +13502,11 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
 
     if (wasPaid) {
       const linked = transactions.filter((tx) => tx.billId === bill.id);
-      linked.forEach((tx) => deleteTransaction(tx.id));
+      // Não usa deleteTransaction aqui: salvar uma conta já editada não deveria
+      // abrir uma segunda confirmação de exclusão por trás das cenas, e chamar a
+      // versão que confirma dentro de um forEach só guarda uma confirmação
+      // pendente por vez — a segunda chamada nunca resolveria a primeira.
+      linked.forEach((tx) => removeTransactionRecord(tx.id));
       addTransaction({
         id: uid(),
         type: "saida",
