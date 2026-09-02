@@ -2858,3 +2858,83 @@
     padding:0 !important;
   }
 }
+
+/* Grade de Hábitos — tabela hábito × dia do mês. */
+.habit-grid-scroll{
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+  padding-bottom:4px;
+}
+.habit-grid-table{
+  border-collapse:separate;
+  border-spacing:3px;
+}
+.habit-grid-name-col{
+  position:sticky;
+  left:0;
+  z-index:2;
+  background:var(--surface);
+  min-width:180px;
+  max-width:220px;
+  padding:6px 8px;
+}
+.habit-grid-cat-dot{
+  width:7px;
+  height:7px;
+  border-radius:999px;
+  display:inline-block;
+}
+.habit-grid-day-head{
+  min-width:32px;
+  width:32px;
+  text-align:center;
+  font-size:9px;
+  color:var(--text-faint);
+  font-weight:400;
+  padding:2px 0;
+}
+.habit-grid-today{
+  color:var(--brass) !important;
+}
+td.habit-grid-today{
+  background:color-mix(in srgb, var(--brass) 6%, transparent);
+  border-radius:6px;
+}
+.habit-grid-cell-wrap{
+  padding:0;
+  text-align:center;
+}
+.habit-grid-cell{
+  width:30px;
+  height:30px;
+  border-radius:7px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  transition:transform .1s ease, background .12s ease, border-color .12s ease;
+}
+.habit-grid-cell:not(:disabled):hover{
+  transform:translateY(-1px);
+}
+.habit-grid-cell:disabled{
+  cursor:default;
+}
+.habit-grid-cell-frac{
+  font-size:8px;
+  color:var(--text);
+  opacity:.85;
+}
+@media (max-width:767px){
+  .habit-grid-name-col{
+    min-width:128px;
+    max-width:150px;
+  }
+  .habit-grid-cell{
+    width:26px;
+    height:26px;
+  }
+  .habit-grid-day-head{
+    min-width:26px;
+    width:26px;
+  }
+}

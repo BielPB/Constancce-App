@@ -2866,7 +2866,8 @@ function HabitForm({ initial, onSave, onClose }) {
 function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, toggleActive, habitChecklistLog, toggleHabitChecklist, autoOpen, isPro, onUpgrade }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [filter, setFilter] = useState("today");
+  const [monthCursor, setMonthCursor] = useState(today().slice(0, 7));
+  const [checklistCell, setChecklistCell] = useState(null); // { habitId, dateStr }
 
   useEffect(() => {
     if (autoOpen) {
@@ -2876,31 +2877,51 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
   }, [autoOpen]);
 
   const t = today();
-  const doneIds = new Set(completions.filter((completion) => completion.date === t).map((completion) => completion.habitId));
+  const [cursorYear, cursorMonth] = monthCursor.split("-").map(Number);
+  const daysInMonth = new Date(cursorYear, cursorMonth, 0).getDate();
+  const days = Array.from({ length: daysInMonth }, (_, index) => index + 1);
+  const dateForDay = (day) => `${monthCursor}-${String(day).padStart(2, "0")}`;
+  const monthLabel = new Date(cursorYear, cursorMonth - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const monthLabelDisplay = capitalizeFirst(monthLabel);
+  const moveMonth = (direction) => {
+    const next = new Date(cursorYear, cursorMonth - 1 + direction, 1);
+    setMonthCursor(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
+  };
+
   const activeHabits = habits.filter((habit) => habit.active !== false);
-  const scheduledToday = activeHabits.filter((habit) => habitValidOnDate(habit, t, completions));
-  const doneToday = scheduledToday.filter((habit) => doneIds.has(habit.id)).length;
-  const todayPct = scheduledToday.length ? Math.round(doneToday / scheduledToday.length * 100) : 0;
-  const streakHabits = activeHabits.filter((habit) => habit.countsForStreak).length;
-  const pausedHabits = habits.filter((habit) => habit.active === false).length;
+  const sortedHabits = [...habits].sort((a, b) =>
+    Number(a.active === false) - Number(b.active === false) || a.name.localeCompare(b.name, "pt-BR")
+  );
 
-  const filteredHabits = habits.filter((habit) => {
-    if (filter === "paused") return habit.active === false;
-    if (filter === "all") return true;
-    return habit.active !== false && habitValidOnDate(habit, t, completions);
-  });
-
-  const habitWeekRate = (habit) => {
+  const habitMonthRate = (habit) => {
     let validDays = 0;
     let completedDays = 0;
-    for (let offset = 0; offset < 7; offset++) {
-      const date = addDays(t, -offset);
-      if (!habitValidOnDate(habit, date, completions)) continue;
+    for (const day of days) {
+      const dateStr = dateForDay(day);
+      if (dateStr > t) break;
+      if (!habitValidOnDate(habit, dateStr, completions)) continue;
       validDays += 1;
-      if (completions.some((completion) => completion.habitId === habit.id && completion.date === date)) completedDays += 1;
+      if (completions.some((completion) => completion.habitId === habit.id && completion.date === dateStr)) completedDays += 1;
     }
     return validDays ? Math.round(completedDays / validDays * 100) : 0;
   };
+
+  const chartData = days
+    .filter((day) => dateForDay(day) <= t)
+    .map((day) => {
+      const dateStr = dateForDay(day);
+      const valid = habits.filter((habit) => habitValidOnDate(habit, dateStr, completions));
+      if (!valid.length) return null;
+      const doneIdsForDay = new Set(completions.filter((completion) => completion.date === dateStr).map((completion) => completion.habitId));
+      return { day, value: Math.round(valid.filter((habit) => doneIdsForDay.has(habit.id)).length / valid.length * 100) };
+    })
+    .filter(Boolean)
+    .map((point, index, arr) => ({
+      label: index === 0 || index === arr.length - 1 || point.day % 5 === 0 ? String(point.day) : "",
+      value: point.value,
+    }));
+
+  const activeChecklistHabit = checklistCell ? habits.find((habit) => habit.id === checklistCell.habitId) : null;
 
   return (
     <div className="habits-view flex flex-col gap-4 md:gap-5">
@@ -2908,14 +2929,14 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="font-display text-2xl md:text-3xl">Hábitos</h2>
-            {!isPro && <span className="chip">{habits.filter((habit) => habit.active !== false).length}/{PRO_LIMITS.habits} ativos Free</span>}
+            {!isPro && <span className="chip">{activeHabits.length}/{PRO_LIMITS.habits} ativos Free</span>}
           </div>
           <p className="text-dim text-sm mt-1">Construa constância diária sem perder de vista sua evolução.</p>
         </div>
         <button
           className="btn-primary rounded-xl px-4 py-2.5 text-sm flex items-center justify-center gap-1.5 self-start sm:self-auto"
           onClick={() => {
-            if (!isPro && habits.filter((habit) => habit.active !== false).length >= PRO_LIMITS.habits) {
+            if (!isPro && activeHabits.length >= PRO_LIMITS.habits) {
               onUpgrade("habits");
               return;
             }
@@ -2928,45 +2949,8 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
       </div>
 
       <FirstVisitTip id="habits" icon={ListChecks} title="Hábitos constroem sua constância.">
-        Comece com poucos hábitos que realmente importam. Marque cada execução e use o progresso para entender se sua rotina está ficando consistente.
+        Comece com poucos hábitos que realmente importam. Marque cada execução na grade e acompanhe o mês inteiro de uma vez.
       </FirstVisitTip>
-
-      <div className="surface rounded-2xl p-4 md:p-5" style={{ borderColor: "var(--brass-dim)" }}>
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-[10px] text-faint uppercase tracking-widest">Sua rotina de hoje</p>
-            <div className="flex items-baseline gap-2 mt-1">
-              <p className="font-display text-3xl">{doneToday}/{scheduledToday.length}</p>
-              <span className="text-dim text-sm">hábitos concluídos</span>
-            </div>
-            <p className="text-xs text-dim mt-1">
-              {scheduledToday.length === 0
-                ? "Nenhum hábito programado para hoje."
-                : todayPct === 100
-                  ? "Rotina concluída. Seu dia está completo."
-                  : `Faltam ${scheduledToday.length - doneToday} hábito${scheduledToday.length - doneToday === 1 ? "" : "s"} para completar o dia.`}
-            </p>
-          </div>
-
-          <div className="w-full md:max-w-sm">
-            <div className="flex items-center justify-between gap-2 text-[10px] mb-1.5">
-              <span className="text-faint">Progresso diário</span>
-              <span className="font-mono text-brass">{todayPct}%</span>
-            </div>
-            <Progress value={todayPct} height={8} />
-            <div className="grid grid-cols-2 gap-2 mt-3">
-              <div className="surface-2 rounded-xl p-2.5">
-                <p className="text-[9px] text-faint uppercase tracking-widest">Contam streak</p>
-                <p className="font-display text-lg mt-1">{streakHabits}</p>
-              </div>
-              <div className="surface-2 rounded-xl p-2.5">
-                <p className="text-[9px] text-faint uppercase tracking-widest">Pausados</p>
-                <p className="font-display text-lg mt-1">{pausedHabits}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {habits.length === 0 && (
         <EmptyState
@@ -2992,184 +2976,140 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
 
       {habits.length > 0 && (
         <>
-          <div className="surface rounded-2xl p-1 grid grid-cols-3 gap-1">
-            {[
-              ["today", "Hoje"],
-              ["all", "Todos"],
-              ["paused", "Pausados"],
-            ].map(([id, label]) => (
-              <button
-                key={id}
-                className="rounded-xl py-2 text-sm"
-                onClick={() => setFilter(id)}
-                style={{
-                  background: filter === id ? "var(--surface-2)" : "transparent",
-                  border: `1px solid ${filter === id ? "var(--brass-dim)" : "transparent"}`,
-                  color: filter === id ? "var(--text)" : "var(--text-dim)",
-                }}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="habit-grid-month-nav surface rounded-xl flex items-center justify-between gap-2 px-2 py-1.5">
+            <button className="btn-ghost rounded-lg p-2" onClick={() => moveMonth(-1)} aria-label="Mês anterior" title="Mês anterior">
+              <ChevronLeft size={16} />
+            </button>
+            <span className="text-sm font-medium">{monthLabelDisplay}</span>
+            <button className="btn-ghost rounded-lg p-2" onClick={() => moveMonth(1)} aria-label="Próximo mês" title="Próximo mês">
+              <ChevronRight size={16} />
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-            {filteredHabits.length === 0 && (
-              <div className="surface rounded-2xl p-5 text-dim text-sm xl:col-span-2">
-                {filter === "paused" ? "Nenhum hábito pausado." : "Nenhum hábito encontrado neste filtro."}
-              </div>
+          <div className="surface rounded-2xl p-4 md:p-5">
+            <p className="text-[10px] text-faint uppercase tracking-widest mb-2">Progresso do mês</p>
+            {chartData.length > 0 ? (
+              <MiniLineChart data={chartData} height={120} />
+            ) : (
+              <p className="text-dim text-xs py-4 text-center">Sem dados suficientes neste mês ainda.</p>
             )}
+          </div>
 
-            {filteredHabits.map((habit) => {
-              const validToday = habitValidOnDate(habit, t, completions);
-              const done = doneIds.has(habit.id);
-              const weekRate = habitWeekRate(habit);
-              const checklistDone = (habit.checklist || []).filter((item) =>
-                habitChecklistLog.some((row) => row.habitId === habit.id && row.itemId === item.id && row.date === t && row.done)
-              ).length;
-              const checklistPct = habit.checklist?.length ? Math.round(checklistDone / habit.checklist.length * 100) : null;
+          <div className="surface rounded-2xl p-3 md:p-4">
+            <p className="text-[10px] text-faint uppercase tracking-widest mb-3 px-1">Grade de hábitos</p>
+            <div className="habit-grid-scroll">
+              <table className="habit-grid-table">
+                <thead>
+                  <tr>
+                    <th className="habit-grid-name-col text-left">Hábito</th>
+                    {days.map((day) => {
+                      const dateStr = dateForDay(day);
+                      const isToday = dateStr === t;
+                      return (
+                        <th key={day} className={`habit-grid-day-head font-mono ${isToday ? "habit-grid-today" : ""}`}>
+                          {day}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedHabits.map((habit) => {
+                    const isPaused = habit.active === false;
+                    const hasChecklist = habit.checklist?.length > 0;
+                    const monthRate = habitMonthRate(habit);
 
-              return (
-                <article
-                  key={habit.id}
-                  className="habit-premium-card surface rounded-2xl p-4 md:p-5"
-                  style={{
-                    borderColor: done
-                      ? "color-mix(in srgb, var(--moss) 55%, var(--border))"
-                      : habit.active === false
-                        ? "var(--border)"
-                        : "var(--border)",
-                    opacity: habit.active === false ? .72 : 1,
-                  }}
-                >
-                  <div className="flex items-start gap-3">
-                    <button
-                      className="habit-check-button w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
-                      style={{
-                        background: done ? "color-mix(in srgb, var(--moss) 18%, var(--surface-2))" : "var(--surface-2)",
-                        border: `1px solid ${done ? "var(--moss)" : "var(--border)"}`,
-                      }}
-                      title={habit.checklist?.length > 0 ? "Conclua as etapas para finalizar o hábito" : "Marcar hábito"}
-                      onClick={() => validToday && !(habit.checklist?.length > 0) && toggleHabit(habit.id, t)}
-                      disabled={!validToday || habit.active === false}
-                    >
-                      {done
-                        ? <CheckCircle2 size={21} className="text-moss" />
-                        : <Circle size={21} className={validToday && habit.active !== false ? "text-brass" : "text-faint"} />}
-                    </button>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p
-                            className="font-display text-lg break-words"
-                            style={{ textDecoration: habit.active === false ? "line-through" : "none" }}
-                          >
-                            {habit.name}
-                          </p>
-                          <p className="text-[10px] text-faint mt-1">
-                            {habit.active === false
-                              ? "Hábito pausado"
-                              : validToday
-                                ? done ? "Concluído hoje" : "Pendente hoje"
-                                : "Não programado para hoje"}
-                          </p>
-                        </div>
-                        <span className={`chip whitespace-nowrap ${done ? "text-moss" : validToday ? "text-brass" : ""}`}>
-                          {weekRate}% · 7 dias
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 mt-3 flex-wrap">
-                        <span className="chip">{catLabel(habit.category)}</span>
-                        <span className="chip">{freqLabel(habit)}</span>
-                        {habit.countsForStreak && (
-                          <span className="chip text-ember flex items-center gap-1" style={{ borderColor: "var(--ember)" }}>
-                            <Flame size={10} /> streak
-                          </span>
-                        )}
-                      </div>
-
-                      {habit.checklist?.length > 0 && (
-                        <div className="surface-2 rounded-xl p-3 mt-3">
-                          <div className="flex items-center justify-between gap-3 mb-2">
-                            <div>
-                              <p className="text-[9px] text-faint uppercase tracking-widest">Etapas de hoje</p>
-                              <p className="text-xs text-dim mt-0.5">{checklistDone}/{habit.checklist.length} concluídas</p>
+                    return (
+                      <tr key={habit.id} style={{ opacity: isPaused ? 0.55 : 1 }}>
+                        <td className="habit-grid-name-col">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="habit-grid-cat-dot shrink-0" style={{ background: catColor(habit.category) }} />
+                            <div className="min-w-0 flex-1">
+                              <p
+                                className="text-xs md:text-sm font-medium truncate"
+                                style={{ textDecoration: isPaused ? "line-through" : "none" }}
+                                title={habit.name}
+                              >
+                                {habit.name}
+                              </p>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                {habit.countsForStreak && <Flame size={10} className="text-ember shrink-0" />}
+                                <span className={`text-[9px] font-mono ${monthRate >= 80 ? "text-moss" : monthRate >= 50 ? "text-brass" : "text-faint"}`}>
+                                  {monthRate}%
+                                </span>
+                              </div>
                             </div>
-                            <span className="font-mono text-xs text-brass">{checklistPct}%</span>
+                            <div className="habit-grid-row-actions flex items-center gap-0.5 shrink-0">
+                              <button className="btn-ghost rounded-lg p-1.5" title={habit.active ? "Pausar" : "Reativar"} onClick={() => toggleActive(habit.id)}>
+                                {habit.active ? <Pause size={12} /> : <Play size={12} />}
+                              </button>
+                              <button className="btn-ghost rounded-lg p-1.5" title="Editar" onClick={() => { setEditing(habit); setShowForm(true); }}>
+                                <Pencil size={12} />
+                              </button>
+                              <button className="btn-ghost rounded-lg p-1.5" title="Excluir" onClick={() => deleteHabit(habit.id)}>
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
                           </div>
-                          <Progress value={checklistPct} height={5} />
+                        </td>
 
-                          {validToday && habit.active !== false && (
-                            <div className="mt-3 flex flex-col gap-2">
-                              {habit.checklist.map((item) => {
-                                const checked = habitChecklistLog.some((row) =>
-                                  row.habitId === habit.id && row.itemId === item.id && row.date === t && row.done
-                                );
-                                return (
-                                  <button
-                                    key={item.id}
-                                    className="flex items-start gap-2 text-left text-sm"
-                                    onClick={() => toggleHabitChecklist(habit.id, item.id, t)}
-                                  >
-                                    {checked
-                                      ? <CheckCircle2 size={17} className="text-moss shrink-0 mt-0.5" />
-                                      : <Circle size={17} className="text-faint shrink-0 mt-0.5" />}
-                                    <span
-                                      className="break-words"
-                                      style={{
-                                        textDecoration: checked ? "line-through" : "none",
-                                        color: checked ? "var(--text-dim)" : "var(--text)",
-                                      }}
-                                    >
-                                      {item.text}
-                                    </span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                        {days.map((day) => {
+                          const dateStr = dateForDay(day);
+                          const isFuture = dateStr > t;
+                          const valid = !isFuture && habitValidOnDate(habit, dateStr, completions);
+                          const isToday = dateStr === t;
+                          const done = completions.some((completion) => completion.habitId === habit.id && completion.date === dateStr);
 
-                      <div className="flex flex-wrap items-center justify-between gap-2 mt-4 pt-3" style={{ borderTop: "1px solid var(--border-soft)" }}>
-                        <div className="text-[10px] text-faint">
-                          Consistência recente <span className={weekRate >= 80 ? "text-moss" : weekRate >= 50 ? "text-brass" : "text-dim"}>{weekRate}%</span>
-                        </div>
+                          let checklistPct = null;
+                          if (hasChecklist && valid) {
+                            const total = habit.checklist.length;
+                            const doneCount = habit.checklist.filter((item) =>
+                              habitChecklistLog.some((row) => row.habitId === habit.id && row.itemId === item.id && row.date === dateStr && row.done)
+                            ).length;
+                            checklistPct = total ? doneCount / total : 0;
+                          }
 
-                        <div className="flex items-center gap-1">
-                          <button
-                            className="btn-ghost rounded-lg p-2"
-                            title={habit.active ? "Pausar hábito" : "Reativar hábito"}
-                            onClick={() => toggleActive(habit.id)}
-                          >
-                            {habit.active ? <Pause size={14} /> : <Play size={14} />}
-                          </button>
-                          <button
-                            className="btn-ghost rounded-lg p-2"
-                            title="Editar hábito"
-                            onClick={() => {
-                              setEditing(habit);
-                              setShowForm(true);
-                            }}
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            className="btn-ghost rounded-lg p-2"
-                            title="Excluir hábito"
-                            onClick={() => deleteHabit(habit.id)}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
+                          return (
+                            <td key={day} className={`habit-grid-cell-wrap ${isToday ? "habit-grid-today" : ""}`}>
+                              <button
+                                type="button"
+                                className="habit-grid-cell"
+                                disabled={!valid}
+                                title={!valid ? "Não aplicável" : hasChecklist ? "Ver etapas do dia" : done ? "Concluído — clique para desmarcar" : "Marcar como concluído"}
+                                onClick={() => {
+                                  if (!valid) return;
+                                  if (hasChecklist) { setChecklistCell({ habitId: habit.id, dateStr }); return; }
+                                  toggleHabit(habit.id, dateStr);
+                                }}
+                                style={{
+                                  background: !valid
+                                    ? "transparent"
+                                    : hasChecklist
+                                      ? `color-mix(in srgb, var(--moss) ${Math.round((checklistPct || 0) * 100)}%, var(--surface-2))`
+                                      : done
+                                        ? "var(--moss)"
+                                        : "var(--surface-2)",
+                                  border: !valid
+                                    ? "1px dashed var(--border-soft)"
+                                    : done || (hasChecklist && checklistPct > 0)
+                                      ? "1px solid var(--moss)"
+                                      : "1px solid var(--border)",
+                                  cursor: valid ? "pointer" : "default",
+                                }}
+                              >
+                                {hasChecklist && valid && checklistPct != null && checklistPct > 0 && checklistPct < 1 && (
+                                  <span className="habit-grid-cell-frac font-mono">{Math.round(checklistPct * 100)}</span>
+                                )}
+                              </button>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}
@@ -3188,6 +3128,42 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
             setEditing(null);
           }}
         />
+      )}
+
+      {activeChecklistHabit && checklistCell && (
+        <Modal
+          title={`${activeChecklistHabit.name} — ${dateLabel(checklistCell.dateStr, { day: "2-digit", month: "long" })}`}
+          onClose={() => setChecklistCell(null)}
+          width={380}
+        >
+          <div className="flex flex-col gap-2">
+            {activeChecklistHabit.checklist.map((item) => {
+              const checked = habitChecklistLog.some((row) =>
+                row.habitId === activeChecklistHabit.id && row.itemId === item.id && row.date === checklistCell.dateStr && row.done
+              );
+              return (
+                <button
+                  key={item.id}
+                  className="flex items-start gap-2 text-left text-sm surface-2 rounded-xl p-3"
+                  onClick={() => toggleHabitChecklist(activeChecklistHabit.id, item.id, checklistCell.dateStr)}
+                >
+                  {checked
+                    ? <CheckCircle2 size={17} className="text-moss shrink-0 mt-0.5" />
+                    : <Circle size={17} className="text-faint shrink-0 mt-0.5" />}
+                  <span
+                    className="break-words"
+                    style={{
+                      textDecoration: checked ? "line-through" : "none",
+                      color: checked ? "var(--text-dim)" : "var(--text)",
+                    }}
+                  >
+                    {item.text}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </Modal>
       )}
     </div>
   );
