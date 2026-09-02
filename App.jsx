@@ -12389,9 +12389,15 @@ function computeFinanceProjectionForMonth({
     .filter((bill) => bill.status !== "pago" && String(bill.dueDate || "").slice(0, 7) === key)
     .reduce((sum, bill) => sum + Number(bill.value || 0), 0);
 
+  // Nos primeiros dias do mês, extrapolar pelo número real de dias já
+  // passados amplifica qualquer gasto de forma extrema (no dia 1, um multiplicador
+  // de 30x). Limitamos a base da extrapolação a pelo menos 20% do mês, o que
+  // trava o multiplicador em no máximo 5x — a projeção fica mais conservadora
+  // logo no início e se aproxima do ritmo real conforme os dias passam.
+  const extrapolationDays = Math.max(elapsedDays, Math.round(daysInMonth * 0.2));
   const variableSpent = Math.max(0, monthOut - postedRecurringOut - postedBillsOut);
   const projectedVariableOut = isCurrentMonth
-    ? (variableSpent / elapsedDays) * daysInMonth
+    ? (variableSpent / extrapolationDays) * daysInMonth
     : variableSpent;
 
   const projectedOut = projectedVariableOut + postedRecurringOut + postedBillsOut + futureRecurringOut + pendingBills;
@@ -13247,8 +13253,11 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
   const daysInMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate();
   const isCurrentMonth = selectedMonth === currentMonthKey;
   const elapsedDays = isCurrentMonth ? Math.max(1, new Date().getDate()) : daysInMonth;
+  // Ver comentário equivalente em computeFinanceProjectionForMonth: sem esse piso,
+  // a projeção do dia 1 multiplica qualquer gasto por até 30x.
+  const extrapolationDays = Math.max(elapsedDays, Math.round(daysInMonth * 0.2));
   const variableSpent = Math.max(0, monthOut - postedRecurringOut - postedBillsOut);
-  const projectedVariableOut = isCurrentMonth ? (variableSpent / elapsedDays) * daysInMonth : variableSpent;
+  const projectedVariableOut = isCurrentMonth ? (variableSpent / extrapolationDays) * daysInMonth : variableSpent;
   const pendingBillsForMonth = (profile?.financeBills || [])
     .filter((bill) => bill.status !== "pago" && monthKey(bill.dueDate) === selectedMonth)
     .reduce((sum, bill) => sum + Number(bill.value || 0), 0);
@@ -13948,7 +13957,10 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
                   <p className={`font-display text-lg md:text-xl mt-1 ${projectedBalance >= 0 ? "text-moss" : "text-ember"}`}>
                     {projectedBalance >= 0 ? money(projectedBalance) : `-${money(Math.abs(projectedBalance))}`}
                   </p>
-                  <p className="text-[9px] text-faint mt-0.5">ritmo atual + contas pendentes</p>
+                  <p className="text-[9px] text-faint mt-0.5">
+                    ritmo atual + contas pendentes
+                    {isCurrentMonth && elapsedDays < 5 ? " · início do mês, estimativa ainda instável" : ""}
+                  </p>
                 </div>
               )}
             </div>
