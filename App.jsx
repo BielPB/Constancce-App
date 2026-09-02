@@ -12368,6 +12368,15 @@ function computeFinanceProjectionForMonth({
     .filter((tx) => tx.type === "saida" && tx.recurringId)
     .reduce((sum, tx) => sum + Number(tx.value || 0), 0);
 
+  // Contas a pagar já quitadas neste mês (têm billId) são um valor certo que
+  // já aconteceu, não um ritmo de gasto do dia a dia. Se entrarem no cálculo
+  // de "gasto variável", o projetor as multiplica pelos dias restantes do mês
+  // como se você fosse pagar aquele boleto todo santo dia — daí a projeção
+  // vinha muito distorcida sempre que uma conta grande era paga cedo no mês.
+  const postedBillsOut = rows
+    .filter((tx) => tx.type === "saida" && tx.billId)
+    .reduce((sum, tx) => sum + Number(tx.value || 0), 0);
+
   const futureRecurringOut = missingRecurring
     .filter((item) => item.type === "saida")
     .reduce((sum, item) => sum + Number(item.value || 0), 0);
@@ -12380,12 +12389,12 @@ function computeFinanceProjectionForMonth({
     .filter((bill) => bill.status !== "pago" && String(bill.dueDate || "").slice(0, 7) === key)
     .reduce((sum, bill) => sum + Number(bill.value || 0), 0);
 
-  const variableSpent = Math.max(0, monthOut - postedRecurringOut);
+  const variableSpent = Math.max(0, monthOut - postedRecurringOut - postedBillsOut);
   const projectedVariableOut = isCurrentMonth
     ? (variableSpent / elapsedDays) * daysInMonth
     : variableSpent;
 
-  const projectedOut = projectedVariableOut + postedRecurringOut + futureRecurringOut + pendingBills;
+  const projectedOut = projectedVariableOut + postedRecurringOut + postedBillsOut + futureRecurringOut + pendingBills;
   const projectedIn = monthIn + futureRecurringIn;
   const projectedBalance = projectedIn - projectedOut;
   const limit = Number(monthlyLimit || 0);
@@ -13229,16 +13238,21 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
   const futureRecurringOut = missingRecurring.filter((item) => item.type === "saida").reduce((sum, item) => sum + Number(item.value || 0), 0);
   const futureRecurringIn = missingRecurring.filter((item) => item.type === "entrada").reduce((sum, item) => sum + Number(item.value || 0), 0);
   const postedRecurringOut = monthTx.filter((tx) => tx.type === "saida" && tx.recurringId).reduce((sum, tx) => sum + Number(tx.value || 0), 0);
+  // Contas a pagar já quitadas neste mês (têm billId) são um valor certo que já
+  // aconteceu, não ritmo de gasto do dia a dia — não pode entrar no cálculo de
+  // "gasto variável" abaixo, senão o projetor multiplica o valor da conta pelos
+  // dias restantes do mês, como se ela se repetisse todo dia.
+  const postedBillsOut = monthTx.filter((tx) => tx.type === "saida" && tx.billId).reduce((sum, tx) => sum + Number(tx.value || 0), 0);
 
   const daysInMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate();
   const isCurrentMonth = selectedMonth === currentMonthKey;
   const elapsedDays = isCurrentMonth ? Math.max(1, new Date().getDate()) : daysInMonth;
-  const variableSpent = Math.max(0, monthOut - postedRecurringOut);
+  const variableSpent = Math.max(0, monthOut - postedRecurringOut - postedBillsOut);
   const projectedVariableOut = isCurrentMonth ? (variableSpent / elapsedDays) * daysInMonth : variableSpent;
   const pendingBillsForMonth = (profile?.financeBills || [])
     .filter((bill) => bill.status !== "pago" && monthKey(bill.dueDate) === selectedMonth)
     .reduce((sum, bill) => sum + Number(bill.value || 0), 0);
-  const projectedOut = projectedVariableOut + postedRecurringOut + futureRecurringOut + pendingBillsForMonth;
+  const projectedOut = projectedVariableOut + postedRecurringOut + postedBillsOut + futureRecurringOut + pendingBillsForMonth;
   const projectedIn = monthIn + futureRecurringIn;
   const projectedBalance = projectedIn - projectedOut;
 
