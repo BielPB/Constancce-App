@@ -16405,6 +16405,7 @@ function ConstancceApp() {
   const workoutRest = useWorkoutRestTimer(session?.user?.id);
 
   const pendingSyncRef = useRef(null);
+  const materializedRecurringRef = useRef(new Set());
   const taskOutboxRef = useRef([]);
   const taskSyncInFlightRef = useRef(false);
   const taskRetryTimerRef = useRef(null);
@@ -18081,6 +18082,7 @@ function ConstancceApp() {
     clearTimeout(retrySyncTimer.current);
     clearInterval(safetySyncInterval.current);
     pendingSyncRef.current = null;
+    materializedRecurringRef.current = new Set();
     taskOutboxRef.current = [];
     clearTimeout(taskRetryTimerRef.current);
     routineOutboxRef.current = [];
@@ -18739,6 +18741,16 @@ function ConstancceApp() {
   const deleteTransaction = async (id) => { if (!(await confirm("Tem certeza que deseja excluir este lançamento?"))) return; removeTransactionRecord(id); };
 
   // Materializa automaticamente as recorrências mensais quando o dia programado chega.
+  //
+  // profile é reconstruído (referência nova) a cada sincronização aplicada, então
+  // profile?.financeRecurring muda de referência com muito mais frequência do que
+  // seu conteúdo — este efeito refazia a checagem de "já existe?" a cada pull. Se
+  // um pull sobrescrevesse transactions ANTES da adição recém-criada ter sido
+  // sincronizada (uma corrida real, já vista em outro campo), a checagem local
+  // deixava de encontrar o lançamento e criava outro, duplicando a recorrência —
+  // e se isso se repetisse, parecia que um lançamento excluído "voltava sozinho".
+  // materializedRecurringRef garante uma única materialização por combinação
+  // recorrência+mês durante a sessão, independente de quantas vezes o efeito rodar.
   useEffect(() => {
     if (!isPro || !dataReady || !profile?.financeRecurring?.length) return;
 
@@ -18755,6 +18767,9 @@ function ConstancceApp() {
       (profile.financeRecurring || [])
         .filter((item) => item.active !== false)
         .forEach((item) => {
+          const materializedKey = `${item.id}:${monthKey}`;
+          if (materializedRecurringRef.current.has(materializedKey)) return;
+
           const dueDay = Math.min(daysInCurrentMonth, Math.max(1, Number(item.day) || 1));
           if (dueDay > currentDay) return;
           if (item.createdAt && String(item.createdAt).slice(0, 7) > monthKey) return;
@@ -18762,6 +18777,7 @@ function ConstancceApp() {
           const alreadyExists = prev.some(
             (tx) => tx.recurringId === item.id && String(tx.date || "").slice(0, 7) === monthKey
           );
+          materializedRecurringRef.current.add(materializedKey);
           if (alreadyExists) return;
 
           additions.push({
@@ -18776,7 +18792,10 @@ function ConstancceApp() {
           });
         });
 
-      return additions.length ? [...prev, ...additions] : prev;
+      if (!additions.length) return prev;
+      const next = [...prev, ...additions];
+      persist({ transactions: next });
+      return next;
     });
   }, [isPro, dataReady, profile?.financeRecurring]);
 
