@@ -8319,6 +8319,48 @@ function WorkoutRepsInput({ value, disabled, onCommit }) {
   );
 }
 
+function WorkoutNoteInput({ value, disabled, onCommit, className, placeholder }) {
+  const [draft, setDraft] = useState(() => value || "");
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (focusedRef.current) return;
+    setDraft(value || "");
+  }, [value]);
+
+  const commit = () => {
+    if (draft === (value || "")) return;
+    onCommit(draft);
+  };
+
+  return (
+    <input
+      className={className}
+      placeholder={placeholder}
+      value={draft}
+      disabled={disabled}
+      onFocus={() => {
+        focusedRef.current = true;
+      }}
+      onChange={(event) => {
+        // Mesmo motivo do WorkoutLoadInput: sincronizar a cada tecla derruba
+        // caracteres quando a resposta do servidor chega no meio da digitação.
+        setDraft(event.target.value);
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+        commit();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          commit();
+          event.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
 function WorkoutsView({
   session,
   templates,
@@ -9886,17 +9928,17 @@ function WorkoutsView({
                     })}
                   </div>
 
-                  <input
+                  <WorkoutNoteInput
                     className="w-full p-2 mt-3 text-xs ring-focus"
                     placeholder="Observação deste exercício (opcional)"
                     value={activeSession.exerciseNotes?.[exercise.id] || ""}
                     disabled={activeSession.completed}
-                    onChange={(event) =>
+                    onCommit={(text) =>
                       updateSession(activeSession.id, (session) => ({
                         ...session,
                         exerciseNotes: {
                           ...(session.exerciseNotes || {}),
-                          [exercise.id]: event.target.value,
+                          [exercise.id]: text,
                         },
                       }))
                     }
