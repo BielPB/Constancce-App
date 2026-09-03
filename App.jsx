@@ -24,6 +24,7 @@ import {
   Search, Clock3, Timer, Sparkles, History, Zap, SlidersHorizontal, RotateCcw, CreditCard, Repeat2,
   Palette, Share2, Archive, Image as ImageIcon,
   Activity, Layers3, Grid3X3, BrainCircuit, Star, ArrowRightLeft, Gauge, Stethoscope,
+  Car, PartyPopper, Receipt, ShoppingBag, GraduationCap,
 } from "lucide-react";
 
 const NotificationsView = lazy(() => import("./src/features/notifications/NotificationsView.jsx"));
@@ -1656,6 +1657,16 @@ async function searchDietProducts(session, { query = "", barcode = "" } = {}) {
 
 const FIN_IN = ["Salário", "Freelance", "Venda", "Outro"];
 const FIN_OUT = ["Alimentação", "Transporte", "Lazer", "Contas", "Compras", "Educação", "Aporte para meta", "Outro"];
+const FIN_CATEGORY_ICONS = {
+  "Alimentação": Apple,
+  "Transporte": Car,
+  "Lazer": PartyPopper,
+  "Contas": Receipt,
+  "Compras": ShoppingBag,
+  "Educação": GraduationCap,
+  "Aporte para meta": Target,
+  "Outro": MoreHorizontal,
+};
 
 const ACHIEVEMENT_DEFS = [
   { id: "first-day", label: "Primeiro dia perfeito", desc: "Conclua seu primeiro dia perfeito.", category: "Constância", rarity: "Comum", target: 1, value: (s) => s.totalPerfectDays || 0 },
@@ -11168,6 +11179,7 @@ function FoodView({
   const t = today();
   const todayLog = mealLog.filter((meal) => meal.date === t);
   const yesterdayLog = mealLog.filter((meal) => meal.date === addDays(t, -1));
+  const activeDietPlan = profile?.dietPlan?.monthKey === t.slice(0, 7) ? profile.dietPlan : null;
   const totals = dietDailyTotals(mealLog, t);
   const byMeal = MEAL_TYPES.map((mealType) => ({
     mealType,
@@ -11338,6 +11350,27 @@ function FoodView({
     })));
   };
 
+  const startDietPlan = () => {
+    const todayItems = mealLog.filter((meal) => meal.date === today());
+    if (!todayItems.length) return;
+    const plan = {
+      id: uid(),
+      monthKey: today().slice(0, 7),
+      startDate: today(),
+      items: todayItems.map((item) => {
+        const { id, date, consumed, consumedAt, dietPlanId, ...rest } = item;
+        return rest;
+      }),
+    };
+    todayItems.forEach((item) => updateMeal(item.id, { dietPlanId: plan.id }));
+    setProfile((current) => ({ ...current, dietPlan: plan }));
+  };
+
+  const stopDietPlan = async () => {
+    if (!(await confirm("A dieta atual vai parar de se repetir automaticamente. Você pode registrar novos alimentos a partir de hoje. Continuar?"))) return;
+    setProfile((current) => ({ ...current, dietPlan: null }));
+  };
+
   const recent7 = mealLog.filter((meal) => meal.date >= addDays(today(), -6) && meal.date <= today() && dietMealConsumed(meal));
   const advancedTotals7 = recent7.reduce(
     (sum, meal) => ({
@@ -11394,10 +11427,36 @@ function FoodView({
                 <p className="text-[10px] text-faint mt-1">{Math.round(remainingCalories).toLocaleString("pt-BR")} kcal restantes pela meta atual.</p>
 
                 <div className="flex flex-wrap gap-2 mt-3">
-                  {yesterdayLog.length > 0 && (
+                  {yesterdayLog.length > 0 && !activeDietPlan && (
                     <button className="btn-ghost rounded-xl px-3 py-2 text-xs" onClick={repeatYesterday}>
                       <Repeat2 size={12} className="inline mr-1" /> Repetir ontem
                     </button>
+                  )}
+                  {activeDietPlan ? (
+                    <button
+                      className="btn-ghost rounded-xl px-3 py-2 text-xs"
+                      onClick={stopDietPlan}
+                      title="Para de repetir os alimentos automaticamente"
+                    >
+                      <RefreshCw size={12} className="inline mr-1" /> Trocar dieta
+                    </button>
+                  ) : (
+                    todayLog.length > 0 && (
+                      <button
+                        className="btn-ghost rounded-xl px-3 py-2 text-xs"
+                        onClick={() => {
+                          if (!isPro) {
+                            onUpgrade("diet");
+                            return;
+                          }
+                          startDietPlan();
+                        }}
+                        title="Repete os alimentos de hoje automaticamente até o fim do mês. Você ainda marca o que consumiu a cada dia."
+                      >
+                        {!isPro && <Lock size={11} className="inline mr-1" />}
+                        <RefreshCw size={12} className="inline mr-1" /> Manter esta dieta
+                      </button>
+                    )
                   )}
                   <button
                     className="btn-ghost rounded-xl px-3 py-2 text-xs"
@@ -11413,6 +11472,11 @@ function FoodView({
                     Ajustar metas
                   </button>
                 </div>
+                {activeDietPlan && (
+                  <p className="text-[10px] text-brass mt-1.5">
+                    <RefreshCw size={10} className="inline mr-1" /> Dieta ativa — repetindo automaticamente até o fim do mês.
+                  </p>
+                )}
               </div>
 
               <RadialProgress
@@ -12639,6 +12703,8 @@ function computeFinanceProjectionForMonth({
     projectedIn,
     projectedOut,
     projectedBalance,
+    futureRecurringOut,
+    futureRecurringIn,
     availableToSpend: limit > 0
       ? Math.max(0, limit - monthOut)
       : Math.max(0, monthIn - monthOut),
@@ -13463,35 +13529,12 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
   const inDeltaPct = previousIn > 0 ? Math.round(((monthIn - previousIn) / previousIn) * 100) : null;
 
   const recurringItems = profile?.financeRecurring || [];
-  const activeRecurring = recurringItems.filter((item) => item.active !== false);
   const currentMonthKey = today().slice(0, 7);
   const isPastMonth = selectedMonth < currentMonthKey;
-  const applicableRecurring = activeRecurring.filter((item) => !item.createdAt || String(item.createdAt).slice(0, 7) <= selectedMonth);
-  const postedRecurringIds = new Set(monthTx.filter((tx) => tx.recurringId).map((tx) => tx.recurringId));
-  const missingRecurring = isPastMonth ? [] : applicableRecurring.filter((item) => !postedRecurringIds.has(item.id));
-  const futureRecurringOut = missingRecurring.filter((item) => item.type === "saida").reduce((sum, item) => sum + Number(item.value || 0), 0);
-  const futureRecurringIn = missingRecurring.filter((item) => item.type === "entrada").reduce((sum, item) => sum + Number(item.value || 0), 0);
-  const postedRecurringOut = monthTx.filter((tx) => tx.type === "saida" && tx.recurringId).reduce((sum, tx) => sum + Number(tx.value || 0), 0);
-  // Contas a pagar já quitadas neste mês (têm billId) são um valor certo que já
-  // aconteceu, não ritmo de gasto do dia a dia — não pode entrar no cálculo de
-  // "gasto variável" abaixo, senão o projetor multiplica o valor da conta pelos
-  // dias restantes do mês, como se ela se repetisse todo dia.
-  const postedBillsOut = monthTx.filter((tx) => tx.type === "saida" && tx.billId).reduce((sum, tx) => sum + Number(tx.value || 0), 0);
 
   const daysInMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate();
   const isCurrentMonth = selectedMonth === currentMonthKey;
   const elapsedDays = isCurrentMonth ? Math.max(1, new Date().getDate()) : daysInMonth;
-  // Ver comentário equivalente em computeFinanceProjectionForMonth: sem esse piso,
-  // a projeção do dia 1 multiplica qualquer gasto por até 30x.
-  const extrapolationDays = Math.max(elapsedDays, Math.round(daysInMonth * 0.2));
-  const variableSpent = Math.max(0, monthOut - postedRecurringOut - postedBillsOut);
-  const projectedVariableOut = isCurrentMonth ? (variableSpent / extrapolationDays) * daysInMonth : variableSpent;
-  const pendingBillsForMonth = (profile?.financeBills || [])
-    .filter((bill) => bill.status !== "pago" && monthKey(bill.dueDate) === selectedMonth)
-    .reduce((sum, bill) => sum + Number(bill.value || 0), 0);
-  const projectedOut = projectedVariableOut + postedRecurringOut + postedBillsOut + futureRecurringOut + pendingBillsForMonth;
-  const projectedIn = monthIn + futureRecurringIn;
-  const projectedBalance = projectedIn - projectedOut;
 
   const byCategory = FIN_OUT
     .map((category) => ({
@@ -13550,9 +13593,14 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
     : 0;
   const financialHealthLabel = !hasFinanceData ? "Sem dados" : financialHealth >= 80 ? "Forte" : financialHealth >= 60 ? "Estável" : financialHealth >= 40 ? "Atenção" : "Crítica";
 
-  const availableToSpend = monthlyLimit > 0
-    ? Math.max(0, monthlyLimit - monthOut)
-    : Math.max(0, monthBalance);
+  const projection = computeFinanceProjectionForMonth({
+    month: selectedMonth,
+    transactions,
+    bills: profile?.financeBills,
+    recurring: profile?.financeRecurring,
+    monthlyLimit,
+  });
+  const { projectedIn, projectedOut, projectedBalance, availableToSpend, futureRecurringOut } = projection;
 
   const financialGoals = (goals || []).filter((g) => g.type === "financeira" && !g.completed);
 
@@ -13968,6 +14016,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
                 <div className="surface-2 rounded-xl p-3 min-w-0">
                   <p className="text-[9px] text-faint uppercase tracking-widest">Ainda pode gastar</p>
                   <p className="font-mono text-sm md:text-base mt-1 truncate">{money(availableToSpend)}</p>
+                  <p className="text-[8px] text-faint mt-0.5">{monthlyLimit > 0 ? "com base no limite mensal" : "saldo atual (sem limite definido)"}</p>
                 </div>
                 <div className="surface-2 rounded-xl p-3 min-w-0">
                   <p className="text-[9px] text-faint uppercase tracking-widest">
@@ -14057,11 +14106,13 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
                 {byCategory.length === 0 && <p className="text-xs text-dim py-2">Nenhuma saída registrada neste mês.</p>}
                 {byCategory.slice(0, 5).map((item, index) => {
                   const pct = monthOut > 0 ? Math.round((item.total / monthOut) * 100) : 0;
+                  const CategoryIcon = FIN_CATEGORY_ICONS[item.category] || MoreHorizontal;
                   return (
                     <div key={item.category}>
                       <div className="flex items-center justify-between gap-3 mb-1.5">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="font-mono text-[9px] text-brass shrink-0">0{index + 1}</span>
+                          <CategoryIcon size={12} className="text-dim shrink-0" />
                           <span className="text-xs md:text-sm truncate">{item.category}</span>
                         </div>
                         <div className="text-right shrink-0">
@@ -14080,7 +14131,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div>
                   <p className="text-[10px] text-faint uppercase tracking-widest">Próximas contas</p>
-                  <p className="text-[10px] md:text-xs text-dim mt-1">Os compromissos mais próximos.</p>
+                  <p className="text-[10px] md:text-xs text-dim mt-1">Os compromissos mais próximos. Contas têm vencimento e ficam pendentes até você marcar como pagas.</p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
@@ -14135,7 +14186,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
           </div>
 
           {financialGoals.length > 0 && (
-            <div className="surface rounded-2xl p-4 md:p-5">
+            <div className="surface glass-panel rounded-2xl p-4 md:p-5">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div>
                   <p className="text-[10px] text-faint uppercase tracking-widest">Metas financeiras</p>
@@ -14171,7 +14222,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
             </div>
           )}
 
-          <div className="finance-month-close surface rounded-2xl p-4 md:p-5">
+          <div className="finance-month-close surface glass-panel rounded-2xl p-4 md:p-5">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[10px] text-faint uppercase tracking-widest">
@@ -14313,7 +14364,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
             )}
           </div>
 
-          <div className="finance-history-ledger surface rounded-2xl overflow-hidden">
+          <div className="finance-history-ledger surface glass-panel rounded-2xl overflow-hidden">
             <div className="finance-history-head p-4 md:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -14432,7 +14483,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
-              <div className="surface rounded-2xl p-4 md:p-5">
+              <div className="surface glass-panel rounded-2xl p-4 md:p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[10px] text-faint uppercase tracking-widest">Saúde financeira</p>
@@ -14455,15 +14506,16 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
                           ? "Seu saldo e sua capacidade de poupança estão em uma faixa saudável."
                           : "Seu saldo está positivo, mas ainda há espaço para aumentar a sobra do mês."}
                 </p>
+                <p className="text-[9px] text-faint mt-1">Poupança 35% · Orçamento 30% · Saldo 20% · Limite 15%</p>
               </div>
 
-              <div className="surface rounded-2xl p-4 md:p-5" style={{ borderColor: "var(--brass-dim)" }}>
+              <div className="surface glass-panel rounded-2xl p-4 md:p-5" style={{ borderColor: "var(--brass-dim)" }}>
                 <p className="text-[10px] text-faint uppercase tracking-widest">Previsão transparente</p>
                 <p className={`font-display text-2xl md:text-3xl mt-1.5 ${projectedBalance >= 0 ? "text-moss" : "text-ember"}`}>
                   {projectedBalance >= 0 ? money(projectedBalance) : `-${money(Math.abs(projectedBalance))}`}
                 </p>
                 <p className="text-[10px] md:text-xs text-dim mt-2 leading-relaxed">
-                  Se continuar nesse ritmo, sua saída estimada é {money(projectedOut)}. O cálculo considera gastos atuais, recorrências pendentes e contas cadastradas.
+                  Extrapola seu ritmo de gastos variáveis a partir de hoje, soma recorrências e contas pendentes deste mês. No início do mês a extrapolação é mais conservadora, para não distorcer o número.
                 </p>
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   <div className="surface-2 rounded-xl p-2.5 min-w-0">
@@ -14508,7 +14560,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
               )}
             </div>
 
-            <div className="surface rounded-2xl p-4 md:p-5">
+            <div className="surface glass-panel rounded-2xl p-4 md:p-5">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                 <div>
                   <p className="text-[10px] text-faint uppercase tracking-widest">Orçamento por categoria</p>
@@ -14524,14 +14576,18 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
                   const rawPct = item.budget > 0 ? Math.round((item.spent / item.budget) * 100) : 0;
                   const pct = Math.min(100, rawPct);
                   const over = item.budget > 0 && item.spent > item.budget;
+                  const CategoryIcon = FIN_CATEGORY_ICONS[item.category] || MoreHorizontal;
                   return (
                     <div key={item.category} className="surface-2 rounded-xl p-3">
                       <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="min-w-0">
-                          <p className="text-xs md:text-sm font-medium truncate">{item.category}</p>
-                          <p className="text-[9px] md:text-[10px] text-faint mt-0.5">
-                            {item.budget > 0 ? `${money(item.spent)} de ${money(item.budget)}` : `${money(item.spent)} gastos`}
-                          </p>
+                        <div className="min-w-0 flex items-start gap-1.5">
+                          <CategoryIcon size={13} className="text-brass shrink-0 mt-0.5" />
+                          <div className="min-w-0">
+                            <p className="text-xs md:text-sm font-medium truncate">{item.category}</p>
+                            <p className="text-[9px] md:text-[10px] text-faint mt-0.5">
+                              {item.budget > 0 ? `${money(item.spent)} de ${money(item.budget)}` : `${money(item.spent)} gastos`}
+                            </p>
+                          </div>
                         </div>
                         {editingBudgets ? (
                           <input
@@ -14556,11 +14612,11 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
               </div>
             </div>
 
-            <div className="surface rounded-2xl p-4 md:p-5">
+            <div className="surface glass-panel rounded-2xl p-4 md:p-5">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                 <div>
                   <p className="text-[10px] text-faint uppercase tracking-widest">Fixos e recorrentes</p>
-                  <p className="text-[10px] md:text-xs text-dim mt-1">Entradas fixas de um lado, despesas fixas do outro.</p>
+                  <p className="text-[10px] md:text-xs text-dim mt-1">Entradas fixas de um lado, despesas fixas do outro. São lançadas automaticamente todo mês — use para assinaturas e salário; contas com vencimento ficam em 'Próximas contas'.</p>
                 </div>
                 <button className="btn-ghost rounded-xl px-3 py-2 text-xs self-start sm:self-auto" onClick={() => setShowRecurringForm(true)}>
                   <Plus size={12} className="inline mr-1" /> Nova recorrência
@@ -14611,7 +14667,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
               description="Comparações históricas, projeções avançadas, gráficos, recorrências automáticas e perguntas inteligentes ficam no PRO. O controle financeiro básico continua disponível no Free."
               onUpgrade={onUpgrade}
             />
-            <div className="surface rounded-2xl p-4 md:p-5">
+            <div className="surface glass-panel rounded-2xl p-4 md:p-5">
               <p className="text-[10px] text-faint uppercase tracking-widest">O que continua no Free</p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
                 {["Entradas e saídas", "Saldo e limite", "Categorias", "Contas e metas"].map((label) => (
@@ -16646,6 +16702,7 @@ function ConstancceApp() {
 
   const pendingSyncRef = useRef(null);
   const materializedRecurringRef = useRef(new Set());
+  const materializedDietPlanRef = useRef(new Set());
   const taskOutboxRef = useRef([]);
   const taskSyncInFlightRef = useRef(false);
   const taskRetryTimerRef = useRef(null);
@@ -18323,6 +18380,7 @@ function ConstancceApp() {
     clearInterval(safetySyncInterval.current);
     pendingSyncRef.current = null;
     materializedRecurringRef.current = new Set();
+    materializedDietPlanRef.current = new Set();
     taskOutboxRef.current = [];
     clearTimeout(taskRetryTimerRef.current);
     routineOutboxRef.current = [];
@@ -19038,6 +19096,39 @@ function ConstancceApp() {
       return next;
     });
   }, [isPro, dataReady, profile?.financeRecurring]);
+
+  // Materializa automaticamente o plano de dieta ("Manter esta dieta") no dia
+  // atual, repetindo os alimentos registrados no dia em que o plano foi criado.
+  // Só vale para o mês em que o plano foi iniciado (profile.dietPlan.monthKey);
+  // quando o calendário vira o mês, este efeito para de agir sozinho — o plano
+  // antigo simplesmente não materializa mais nada. materializedDietPlanRef evita
+  // duplicar itens quando o efeito roda mais de uma vez no mesmo dia.
+  useEffect(() => {
+    if (!isPro || !dataReady || !profile?.dietPlan?.items?.length) return;
+    const plan = profile.dietPlan;
+    const monthKey = today().slice(0, 7);
+    if (plan.monthKey !== monthKey) return;
+    const dateKey = today();
+    const guardKey = `${plan.id}:${dateKey}`;
+    if (materializedDietPlanRef.current.has(guardKey)) return;
+    materializedDietPlanRef.current.add(guardKey);
+
+    setMealLog((prev) => {
+      const alreadyExists = prev.some((meal) => meal.date === dateKey && meal.dietPlanId === plan.id);
+      if (alreadyExists) return prev;
+      const additions = plan.items.map((item) => ({
+        ...item,
+        id: uid(),
+        date: dateKey,
+        consumed: false,
+        consumedAt: null,
+        dietPlanId: plan.id,
+      }));
+      const next = [...prev, ...additions];
+      persist({ mealLog: next });
+      return next;
+    });
+  }, [isPro, dataReady, profile?.dietPlan]);
 
   // Foguinho da tela Hoje = presença diária no Constancce.
   // v3 corrige definitivamente a migração histórica: enquanto a conta ainda
