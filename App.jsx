@@ -2522,7 +2522,7 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="surface rounded-2xl p-5 md:p-7" style={{ borderColor: "color-mix(in srgb, var(--brass) 20%, var(--border))" }}>
+      <div className="surface glass-panel-strong rounded-2xl p-5 md:p-7">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-dim text-sm">{greeting}, {profile?.name || "visitante"}.</p>
@@ -2548,24 +2548,28 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-5">
           <div className="surface-2 rounded-xl p-3">
+            <Gauge size={13} className="text-brass mb-1.5" />
             <p className="text-[9px] text-faint uppercase tracking-widest">Score</p>
-            <p className="font-display text-xl mt-1 text-brass">{score}/100</p>
+            <p className="font-display text-xl md:text-2xl mt-1 text-brass">{score}/100</p>
           </div>
           <div className="surface-2 rounded-xl p-3">
+            <CheckCircle2 size={13} className="text-brass mb-1.5" />
             <p className="text-[9px] text-faint uppercase tracking-widest">Atividades</p>
-            <p className="font-display text-xl mt-1">{completedToday}/{totalToday}</p>
+            <p className="font-display text-xl md:text-2xl mt-1">{completedToday}/{totalToday}</p>
           </div>
           <div className="surface-2 rounded-xl p-3">
+            <Dumbbell size={13} className={`mb-1.5 ${workoutToday ? "text-moss" : "text-brass"}`} />
             <p className="text-[9px] text-faint uppercase tracking-widest">Treino</p>
-            <p className={`font-display text-sm mt-1 ${workoutToday ? "text-moss" : "text-dim"}`}>{workoutToday ? "Concluído" : scheduledWorkout ? scheduledWorkout.name : "Sem programação"}</p>
+            <p className={`font-display text-sm md:text-base mt-1 leading-snug break-words ${workoutToday ? "text-moss" : "text-dim"}`}>{workoutToday ? "Concluído" : scheduledWorkout ? scheduledWorkout.name : "Sem programação"}</p>
           </div>
           <div className="surface-2 rounded-xl p-3">
+            <Wallet size={13} className="text-brass mb-1.5" />
             <p className="text-[9px] text-faint uppercase tracking-widest">Disponível no mês</p>
-            <p className="font-display text-sm mt-1">{money(availableMonth)}</p>
+            <p className="font-display text-sm md:text-base mt-1">{money(availableMonth)}</p>
           </div>
         </div>
 
-        <div className="mt-4">
+        <div className="mt-5 pt-4" style={{ borderTop: "1px solid var(--border-soft)" }}>
           <div className="flex items-center justify-between text-xs mb-1.5"><span className="text-dim">Dia concluído</span><span className="font-mono text-brass">{pct}%</span></div>
           <Progress value={pct} height={8} />
         </div>
@@ -2640,16 +2644,16 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
             <div><p className="text-xs text-faint uppercase tracking-widest">Agenda de hoje</p><p className="text-dim text-xs mt-1">Tarefas ordenadas pelo horário.</p></div>
             <button className="text-xs text-brass" onClick={() => setView("tasks")}>Abrir tarefas</button>
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2.5 md:gap-2">
             {allTasksToday.length === 0 && <p className="text-dim text-sm py-3">Seu dia ainda não tem tarefas. Adicione uma prioridade para transformar esta área na sua agenda de execução.</p>}
             {allTasksToday.slice(0, 7).map((task) => {
               const done = taskDoneOnDate(task, t);
               return (
-                <div key={task.id} className="surface-2 rounded-xl p-3 flex items-center gap-3">
-                  <span className="font-mono text-xs text-brass w-11 shrink-0">{task.taskTime || "—"}</span>
-                  {done ? <CheckCircle2 size={16} className="text-moss" /> : <Circle size={16} className="text-faint" />}
+                <div key={task.id} className="surface-2 rounded-xl p-3.5 md:p-3 flex items-center gap-3.5 md:gap-3">
+                  <span className="font-mono text-[13px] md:text-xs text-brass w-11 shrink-0">{task.taskTime || "—"}</span>
+                  {done ? <CheckCircle2 size={16} className="text-moss shrink-0" /> : <Circle size={16} className="text-faint shrink-0" />}
                   <div className="flex-1 min-w-0">
-                    <span className="text-sm break-words block" style={{ textDecoration: done ? "line-through" : "none", color: done ? "var(--text-dim)" : "var(--text)" }}>{task.title}</span>
+                    <span className="text-[15px] md:text-sm break-words block" style={{ textDecoration: done ? "line-through" : "none", color: done ? "var(--text-dim)" : "var(--text)" }}>{task.title}</span>
                     {(task.description || (task.subtasks || []).length > 0) && (
                       <p className="text-[9px] text-faint mt-0.5">
                         {task.description ? "com descrição" : ""}
@@ -2669,13 +2673,13 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
             <div><p className="text-xs text-faint uppercase tracking-widest">Rotina pendente</p><p className="text-dim text-xs mt-1">Hábitos que ainda dependem de você hoje.</p></div>
             <button className="text-xs text-brass" onClick={() => setView("habits")}>Abrir hábitos</button>
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2.5 md:gap-2">
             {pendingHabits.length === 0 && <p className="text-moss text-sm py-3">Hábitos de hoje concluídos.</p>}
             {pendingHabits.slice(0, 7).map((habit) => (
-              <button key={habit.id} onClick={() => toggleHabit(habit.id, t)} className="surface-2 rounded-xl p-3 flex items-center gap-3 text-left">
+              <button key={habit.id} onClick={() => toggleHabit(habit.id, t)} className="surface-2 interactive rounded-xl p-3.5 md:p-3 flex items-center gap-3.5 md:gap-3 text-left">
                 <Circle size={16} className="text-faint shrink-0" />
-                <span className="text-sm flex-1 min-w-0 break-words">{habit.name}</span>
-                <span className="chip text-[9px] shrink-0">{catLabel(habit.category)}</span>
+                <span className="text-[15px] md:text-sm flex-1 min-w-0 break-words">{habit.name}</span>
+                <span className="chip text-[10px] md:text-[9px] shrink-0">{catLabel(habit.category)}</span>
               </button>
             ))}
           </div>
@@ -2854,8 +2858,8 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
       </div>
 
       <div>
-        <p className="text-xs text-faint uppercase tracking-widest mb-2">Resumo rápido</p>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <p className="text-xs text-faint uppercase tracking-widest mb-2.5 md:mb-2">Resumo rápido</p>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3.5 md:gap-3">
           <StatMini label="Hábitos" value={`${habitsDone}/${validHabitsToday.length}`} />
           <StatMini label="Tarefas" value={`${tasksDoneToday}/${allTasksToday.length}`} />
           <StatMini label="Treino" value={workoutToday ? "Concluído" : "Pendente"} />
@@ -13530,7 +13534,6 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
 
   const recurringItems = profile?.financeRecurring || [];
   const currentMonthKey = today().slice(0, 7);
-  const isPastMonth = selectedMonth < currentMonthKey;
 
   const daysInMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate();
   const isCurrentMonth = selectedMonth === currentMonthKey;
@@ -13600,7 +13603,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
     recurring: profile?.financeRecurring,
     monthlyLimit,
   });
-  const { projectedIn, projectedOut, projectedBalance, availableToSpend, futureRecurringOut } = projection;
+  const { projectedBalance, availableToSpend } = projection;
 
   const financialGoals = (goals || []).filter((g) => g.type === "financeira" && !g.completed);
 
@@ -14222,39 +14225,6 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
             </div>
           )}
 
-          <div className="finance-month-close surface glass-panel rounded-2xl p-4 md:p-5">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[10px] text-faint uppercase tracking-widest">
-                  {isPastMonth ? "Fechamento do mês" : "Resumo até agora"}
-                </p>
-                <p className="text-xs md:text-sm leading-relaxed mt-2 break-words">
-                  Você recebeu <span className="text-moss">{money(monthIn)}</span>, gastou <span className="text-ember">{money(monthOut)}</span>
-                  {monthBalance >= 0
-                    ? <> e ficou com <span className="text-moss">{money(monthBalance)}</span> de saldo.</>
-                    : <> e ficou <span className="text-ember">{money(Math.abs(monthBalance))}</span> negativo.</>}
-                </p>
-                {topCategory && (
-                  <p className="text-[10px] md:text-xs text-dim mt-1.5">
-                    Maior categoria: {topCategory.category} · {money(topCategory.total)}.
-                  </p>
-                )}
-              </div>
-
-              {isPro && (
-                <div className="surface-2 rounded-xl p-3 md:min-w-[230px]">
-                  <p className="text-[9px] text-faint uppercase tracking-widest">Projeção</p>
-                  <p className={`font-display text-lg md:text-xl mt-1 ${projectedBalance >= 0 ? "text-moss" : "text-ember"}`}>
-                    {projectedBalance >= 0 ? money(projectedBalance) : `-${money(Math.abs(projectedBalance))}`}
-                  </p>
-                  <p className="text-[9px] text-faint mt-0.5">
-                    ritmo atual + contas pendentes
-                    {isCurrentMonth && elapsedDays < 5 ? " · início do mês, estimativa ainda instável" : ""}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
         </>
       )}
 
@@ -14388,7 +14358,9 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
                 </div>
               )}
 
-              {filteredLaunches.map((tx, index) => (
+              {filteredLaunches.map((tx, index) => {
+                const RowIcon = tx.type === "entrada" ? ArrowUpRight : (FIN_CATEGORY_ICONS[tx.category] || MoreHorizontal);
+                return (
                 <div
                   key={tx.id}
                   className={`finance-transaction-row finance-history-row p-3 md:p-4 flex flex-col sm:flex-row sm:items-center gap-2.5 md:gap-3 text-sm ${index === 0 ? "is-latest" : ""}`}
@@ -14396,7 +14368,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
                 >
                   <div className="finance-history-marker shrink-0">
                     <div className={`finance-history-icon ${tx.type === "entrada" ? "text-moss" : "text-ember"}`}>
-                      {tx.type === "entrada" ? <ArrowUpRight size={15} /> : <ArrowDownRight size={15} />}
+                      <RowIcon size={15} />
                     </div>
                     <span className="finance-history-line" />
                   </div>
@@ -14426,7 +14398,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
 
                         <div className="finance-history-value shrink-0 text-right">
                           <p
-                            className="font-mono text-xs md:text-sm whitespace-nowrap"
+                            className="font-mono text-sm md:text-base font-semibold whitespace-nowrap"
                             style={{ color: tx.type === "entrada" ? "var(--moss)" : "var(--ember)" }}
                           >
                             {tx.type === "entrada" ? "+" : "-"}{money(tx.value)}
@@ -14448,7 +14420,8 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </>
@@ -14482,52 +14455,30 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
               />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4">
-              <div className="surface glass-panel rounded-2xl p-4 md:p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] text-faint uppercase tracking-widest">Saúde financeira</p>
-                    <div className="flex items-end gap-2 mt-1.5">
-                      <p className="font-display text-2xl md:text-3xl">{financialHealth}</p>
-                      <span className="chip mb-1">{financialHealthLabel}</span>
-                    </div>
-                  </div>
-                  <Gauge size={19} className="text-brass" />
-                </div>
-                <Progress value={financialHealth} height={6} />
-                <p className="text-[10px] md:text-xs text-dim mt-2 leading-relaxed">
-                  {!hasFinanceData
-                    ? "Registre entradas e saídas para gerar uma leitura."
-                    : monthBalance < 0
-                      ? "O principal ponto de atenção é o saldo negativo deste mês."
-                      : monthlyLimitUsedPct >= 100
-                        ? "Seu saldo está positivo, mas o limite mensal foi ultrapassado."
-                        : savingsPct >= 20
-                          ? "Seu saldo e sua capacidade de poupança estão em uma faixa saudável."
-                          : "Seu saldo está positivo, mas ainda há espaço para aumentar a sobra do mês."}
-                </p>
-                <p className="text-[9px] text-faint mt-1">Poupança 35% · Orçamento 30% · Saldo 20% · Limite 15%</p>
-              </div>
-
-              <div className="surface glass-panel rounded-2xl p-4 md:p-5" style={{ borderColor: "var(--brass-dim)" }}>
-                <p className="text-[10px] text-faint uppercase tracking-widest">Previsão transparente</p>
-                <p className={`font-display text-2xl md:text-3xl mt-1.5 ${projectedBalance >= 0 ? "text-moss" : "text-ember"}`}>
-                  {projectedBalance >= 0 ? money(projectedBalance) : `-${money(Math.abs(projectedBalance))}`}
-                </p>
-                <p className="text-[10px] md:text-xs text-dim mt-2 leading-relaxed">
-                  Extrapola seu ritmo de gastos variáveis a partir de hoje, soma recorrências e contas pendentes deste mês. No início do mês a extrapolação é mais conservadora, para não distorcer o número.
-                </p>
-                <div className="grid grid-cols-2 gap-2 mt-3">
-                  <div className="surface-2 rounded-xl p-2.5 min-w-0">
-                    <p className="text-[9px] text-faint uppercase tracking-widest">Pode gastar</p>
-                    <p className="font-mono text-xs md:text-sm mt-1 truncate">{money(availableToSpend)}</p>
-                  </div>
-                  <div className="surface-2 rounded-xl p-2.5 min-w-0">
-                    <p className="text-[9px] text-faint uppercase tracking-widest">Fixos pendentes</p>
-                    <p className="font-mono text-xs md:text-sm mt-1 truncate">{money(futureRecurringOut)}</p>
+            <div className="surface glass-panel rounded-2xl p-4 md:p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] text-faint uppercase tracking-widest">Saúde financeira</p>
+                  <div className="flex items-end gap-2 mt-1.5">
+                    <p className="font-display text-2xl md:text-3xl">{financialHealth}</p>
+                    <span className="chip mb-1">{financialHealthLabel}</span>
                   </div>
                 </div>
+                <Gauge size={19} className="text-brass" />
               </div>
+              <Progress value={financialHealth} height={6} />
+              <p className="text-[10px] md:text-xs text-dim mt-2 leading-relaxed">
+                {!hasFinanceData
+                  ? "Registre entradas e saídas para gerar uma leitura."
+                  : monthBalance < 0
+                    ? "O principal ponto de atenção é o saldo negativo deste mês."
+                    : monthlyLimitUsedPct >= 100
+                      ? "Seu saldo está positivo, mas o limite mensal foi ultrapassado."
+                      : savingsPct >= 20
+                        ? "Seu saldo e sua capacidade de poupança estão em uma faixa saudável."
+                        : "Seu saldo está positivo, mas ainda há espaço para aumentar a sobra do mês."}
+              </p>
+              <p className="text-[9px] text-faint mt-1">Poupança 35% · Orçamento 30% · Saldo 20% · Limite 15%</p>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4">
@@ -16711,7 +16662,6 @@ function ConstancceApp() {
   const routineRetryTimerRef = useRef(null);
   const routineRevisionRef = useRef({});
   const routineVisibleRef = useRef(null);
-  const mobileSwipeRef = useRef(null);
   const appMainRef = useRef(null);
   const syncInFlightRef = useRef(false);
   const retrySyncTimer = useRef(null);
@@ -19746,41 +19696,7 @@ function ConstancceApp() {
     .filter((group) => group.items.length > 0);
   const visibleMobileMain = visibleNav.slice(0, 5).map((item) => item.id);
   const visibleMobileMore = visibleNav.slice(5);
-  const mobileSwipeOrder = visibleNav.map((item) => item.id);
   const accentClass = `accent-${isPro ? (profile?.accentTheme || "green") : "green"}`;
-
-  const handleMobileSwipeStart = (event) => {
-    if (typeof window === "undefined" || window.innerWidth >= 768) return;
-    const target = event.target;
-    if (target?.closest?.("input, textarea, select, button, [data-no-swipe], .overflow-x-auto")) {
-      mobileSwipeRef.current = null;
-      return;
-    }
-    const touch = event.touches?.[0];
-    if (!touch) return;
-    mobileSwipeRef.current = { x: touch.clientX, y: touch.clientY, at: Date.now() };
-  };
-
-  const handleMobileSwipeEnd = (event) => {
-    const start = mobileSwipeRef.current;
-    mobileSwipeRef.current = null;
-    if (!start || typeof window === "undefined" || window.innerWidth >= 768) return;
-
-    const touch = event.changedTouches?.[0];
-    if (!touch) return;
-    const dx = touch.clientX - start.x;
-    const dy = touch.clientY - start.y;
-    if (Math.abs(dx) < 58 || Math.abs(dx) < Math.abs(dy) * 1.2 || Date.now() - start.at > 850) return;
-
-    const currentIndex = mobileSwipeOrder.indexOf(view);
-    if (currentIndex < 0) return;
-    const nextIndex = dx < 0 ? currentIndex + 1 : currentIndex - 1;
-    const nextView = mobileSwipeOrder[nextIndex];
-    if (nextView) {
-      setView(nextView);
-      setShowMore(false);
-    }
-  };
 
   const renderCurrentView = () => {
     switch (view) {
@@ -19863,8 +19779,6 @@ function ConstancceApp() {
         <main
           ref={appMainRef}
           className="app-main flex-1 min-w-0 px-3 pt-1 md:ml-64 md:px-8 md:pt-8 pb-24 md:pb-10 w-full overflow-x-hidden md:h-screen md:overflow-y-auto"
-          onTouchStart={handleMobileSwipeStart}
-          onTouchEnd={handleMobileSwipeEnd}
         ><div className={`${view === "tasks" ? "max-w-[1280px]" : "max-w-4xl"} mx-auto`}>
           <div key={view} className="screen-in">
             <Suspense
