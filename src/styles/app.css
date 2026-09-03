@@ -53,6 +53,26 @@
   .font-mono{ font-family:'Poppins',sans-serif; font-variant-numeric:tabular-nums; font-weight:600; }
   .surface{ background:linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, white 4%), var(--surface)); border:1px solid var(--border); border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.16); transition:border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease; }
   .surface-2{ background:color-mix(in srgb, var(--surface-2) 96%, white 4%); border:1px solid var(--border-soft); border-radius:16px; transition:border-color 180ms ease, background 180ms ease, transform 180ms ease; }
+  /* Vidro fosco reutilizável — redesenho "futurista". Use junto de .surface/.surface-2
+     (ex.: className="surface glass-panel") para herdar padding/raio e só trocar o fundo. */
+  .glass-panel{
+    background:color-mix(in srgb, var(--surface-2) 52%, transparent) !important;
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
+  }
+  .glass-panel-strong{
+    position:relative;
+    overflow:hidden;
+    border-width:1px !important;
+    border-style:solid !important;
+    background:
+      radial-gradient(480px 260px at 100% 0%, color-mix(in srgb, var(--brass) 15%, transparent), transparent 70%),
+      linear-gradient(160deg, color-mix(in srgb, var(--surface-2) 62%, transparent), color-mix(in srgb, var(--surface) 60%, transparent)) !important;
+    border-color:color-mix(in srgb, var(--brass) 22%, var(--border)) !important;
+    backdrop-filter:blur(20px) saturate(150%);
+    -webkit-backdrop-filter:blur(20px) saturate(150%);
+    box-shadow:0 26px 55px rgba(0,0,0,.32), inset 0 1px 0 color-mix(in srgb, white 6%, transparent) !important;
+  }
   .hairline{ border-color:var(--border); }
   .text-dim{ color:var(--text-dim); }
   .text-faint{ color:var(--text-faint); }
@@ -162,9 +182,6 @@
   }
   .finance-assistant .chip:hover{
     border-color:color-mix(in srgb, var(--brass) 35%, var(--border));
-  }
-  .finance-section-tabs{
-    background:color-mix(in srgb, var(--surface) 94%, var(--bg));
   }
   .finance-tab-button{
     min-height:38px;
@@ -287,15 +304,6 @@
     white-space:nowrap;
   }
 
-  .diet-section-tabs{
-    background:color-mix(in srgb, var(--surface) 93%, var(--bg));
-  }
-  .diet-day-hero{
-    background:
-      radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--moss) 8%, transparent), transparent 34%),
-      linear-gradient(145deg, color-mix(in srgb, var(--surface) 97%, var(--brass) 1%), var(--surface));
-    border-color:color-mix(in srgb, var(--moss) 16%, var(--border));
-  }
   .diet-library-command{
     background:
       radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--brass) 9%, transparent), transparent 34%),
@@ -769,7 +777,9 @@
     transform:translateY(-2px);
   }
   .kanban-column{
-    background:color-mix(in srgb, var(--surface) 88%, var(--bg));
+    background:color-mix(in srgb, var(--surface-2) 48%, transparent);
+    backdrop-filter:blur(16px) saturate(140%);
+    -webkit-backdrop-filter:blur(16px) saturate(140%);
   }
   .kanban-card{
     cursor:grab;
@@ -825,25 +835,78 @@
   .task-week-subtasks{
     white-space:nowrap;
   }
-  .task-section-tabs{
-    background:color-mix(in srgb, var(--surface) 93%, var(--bg));
+  .task-glass-tabs{
+    position:relative;
+    background:color-mix(in srgb, var(--surface-2) 55%, transparent);
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
+    border:1px solid var(--border-soft);
+    box-shadow:0 10px 26px rgba(0,0,0,.16);
+  }
+  .task-tab-button{
+    position:relative;
+    background:transparent;
+    border:1px solid transparent;
+    color:var(--text-dim);
+    transition:color .2s ease, background .25s ease, border-color .25s ease, box-shadow .25s ease;
+  }
+  .task-tab-active{
+    background:linear-gradient(135deg, color-mix(in srgb, var(--brass) 90%, white 10%), var(--brass)) !important;
+    border-color:color-mix(in srgb, var(--brass) 55%, transparent) !important;
+    color:#141208 !important;
+    font-weight:700;
+    box-shadow:0 8px 20px color-mix(in srgb, var(--brass) 32%, transparent);
   }
   .task-day-command{
+    position:relative;
+    overflow:hidden;
+    border-radius:18px;
+    border:1px solid color-mix(in srgb, var(--brass) 24%, var(--border));
     background:
-      radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--brass) 9%, transparent), transparent 34%),
-      linear-gradient(145deg, color-mix(in srgb, var(--surface) 96%, var(--brass) 1%), var(--surface));
-    border-color:color-mix(in srgb, var(--brass) 23%, var(--border));
+      radial-gradient(480px 260px at 100% 0%, color-mix(in srgb, var(--brass) 15%, transparent), transparent 70%),
+      linear-gradient(160deg, color-mix(in srgb, var(--surface-2) 62%, transparent), color-mix(in srgb, var(--surface) 60%, transparent));
+    backdrop-filter:blur(20px) saturate(150%);
+    -webkit-backdrop-filter:blur(20px) saturate(150%);
+    box-shadow:0 26px 55px rgba(0,0,0,.32), inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
   }
   .task-next-action{
     background:
-      radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--brass) 12%, transparent), transparent 38%),
-      color-mix(in srgb, var(--surface) 96%, var(--bg));
+      radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--brass) 16%, transparent), transparent 38%),
+      color-mix(in srgb, var(--surface-2) 55%, transparent);
     border-color:color-mix(in srgb, var(--brass) 32%, var(--border));
     box-shadow:0 14px 34px rgba(0,0,0,.14);
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
   }
   .task-priority-engine{
-    background:
-      linear-gradient(145deg, color-mix(in srgb, var(--surface) 96%, var(--brass) 1%), var(--surface));
+    background:color-mix(in srgb, var(--surface-2) 50%, transparent);
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
+  }
+  .radial-progress{
+    position:relative;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .radial-progress-arc{
+    transition:stroke-dashoffset 500ms ease;
+  }
+  .radial-progress-center{
+    position:absolute;
+    text-align:center;
+  }
+  .radial-progress-value{
+    display:block;
+    font-size:22px;
+  }
+  .radial-progress-label{
+    display:block;
+    font-size:9px;
+    text-transform:uppercase;
+    letter-spacing:.1em;
+    color:var(--text-faint);
+    margin-top:2px;
   }
   .task-priority-item{
     transition:transform .13s ease, border-color .13s ease, background .13s ease;
@@ -854,8 +917,10 @@
     border-color:color-mix(in srgb, var(--brass) 28%, var(--border));
   }
   .task-attention{
-    background:color-mix(in srgb, var(--ember) 4.5%, var(--surface));
+    background:color-mix(in srgb, var(--ember) 6%, color-mix(in srgb, var(--surface-2) 50%, transparent));
     border-color:color-mix(in srgb, var(--ember) 24%, var(--border));
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
   }
   .task-attention-row{
     border:1px solid color-mix(in srgb, var(--ember) 10%, var(--border-soft));
@@ -912,7 +977,9 @@
     width:100%;
   }
   .task-modern-board .kanban-column{
-    background:color-mix(in srgb, var(--surface) 90%, var(--bg));
+    background:color-mix(in srgb, var(--surface-2) 48%, transparent);
+    backdrop-filter:blur(16px) saturate(140%);
+    -webkit-backdrop-filter:blur(16px) saturate(140%);
     min-width:0;
   }
   .task-modern-board .task-board-card{
@@ -936,6 +1003,9 @@
   .task-planning-day{
     align-self:start;
     border-color:var(--border-soft);
+    background:color-mix(in srgb, var(--surface-2) 48%, transparent);
+    backdrop-filter:blur(16px) saturate(140%);
+    -webkit-backdrop-filter:blur(16px) saturate(140%);
   }
   .task-unscheduled{
     border-style:dashed;
@@ -969,6 +1039,9 @@
   .kanban-card-dragging{ opacity:.58; transform:rotate(1deg) scale(.985); }
   .kanban-move-select{ background:var(--surface); border:1px solid var(--border); color:var(--text); }
   .workout-template-card{
+    background:color-mix(in srgb, var(--surface-2) 52%, transparent);
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
     transition:transform .14s ease, opacity .14s ease, border-color .14s ease, box-shadow .14s ease;
   }
   .workout-drag-handle{
@@ -1858,14 +1931,21 @@
   .workout-history-period-summary > *{
     border:1px solid var(--border-soft);
   }
-  .workout-section-tabs{
-    background:color-mix(in srgb, var(--surface) 92%, var(--bg));
-  }
   .workout-today-hero{
+    position:relative;
+    overflow:hidden;
     background:
-      radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--brass) 10%, transparent), transparent 34%),
-      linear-gradient(145deg, color-mix(in srgb, var(--surface) 95%, var(--brass) 1.5%), var(--surface));
+      radial-gradient(480px 260px at 100% 0%, color-mix(in srgb, var(--brass) 15%, transparent), transparent 70%),
+      linear-gradient(160deg, color-mix(in srgb, var(--surface-2) 62%, transparent), color-mix(in srgb, var(--surface) 60%, transparent));
     border-color:color-mix(in srgb, var(--brass) 28%, var(--border));
+    backdrop-filter:blur(20px) saturate(150%);
+    -webkit-backdrop-filter:blur(20px) saturate(150%);
+    box-shadow:0 26px 55px rgba(0,0,0,.32), inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+  }
+  .workout-week-strip{
+    background:color-mix(in srgb, var(--surface-2) 50%, transparent);
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
   }
   .workout-week-day{
     min-width:0;
@@ -1910,9 +1990,10 @@
     position:sticky;
     top:44px;
     z-index:4;
-    backdrop-filter:blur(14px);
-    background:color-mix(in srgb, var(--surface-2) 94%, transparent);
-    border:1px solid var(--border);
+    backdrop-filter:blur(20px) saturate(150%);
+    -webkit-backdrop-filter:blur(20px) saturate(150%);
+    background:color-mix(in srgb, var(--surface-2) 60%, transparent);
+    border:1px solid color-mix(in srgb, var(--brass) 20%, var(--border));
     box-shadow:0 10px 20px color-mix(in srgb, var(--bg) 28%, transparent);
   }
   .workout-load-input{
@@ -1971,9 +2052,6 @@
   .calendar-modern{
     min-width:0;
   }
-  .calendar-mode-tabs{
-    background:color-mix(in srgb, var(--surface) 93%, var(--bg));
-  }
   .calendar-filter-scroll{
     max-width:100%;
   }
@@ -1982,15 +2060,21 @@
     flex-shrink:0;
   }
   .calendar-period-nav{
-    background:
-      linear-gradient(145deg, color-mix(in srgb, var(--surface) 96%, var(--brass) 1%), var(--surface));
+    background:color-mix(in srgb, var(--surface-2) 55%, transparent);
     border-color:color-mix(in srgb, var(--brass) 18%, var(--border));
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
   }
   .calendar-day-summary{
+    position:relative;
+    overflow:hidden;
     background:
-      radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--brass) 9%, transparent), transparent 36%),
-      linear-gradient(145deg, color-mix(in srgb, var(--surface) 96%, var(--brass) 1%), var(--surface));
+      radial-gradient(480px 260px at 100% 0%, color-mix(in srgb, var(--brass) 15%, transparent), transparent 70%),
+      linear-gradient(160deg, color-mix(in srgb, var(--surface-2) 62%, transparent), color-mix(in srgb, var(--surface) 60%, transparent));
     border-color:color-mix(in srgb, var(--brass) 23%, var(--border));
+    backdrop-filter:blur(20px) saturate(150%);
+    -webkit-backdrop-filter:blur(20px) saturate(150%);
+    box-shadow:0 26px 55px rgba(0,0,0,.32), inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
   }
   .calendar-next-action{
     border:1px solid color-mix(in srgb, var(--brass) 18%, var(--border-soft));
@@ -2014,6 +2098,9 @@
   }
   .calendar-week-column{
     min-width:0;
+    background:color-mix(in srgb, var(--surface-2) 48%, transparent);
+    backdrop-filter:blur(16px) saturate(140%);
+    -webkit-backdrop-filter:blur(16px) saturate(140%);
     transition:border-color .14s ease, transform .14s ease, background .14s ease;
   }
   .calendar-week-column:hover{
@@ -2038,6 +2125,9 @@
   }
   .calendar-month-shell{
     min-width:0;
+    background:color-mix(in srgb, var(--surface-2) 50%, transparent);
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
   }
   .calendar-dot{
     display:inline-block;
@@ -2910,8 +3000,9 @@
   z-index:2;
   background:var(--surface);
   min-width:180px;
-  max-width:220px;
+  max-width:260px;
   padding:6px 8px;
+  vertical-align:middle;
 }
 .habit-grid-cat-dot{
   width:7px;

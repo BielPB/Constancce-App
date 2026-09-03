@@ -497,6 +497,8 @@ function goalMilestonesReached(goal) {
 }
 
 function moduleEnabled(profile, id) {
+  // Relatórios fica só no código (uso interno) — nunca aparece na navegação do usuário.
+  if (id === "reports") return false;
   if (["dashboard", "profile", "notifications"].includes(id)) return true;
   return profile?.moduleVisibility?.[id] !== false;
 }
@@ -1600,6 +1602,13 @@ const dietFoodMeasures = (food) => {
   return [{ label: `${base}${food?.unit || "g"}`, amount: base }];
 };
 
+// Medidas prontas + opção "Personalizado (g)" para o usuário digitar a quantidade
+// exata em gramas, sem precisar calcular múltiplos de uma porção padrão.
+const dietFoodMeasureOptions = (food) => [
+  ...dietFoodMeasures(food),
+  { label: "Personalizado (g)", amount: 1, custom: true },
+];
+
 const dietNutrientsForAmount = (food, amount) => {
   const base = Math.max(0.1, Number(food?.baseQuantity || 100));
   const factor = Math.max(0, Number(amount || 0)) / base;
@@ -1852,6 +1861,37 @@ function ConsistencyHeatmap({ days }) {
           />
         );
       })}
+    </div>
+  );
+}
+
+function RadialProgress({ value = 0, size = 132, strokeWidth = 10, label, color = "var(--brass)" }) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(100, Number(value) || 0));
+  const offset = circumference * (1 - clamped / 100);
+
+  return (
+    <div className="radial-progress shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--border-soft)" strokeWidth={strokeWidth} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          className="radial-progress-arc"
+        />
+      </svg>
+      <div className="radial-progress-center">
+        <span className="radial-progress-value font-display">{Math.round(clamped)}%</span>
+        {label && <span className="radial-progress-label">{label}</span>}
+      </div>
     </div>
   );
 }
@@ -3112,7 +3152,7 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                             <span className="habit-grid-cat-dot shrink-0" style={{ background: catColor(habit.category) }} />
                             <div className="min-w-0 flex-1">
                               <p
-                                className="text-xs md:text-sm font-medium truncate"
+                                className="text-xs md:text-sm font-medium break-words leading-snug"
                                 style={{ textDecoration: isPaused ? "line-through" : "none" }}
                                 title={habit.name}
                               >
@@ -4273,7 +4313,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
         Use Hoje para o que precisa ser feito agora e Planejamento para organizar os próximos dias. Priorize a próxima ação, não uma lista infinita.
       </FirstVisitTip>
 
-      <div className="task-section-tabs surface rounded-2xl p-1 grid grid-cols-3 gap-1">
+      <div className="task-section-tabs task-glass-tabs rounded-2xl p-1 grid grid-cols-3 gap-1">
         {[
           ["today", "Hoje"],
           ["board", "Quadro"],
@@ -4281,13 +4321,8 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
         ].map(([id, label]) => (
           <button
             key={id}
-            className="task-tab-button rounded-xl py-2 text-[10px] sm:text-xs md:text-sm font-medium min-w-0"
+            className={`task-tab-button rounded-xl py-2 text-[10px] sm:text-xs md:text-sm font-medium min-w-0 ${section === id ? "task-tab-active" : ""}`}
             onClick={() => setSection(id)}
-            style={{
-              background: section === id ? "var(--surface-2)" : "transparent",
-              border: `1px solid ${section === id ? "var(--brass-dim)" : "transparent"}`,
-              color: section === id ? "var(--text)" : "var(--text-dim)",
-            }}
           >
             {label}
           </button>
@@ -4296,9 +4331,9 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
 
       {section === "today" && (
         <>
-          <div className="task-day-command surface rounded-2xl p-4 md:p-5">
-            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
-              <div className="min-w-0">
+          <div className="task-day-command rounded-2xl p-4 md:p-6">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+              <div className="min-w-0 flex-1">
                 <p className="text-[9px] text-faint uppercase tracking-widest">Seu dia</p>
                 <div className="flex flex-wrap items-end gap-x-3 gap-y-1 mt-1">
                   <p className="font-display text-2xl md:text-3xl">
@@ -4308,32 +4343,27 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                     tarefas concluídas
                   </p>
                 </div>
+                {todayEstimatedMinutes > 0 && (
+                  <p className="text-[10px] text-faint mt-1">~{taskEstimatedLabel(todayEstimatedMinutes)} planejados</p>
+                )}
 
-                <div className="max-w-xl mt-3">
-                  <Progress value={todayCompletionPct} height={6} />
-                  <div className="flex flex-wrap items-center justify-between gap-2 mt-2 text-[10px] text-faint">
-                    <span>{todayCompletionPct}% do dia</span>
-                    {todayEstimatedMinutes > 0 && (
-                      <span>~{taskEstimatedLabel(todayEstimatedMinutes)} planejados</span>
-                    )}
+                <div className="task-day-kpis grid grid-cols-3 gap-2 mt-4 max-w-md">
+                  <div className="surface-2 rounded-xl p-3 min-w-0">
+                    <p className="text-[9px] text-faint uppercase tracking-widest">Pendentes</p>
+                    <p className="font-display text-xl mt-1">{todayPending.length}</p>
+                  </div>
+                  <div className="surface-2 rounded-xl p-3 min-w-0">
+                    <p className="text-[9px] text-faint uppercase tracking-widest">Prioridade</p>
+                    <p className="font-display text-xl mt-1">{todayPriority.length}</p>
+                  </div>
+                  <div className="surface-2 rounded-xl p-3 min-w-0">
+                    <p className="text-[9px] text-faint uppercase tracking-widest">Atrasadas</p>
+                    <p className={`font-display text-xl mt-1 ${overdueTasks.length ? "text-ember" : ""}`}>{overdueTasks.length}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="task-day-kpis grid grid-cols-3 gap-2 w-full lg:w-auto lg:min-w-[390px]">
-                <div className="surface-2 rounded-xl p-3 min-w-0">
-                  <p className="text-[9px] text-faint uppercase tracking-widest">Pendentes</p>
-                  <p className="font-display text-xl mt-1">{todayPending.length}</p>
-                </div>
-                <div className="surface-2 rounded-xl p-3 min-w-0">
-                  <p className="text-[9px] text-faint uppercase tracking-widest">Prioridade</p>
-                  <p className="font-display text-xl mt-1">{todayPriority.length}</p>
-                </div>
-                <div className="surface-2 rounded-xl p-3 min-w-0">
-                  <p className="text-[9px] text-faint uppercase tracking-widest">Atrasadas</p>
-                  <p className={`font-display text-xl mt-1 ${overdueTasks.length ? "text-ember" : ""}`}>{overdueTasks.length}</p>
-                </div>
-              </div>
+              <RadialProgress value={todayCompletionPct} label="do dia" size={128} strokeWidth={9} />
             </div>
           </div>
 
@@ -4626,7 +4656,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                   <div className="flex items-center gap-2 min-w-0">
                     <span
                       className="w-2 h-2 rounded-full shrink-0"
-                      style={{ background: column.color }}
+                      style={{ background: column.color, boxShadow: `0 0 8px ${column.color}` }}
                     />
                     <h3 className="font-medium text-sm truncate">{column.label}</h3>
                   </div>
@@ -5602,7 +5632,7 @@ function CalendarView({
         )}
       </div>
 
-      <div className="calendar-agenda surface rounded-2xl p-4 md:p-5 mt-3">
+      <div className="calendar-agenda surface glass-panel rounded-2xl p-4 md:p-5 mt-3">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div>
             <p className="text-[10px] text-faint uppercase tracking-widest">Agenda</p>
@@ -5787,7 +5817,7 @@ function CalendarView({
         </button>
       </div>
 
-      <div className="calendar-mode-tabs surface rounded-2xl p-1 grid grid-cols-3 gap-1">
+      <div className="calendar-mode-tabs task-glass-tabs rounded-2xl p-1 grid grid-cols-3 gap-1">
         {[
           ["today", "Hoje"],
           ["week", "Semana"],
@@ -5795,13 +5825,8 @@ function CalendarView({
         ].map(([id, label]) => (
           <button
             key={id}
-            className="calendar-mode-tab rounded-xl py-2 text-[10px] sm:text-xs md:text-sm font-medium"
+            className={`calendar-mode-tab task-tab-button rounded-xl py-2 text-[10px] sm:text-xs md:text-sm font-medium ${mode === id ? "task-tab-active" : ""}`}
             onClick={() => setMode(id)}
-            style={{
-              background: mode === id ? "var(--surface-2)" : "transparent",
-              border: `1px solid ${mode === id ? "var(--brass-dim)" : "transparent"}`,
-              color: mode === id ? "var(--text)" : "var(--text-dim)",
-            }}
           >
             {label}
           </button>
@@ -8962,7 +8987,7 @@ function WorkoutsView({
         Cadastre seu treino uma vez, registre cargas e séries durante a execução e acompanhe como seu desempenho muda com o tempo.
       </FirstVisitTip>
 
-      <div className="workout-section-tabs surface rounded-2xl p-1 grid grid-cols-3 gap-1">
+      <div className="workout-section-tabs task-glass-tabs rounded-2xl p-1 grid grid-cols-3 gap-1">
         {[
           ["today", "Hoje"],
           ["library", "Meus treinos"],
@@ -8970,13 +8995,8 @@ function WorkoutsView({
         ].map(([id, label]) => (
           <button
             key={id}
-            className="rounded-xl py-2 text-xs md:text-sm"
+            className={`task-tab-button rounded-xl py-2 text-xs md:text-sm ${section === id ? "task-tab-active" : ""}`}
             onClick={() => setSection(id)}
-            style={{
-              background: section === id ? "var(--surface-2)" : "transparent",
-              border: `1px solid ${section === id ? "var(--brass-dim)" : "transparent"}`,
-              color: section === id ? "var(--text)" : "var(--text-dim)",
-            }}
           >
             {label}
           </button>
@@ -9195,7 +9215,7 @@ function WorkoutsView({
           </div>
 
           {favoriteExercises.length > 0 && (
-            <div className="surface rounded-2xl p-4">
+            <div className="surface glass-panel rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Star size={14} className="text-brass" fill="currentColor" />
                 <p className="text-[10px] text-faint uppercase tracking-widest">Exercícios favoritos</p>
@@ -9437,7 +9457,7 @@ function WorkoutsView({
       {section === "evolution" && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="surface rounded-2xl p-4 md:p-5">
+            <div className="surface glass-panel rounded-2xl p-4 md:p-5">
               <p className="text-[10px] text-faint uppercase tracking-widest">Frequência muscular · 7 dias</p>
               {muscleWeekGrid.length > 0 ? (
                 <div className="habit-grid-scroll mt-3">
@@ -9478,7 +9498,7 @@ function WorkoutsView({
               )}
             </div>
 
-            <div className="surface rounded-2xl p-4 md:p-5">
+            <div className="surface glass-panel rounded-2xl p-4 md:p-5">
               <p className="text-[10px] text-faint uppercase tracking-widest">Recordes de carga</p>
               <div className="flex flex-col gap-2 mt-3">
                 {records.length > 0 ? (
@@ -9502,7 +9522,7 @@ function WorkoutsView({
 
           {progressOptions.length > 0 && (
             isPro ? (
-              <div className="surface rounded-2xl p-4 md:p-5">
+              <div className="surface glass-panel rounded-2xl p-4 md:p-5">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                   <div>
                     <p className="text-xs text-faint uppercase tracking-widest">Progressão de carga</p>
@@ -10603,7 +10623,7 @@ function NutritionIntelligencePanel({ mealLog, profile, isPro, onUpgrade }) {
   };
 
   return (
-    <div className="diet-intelligence surface rounded-2xl p-4 md:p-5">
+    <div className="diet-intelligence surface glass-panel rounded-2xl p-4 md:p-5">
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
@@ -10731,7 +10751,7 @@ function MealForm({
     return matched.slice(0, query.trim() ? 80 : 40);
   }, [library, query]);
 
-  const measures = selected ? dietFoodMeasures(selected) : [];
+  const measures = selected ? dietFoodMeasureOptions(selected) : [];
   const activeMeasure = measures[measureIndex] || measures[0] || null;
   const consumedAmount = activeMeasure
     ? Math.max(0, Number(portionCount || 0)) * Number(activeMeasure.amount || 0)
@@ -10860,11 +10880,12 @@ function MealForm({
                 ))}
               </select>
             </Field>
-            <Field label="Quantidade">
+            <Field label={activeMeasure?.custom ? "Quantidade (g)" : "Quantidade"}>
               <input
                 type="number"
                 min="0.1"
-                step="0.1"
+                step={activeMeasure?.custom ? "1" : "0.1"}
+                placeholder={activeMeasure?.custom ? "Ex.: 137" : undefined}
                 className="w-full p-3 ring-focus"
                 value={portionCount}
                 onChange={(event) => setPortionCount(event.target.value)}
@@ -10904,7 +10925,7 @@ function MealForm({
 
 function DietMealEditModal({ meal, isPro, onSave, onClose }) {
   const sourceFood = meal?.foodSnapshot || null;
-  const sourceMeasures = sourceFood ? dietFoodMeasures(sourceFood) : [];
+  const sourceMeasures = sourceFood ? dietFoodMeasureOptions(sourceFood) : [];
   const initialMeasureIndex = Math.max(0, sourceMeasures.findIndex((item) => item.label === meal?.unit));
 
   const [mealType, setMealType] = useState(meal?.mealType || MEAL_TYPES[0]);
@@ -10978,8 +10999,15 @@ function DietMealEditModal({ meal, isPro, onSave, onClose }) {
               ))}
             </select>
           </Field>
-          <Field label="Quantidade">
-            <input type="number" min="0.1" step="0.1" className="w-full p-3 ring-focus" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+          <Field label={activeMeasure?.custom ? "Quantidade (g)" : "Quantidade"}>
+            <input
+              type="number"
+              min="0.1"
+              step={activeMeasure?.custom ? "1" : "0.1"}
+              className="w-full p-3 ring-focus"
+              value={quantity}
+              onChange={(event) => setQuantity(event.target.value)}
+            />
           </Field>
         </div>
       ) : (
@@ -11278,7 +11306,7 @@ function FoodView({
         Busque um alimento, informe a porção e adicione à refeição. O Constancce calcula calorias, proteínas, carboidratos e gorduras para você.
       </FirstVisitTip>
 
-      <div className="diet-section-tabs surface rounded-2xl p-1 grid grid-cols-3 gap-1">
+      <div className="diet-section-tabs task-glass-tabs rounded-2xl p-1 grid grid-cols-3 gap-1">
         {[
           ["today", "Hoje"],
           ["foods", "Alimentos"],
@@ -11286,13 +11314,8 @@ function FoodView({
         ].map(([id, label]) => (
           <button
             key={id}
-            className="rounded-xl py-2 text-[10px] sm:text-xs md:text-sm font-medium"
+            className={`task-tab-button rounded-xl py-2 text-[10px] sm:text-xs md:text-sm font-medium ${section === id ? "task-tab-active" : ""}`}
             onClick={() => setSection(id)}
-            style={{
-              background: section === id ? "var(--surface-2)" : "transparent",
-              border: `1px solid ${section === id ? "var(--brass-dim)" : "transparent"}`,
-              color: section === id ? "var(--text)" : "var(--text-dim)",
-            }}
           >
             {label}
           </button>
@@ -11301,37 +11324,44 @@ function FoodView({
 
       {section === "today" && (
         <>
-          <div className="diet-day-hero surface rounded-2xl p-4 md:p-5">
-            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-              <div>
+          <div className="diet-day-hero glass-panel-strong rounded-2xl p-4 md:p-6">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+              <div className="flex-1 min-w-0">
                 <p className="text-[10px] text-faint uppercase tracking-widest">Hoje</p>
                 <div className="flex items-end gap-2 mt-1">
                   <p className="font-display text-3xl md:text-4xl">{Math.round(totals.calories).toLocaleString("pt-BR")}</p>
                   <span className="text-dim text-sm mb-1">/ {targets.calories.toLocaleString("pt-BR")} kcal</span>
                 </div>
                 <p className="text-[10px] text-faint mt-1">{Math.round(remainingCalories).toLocaleString("pt-BR")} kcal restantes pela meta atual.</p>
+
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {yesterdayLog.length > 0 && (
+                    <button className="btn-ghost rounded-xl px-3 py-2 text-xs" onClick={repeatYesterday}>
+                      <Repeat2 size={12} className="inline mr-1" /> Repetir ontem
+                    </button>
+                  )}
+                  <button
+                    className="btn-ghost rounded-xl px-3 py-2 text-xs"
+                    onClick={() => {
+                      if (!isPro) {
+                        onUpgrade("diet");
+                        return;
+                      }
+                      setEditingTargets(true);
+                    }}
+                  >
+                    {!isPro && <Lock size={11} className="inline mr-1" />}
+                    Ajustar metas
+                  </button>
+                </div>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                {yesterdayLog.length > 0 && (
-                  <button className="btn-ghost rounded-xl px-3 py-2 text-xs" onClick={repeatYesterday}>
-                    <Repeat2 size={12} className="inline mr-1" /> Repetir ontem
-                  </button>
-                )}
-                <button
-                  className="btn-ghost rounded-xl px-3 py-2 text-xs"
-                  onClick={() => {
-                    if (!isPro) {
-                      onUpgrade("diet");
-                      return;
-                    }
-                    setEditingTargets(true);
-                  }}
-                >
-                  {!isPro && <Lock size={11} className="inline mr-1" />}
-                  Ajustar metas
-                </button>
-              </div>
+              <RadialProgress
+                value={targets.calories > 0 ? (totals.calories / targets.calories) * 100 : 0}
+                label="da meta"
+                size={116}
+                strokeWidth={8}
+              />
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
@@ -11522,7 +11552,7 @@ function FoodView({
 
       {section === "foods" && (
         <>
-          <div className="diet-library-command surface rounded-2xl p-4 md:p-5">
+          <div className="diet-library-command surface glass-panel rounded-2xl p-4 md:p-5">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
               <div>
                 <p className="text-[10px] text-faint uppercase tracking-widest">Lista de alimentos</p>
@@ -11641,7 +11671,7 @@ function FoodView({
 
           {isPro ? (
             <>
-              <div className="surface rounded-2xl p-4 md:p-5">
+              <div className="surface glass-panel rounded-2xl p-4 md:p-5">
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                   <div>
                     <p className="text-[10px] text-faint uppercase tracking-widest">Taxa Metabólica Basal</p>
@@ -11668,7 +11698,7 @@ function FoodView({
                 {tmb && <p className="text-[10px] text-faint mt-3">Estimativa informativa; não substitui avaliação profissional individualizada.</p>}
               </div>
 
-              <div className="surface rounded-2xl p-4 md:p-5">
+              <div className="surface glass-panel rounded-2xl p-4 md:p-5">
                 <p className="text-[10px] text-faint uppercase tracking-widest">Nutrientes avançados · média por dia registrado</p>
                 <div className="grid grid-cols-3 gap-2 mt-3">
                   <div className="surface-2 rounded-xl p-3 text-center">
@@ -13560,7 +13590,6 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
   const upcomingBills = pendingFinanceBills
     .filter((bill) => bill.dueDate && bill.dueDate >= today());
   const monthlyLimitUsedPct = monthlyLimit > 0 ? Math.round((monthOut / monthlyLimit) * 100) : 0;
-  const monthlyLimitProgress = Math.min(100, Math.max(0, monthlyLimitUsedPct));
   const topCategory = byCategory[0] || null;
   const previousByCategory = FIN_OUT.map((category) => ({
     category,
@@ -13824,7 +13853,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
         Registre entradas e saídas. O painel transforma esses lançamentos em saldo, categorias e uma leitura simples do seu mês.
       </FirstVisitTip>
 
-      <div className="finance-section-tabs surface rounded-2xl p-1 grid grid-cols-3 gap-1">
+      <div className="finance-section-tabs task-glass-tabs rounded-2xl p-1 grid grid-cols-3 gap-1">
         {[
           ["overview", "Visão geral"],
           ["launches", "Lançamentos"],
@@ -13832,13 +13861,8 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
         ].map(([id, label]) => (
           <button
             key={id}
-            className="finance-tab-button rounded-xl py-2 text-[10px] sm:text-xs md:text-sm font-medium min-w-0 truncate"
+            className={`finance-tab-button task-tab-button rounded-xl py-2 text-[10px] sm:text-xs md:text-sm font-medium min-w-0 truncate ${financeSection === id ? "task-tab-active" : ""}`}
             onClick={() => setFinanceSection(id)}
-            style={{
-              background: financeSection === id ? "var(--surface-2)" : "transparent",
-              border: `1px solid ${financeSection === id ? "var(--brass-dim)" : "transparent"}`,
-              color: financeSection === id ? "var(--text)" : "var(--text-dim)",
-            }}
           >
             {label}
           </button>
@@ -13869,7 +13893,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
             </div>
           )}
 
-          <div className="finance-overview-hero surface rounded-2xl p-4 md:p-6">
+          <div className="finance-overview-hero glass-panel-strong rounded-2xl p-4 md:p-6">
             <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-[9px] md:text-[10px] text-faint uppercase tracking-widest">Saldo do mês</p>
@@ -13898,14 +13922,9 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
             </div>
           </div>
 
-          <div className="finance-limit-card surface rounded-2xl p-4 md:p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-              <div>
-                <p className="text-[10px] text-faint uppercase tracking-widest">Limite mensal</p>
-                <p className="text-xs md:text-sm mt-1">
-                  {money(monthOut)} usados de {money(monthlyLimit)}
-                </p>
-              </div>
+          <div className="finance-limit-card surface glass-panel rounded-2xl p-4 md:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+              <p className="text-[10px] text-faint uppercase tracking-widest">Limite mensal</p>
 
               {editingMonthlyLimit ? (
                 <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -13931,12 +13950,20 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
               )}
             </div>
 
-            <Progress value={monthlyLimitProgress} height={6} />
-            <div className="flex items-center justify-between gap-3 mt-2 text-[10px] md:text-xs">
-              <span className={monthlyLimitUsedPct >= 100 ? "text-ember" : monthlyLimitUsedPct >= 80 ? "text-brass" : "text-faint"}>
-                {monthlyLimitUsedPct}% utilizado
-              </span>
-              <span className="text-dim text-right">{money(availableToSpend)} disponíveis</span>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <RadialProgress
+                value={monthlyLimitUsedPct}
+                label="utilizado"
+                size={104}
+                strokeWidth={8}
+                color={monthlyLimitUsedPct >= 100 ? "var(--ember)" : monthlyLimitUsedPct >= 80 ? "var(--brass)" : "var(--moss)"}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm md:text-base">
+                  {money(monthOut)} usados de {money(monthlyLimit)}
+                </p>
+                <p className="text-dim text-xs mt-1">{money(availableToSpend)} disponíveis</p>
+              </div>
             </div>
           </div>
 
@@ -13958,7 +13985,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
           )}
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4">
-            <div className="surface rounded-2xl p-4 md:p-5">
+            <div className="surface glass-panel rounded-2xl p-4 md:p-5">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div>
                   <p className="text-[10px] text-faint uppercase tracking-widest">Categorias</p>
@@ -13990,7 +14017,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
               </div>
             </div>
 
-            <div id="finance-bills-card" className="surface rounded-2xl p-4 md:p-5 scroll-mt-20">
+            <div id="finance-bills-card" className="surface glass-panel rounded-2xl p-4 md:p-5 scroll-mt-20">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div>
                   <p className="text-[10px] text-faint uppercase tracking-widest">Próximas contas</p>
@@ -14393,19 +14420,19 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 md:gap-4">
-              <div className="surface rounded-2xl p-4 md:p-5">
+              <div className="surface glass-panel rounded-2xl p-4 md:p-5">
                 <p className="text-[10px] text-faint uppercase tracking-widest">Gastos por categoria</p>
                 <p className="text-[10px] md:text-xs text-dim mt-1 mb-4">Visão gráfica do mês selecionado.</p>
                 <FinanceDonutChart data={byCategory} total={monthOut} />
               </div>
-              <div className="surface rounded-2xl p-4 md:p-5">
+              <div className="surface glass-panel rounded-2xl p-4 md:p-5">
                 <p className="text-[10px] text-faint uppercase tracking-widest">Últimos 6 meses</p>
                 <p className="text-[10px] md:text-xs text-dim mt-1 mb-3">Entradas e saídas ao longo do tempo.</p>
                 <FinanceTrendChart rows={sixMonths} />
               </div>
             </div>
 
-            <div className="surface rounded-2xl p-4 md:p-6">
+            <div className="surface glass-panel rounded-2xl p-4 md:p-6">
               <p className="text-[10px] text-faint uppercase tracking-widest">Gastos por dia</p>
               <p className="text-[10px] md:text-xs text-dim mt-1 mb-4">Cada bloco é um dia de {monthLabelDisplay}. Quanto mais intenso, maior o gasto em relação ao pico do mês.</p>
               {spendingHeatmap.length > 0 ? (
@@ -14720,7 +14747,7 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
         Aqui você não precisa interpretar dezenas de números: acompanhe tendência, consistência e o ponto que merece mais atenção agora.
       </FirstVisitTip>
 
-      <div className="progress-command-center surface rounded-2xl p-4 md:p-6">
+      <div className="progress-command-center surface glass-panel rounded-2xl p-4 md:p-6">
         <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_.95fr] gap-5 lg:gap-7">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -14728,16 +14755,12 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
               <p className="text-[10px] text-faint uppercase tracking-widest">Índice Constancce</p>
             </div>
 
-            <div className="flex flex-wrap items-end gap-3 mt-3">
-              <p className="progress-index-value font-display">{indexValue}</p>
-              <div className="pb-2">
+            <div className="flex flex-wrap items-center gap-4 mt-3">
+              <RadialProgress value={indexValue} size={116} strokeWidth={9} />
+              <div>
                 <p className="text-sm font-medium">{indexState}</p>
                 <p className="text-[10px] text-faint mt-0.5">escala de 0 a 100</p>
               </div>
-            </div>
-
-            <div className="progress-index-track mt-4">
-              <span style={{ width: `${indexValue}%` }} />
             </div>
 
             <div className="surface-2 rounded-xl p-3 mt-4">
@@ -14802,7 +14825,7 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
         </div>
       </div>
 
-      <div className="surface rounded-2xl p-4 md:p-6">
+      <div className="surface glass-panel rounded-2xl p-4 md:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div>
             <div className="flex items-center gap-2">
@@ -14837,7 +14860,7 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
 
         <MiniLineChart data={chartData} height={180} />
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4">
+        <div className="grid grid-cols-3 gap-2 mt-4">
           <div className="surface-2 rounded-xl p-2.5">
             <p className="text-[9px] text-faint">Média atual</p>
             <p className="font-mono text-sm mt-1">{stats.avg30 || 0}/100</p>
@@ -14849,12 +14872,6 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
           <div className="surface-2 rounded-xl p-2.5">
             <p className="text-[9px] text-faint">Dias acima de 80</p>
             <p className="font-mono text-sm mt-1">{stats.daysAbove80 || 0}</p>
-          </div>
-          <div className="surface-2 rounded-xl p-2.5">
-            <p className="text-[9px] text-faint">Variação</p>
-            <p className={`font-mono text-sm mt-1 ${delta >= 0 ? "text-moss" : "text-ember"}`}>
-              {delta >= 0 ? "+" : ""}{delta} pts
-            </p>
           </div>
         </div>
       </div>
@@ -14870,7 +14887,7 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
 
       {isPro && (
         <>
-          <div className="surface rounded-2xl p-4 md:p-6">
+          <div className="surface glass-panel rounded-2xl p-4 md:p-6">
             <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -14918,7 +14935,7 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_.95fr] gap-3">
-            <div className="surface rounded-2xl p-4 md:p-6">
+            <div className="surface glass-panel rounded-2xl p-4 md:p-6">
               <div className="flex items-center gap-2">
                 <Grid3X3 size={15} className="text-brass" />
                 <p className="text-xs text-faint uppercase tracking-widest">Padrão de consistência</p>
@@ -14934,7 +14951,7 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
               </div>
             </div>
 
-            <div className="surface rounded-2xl p-4 md:p-6">
+            <div className="surface glass-panel rounded-2xl p-4 md:p-6">
               <div className="flex items-center gap-2">
                 <BrainCircuit size={15} className="text-brass" />
                 <p className="text-xs text-faint uppercase tracking-widest">Diagnóstico do sistema</p>
@@ -14960,7 +14977,7 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
             </div>
           </div>
 
-          <div className="surface rounded-2xl p-4 md:p-6">
+          <div className="surface glass-panel rounded-2xl p-4 md:p-6">
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
                 <p className="text-xs text-faint uppercase tracking-widest">Recordes e contexto</p>
@@ -14969,10 +14986,8 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
               <Trophy size={17} className="text-brass" />
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {[
-                ["Maior sequência", `${streaks.best}d`, Flame],
-                ["Maior score", `${stats.highestDayScore || 0}%`, TrendingUp],
                 ["Tarefas em 1 dia", stats.maxTasksInDay || 0, ListChecks],
                 ["Sequência de treinos", `${stats.workoutBestStreak || 0}d`, Dumbbell],
                 ["Melhor semana", `${stats.bestWeekAvg || 0}%`, CalendarIcon],
@@ -14990,7 +15005,7 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
           <ProgressFriendComparison session={session} profile={profile} game={game} streaks={streaks} />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="surface rounded-2xl p-4 md:p-5">
+            <div className="surface glass-panel rounded-2xl p-4 md:p-5">
               <p className="text-xs text-faint uppercase tracking-widest mb-3">Leitura comportamental</p>
               <div className="flex flex-col gap-3 text-sm">
                 <div className="progress-reading-row">
@@ -15008,7 +15023,7 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
               </div>
             </div>
 
-            <div className="progress-season-card surface rounded-2xl p-4 md:p-5">
+            <div className="progress-season-card surface glass-panel rounded-2xl p-4 md:p-5">
               <p className="text-xs text-faint uppercase tracking-widest">Temporada atual</p>
               <p className="font-display text-2xl mt-1">{game.season?.name || "Temporada"}</p>
               <div className="flex items-baseline gap-2 mt-3">
@@ -16018,7 +16033,7 @@ function ProfileView({ profile, setProfile, theme, setTheme, streaks, stats, las
             ["habits", "Hábitos"], ["tasks", "Tarefas"], ["calendar", "Calendário"], ["goals", "Metas"],
             ["workouts", "Treinos"], ["food", "Dieta"], ["finance", "Finanças"], ["friends", "Amigos"],
             ["professional", "Personal & Nutri"],
-            ["progress", "Progresso"], ["achievements", "Conquistas"], ["reports", "Relatórios"],
+            ["progress", "Progresso"], ["achievements", "Conquistas"],
           ].map(([id, label]) => {
             const enabled = profile?.moduleVisibility?.[id] !== false;
             return (
