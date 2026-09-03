@@ -3148,24 +3148,45 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                     return (
                       <tr key={habit.id} style={{ opacity: isPaused ? 0.55 : 1 }}>
                         <td className="habit-grid-name-col">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="habit-grid-cat-dot shrink-0" style={{ background: catColor(habit.category) }} />
-                            <div className="min-w-0 flex-1">
-                              <p
-                                className="text-xs md:text-sm font-medium break-words leading-snug"
-                                style={{ textDecoration: isPaused ? "line-through" : "none" }}
-                                title={habit.name}
-                              >
-                                {habit.name}
-                              </p>
-                              <div className="flex items-center gap-1 mt-0.5">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <span className="habit-grid-cat-dot shrink-0" style={{ background: catColor(habit.category) }} />
+                              <div className="min-w-0 flex-1">
+                                <p
+                                  className="text-xs md:text-sm font-medium break-words leading-snug"
+                                  style={{ textDecoration: isPaused ? "line-through" : "none" }}
+                                  title={habit.name}
+                                >
+                                  {habit.name}
+                                </p>
+                                <div className="hidden sm:flex items-center gap-1 mt-0.5">
+                                  {habit.countsForStreak && <Flame size={10} className="text-ember shrink-0" />}
+                                  <span className={`text-[9px] font-mono ${monthRate >= 80 ? "text-moss" : monthRate >= 50 ? "text-brass" : "text-faint"}`}>
+                                    {monthRate}%
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex sm:hidden items-center justify-between gap-2">
+                              <div className="flex items-center gap-1">
                                 {habit.countsForStreak && <Flame size={10} className="text-ember shrink-0" />}
                                 <span className={`text-[9px] font-mono ${monthRate >= 80 ? "text-moss" : monthRate >= 50 ? "text-brass" : "text-faint"}`}>
                                   {monthRate}%
                                 </span>
                               </div>
+                              <div className="habit-grid-row-actions flex items-center gap-0.5 shrink-0">
+                                <button className="btn-ghost rounded-lg p-1.5" title={habit.active ? "Pausar" : "Reativar"} onClick={() => toggleActive(habit.id)}>
+                                  {habit.active ? <Pause size={12} /> : <Play size={12} />}
+                                </button>
+                                <button className="btn-ghost rounded-lg p-1.5" title="Editar" onClick={() => { setEditing(habit); setShowForm(true); }}>
+                                  <Pencil size={12} />
+                                </button>
+                                <button className="btn-ghost rounded-lg p-1.5" title="Excluir" onClick={() => deleteHabit(habit.id)}>
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
                             </div>
-                            <div className="habit-grid-row-actions flex items-center gap-0.5 shrink-0">
+                            <div className="hidden sm:flex habit-grid-row-actions items-center gap-0.5 shrink-0">
                               <button className="btn-ghost rounded-lg p-1.5" title={habit.active ? "Pausar" : "Reativar"} onClick={() => toggleActive(habit.id)}>
                                 {habit.active ? <Pause size={12} /> : <Play size={12} />}
                               </button>

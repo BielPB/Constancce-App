@@ -71,7 +71,10 @@
   /* Vidro fosco reutilizável — redesenho "futurista". Use junto de .surface/.surface-2
      (ex.: className="surface glass-panel") para herdar padding/raio e só trocar o fundo. */
   .glass-panel{
-    background:color-mix(in srgb, var(--surface-2) 52%, transparent) !important;
+    position:relative;
+    background:
+      radial-gradient(320px 200px at 100% 0%, color-mix(in srgb, var(--brass) 11%, transparent), transparent 72%),
+      linear-gradient(165deg, color-mix(in srgb, var(--surface-2) 60%, transparent), color-mix(in srgb, var(--surface-2) 40%, transparent)) !important;
     backdrop-filter:blur(18px) saturate(140%);
     -webkit-backdrop-filter:blur(18px) saturate(140%);
   }
@@ -3077,8 +3080,9 @@ td.habit-grid-today .habit-grid-cell.habit-grid-cell-done{
 }
 @media (max-width:767px){
   .habit-grid-name-col{
-    min-width:128px;
-    max-width:150px;
+    min-width:168px;
+    max-width:190px;
+    padding:8px;
   }
   .habit-grid-cell{
     width:26px;
@@ -3087,5 +3091,8 @@ td.habit-grid-today .habit-grid-cell.habit-grid-cell-done{
   .habit-grid-day-head{
     min-width:26px;
     width:26px;
+  }
+  .habit-grid-row-actions .btn-ghost{
+    padding:5px !important;
   }
 }
