@@ -1,17 +1,11 @@
 import React from "react";
 import { Progress, ProLockCard } from "../../components/ui.jsx";
 
-export default function ReportsView({ habits, completions, tasks, workoutSessions, transactions, goals, isPro, onUpgrade, today, startOfMonth, habitValidOnDate, addDays, money, months }) {
+export default function ReportsView({ habits, completions, tasks, workoutSessions, transactions, goals, isPro, onUpgrade, today, startOfMonth, habitValidOnDate, addDays, money, months, stats }) {
   const t = today();
   const monthStart = startOfMonth(t);
-  const habitStats = habits.map((h) => {
-    let valid = 0, done = 0, scan = monthStart;
-    const doneDates = new Set(completions.filter((c) => c.habitId === h.id).map((c) => c.date));
-    while (scan <= t) { if (habitValidOnDate(h, scan, completions)) { valid++; if (doneDates.has(scan)) done++; } scan = addDays(scan, 1); }
-    return { name: h.name, rate: valid === 0 ? 0 : Math.round((done / valid) * 100) };
-  }).filter((h) => h.rate !== null);
-  const best = [...habitStats].sort((a, b) => b.rate - a.rate)[0];
-  const worst = [...habitStats].sort((a, b) => a.rate - b.rate)[0];
+  const best = stats?.bestHabit && stats.bestHabit !== "—" ? { name: stats.bestHabit, rate: stats.bestHabitRate || 0 } : null;
+  const worst = stats?.worstHabit && stats.worstHabit !== "—" ? { name: stats.worstHabit, rate: stats.worstHabitRate || 0 } : null;
   const tasksDoneMonth = tasks.filter((tk) => tk.status === "concluida" && (tk.completedAt || "") >= monthStart).length;
   const tasksTotalMonth = tasks.filter((tk) => (tk.createdAt || "") >= monthStart).length;
   const workoutsMonth = workoutSessions.filter((s) => s.date >= monthStart && s.completed).length;
@@ -49,7 +43,9 @@ export default function ReportsView({ habits, completions, tasks, workoutSession
         {goalsProgress.length === 0 && <p className="text-dim text-sm">Nenhuma meta em aberto.</p>}
         <div className="flex flex-col gap-2">
           {goalsProgress.map((g) => {
-            const pct = Math.min(100, Math.round((g.current / g.target) * 100));
+            const target = Math.max(0, Number(g.target || 0));
+            const current = Math.max(0, Number(g.current || 0));
+            const pct = target > 0 ? Math.min(100, Math.max(0, Math.round((current / target) * 100))) : 0;
             return (
               <div key={g.id} className="flex items-center gap-3 text-sm">
                 <span className="flex-1 truncate">{g.name}</span>

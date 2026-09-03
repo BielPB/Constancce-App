@@ -158,10 +158,11 @@ export function useWorkoutRestTimer(userId) {
   const adjust = useCallback((deltaSeconds) => {
     setTimer((current) => {
       if (!current) return current;
+      const total = Math.max(10, Math.min(300, current.total + deltaSeconds));
       const next = {
         ...current,
-        endAt: Math.max(Date.now(), current.endAt + deltaSeconds * 1000),
-        total: Math.max(10, current.total + deltaSeconds),
+        endAt: Math.max(Date.now(), Math.min(current.startedAt + 300 * 1000, current.endAt + deltaSeconds * 1000)),
+        total,
       };
       writeTimer(userId, next);
       return next;

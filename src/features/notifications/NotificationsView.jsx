@@ -128,6 +128,39 @@ export default function NotificationsView({
             ["workouts", "Treinos", false],
             ["goals", "Metas", false],
             ["finance", "Finanças", false],
+          ].map(([key, label, proOnly]) => (
+            <div key={key} className="flex items-center justify-between gap-3 text-sm">
+              <span className="flex items-center gap-2">
+                {label}
+                {proOnly && !isPro && <ProBadge compact />}
+              </span>
+              <button
+                onClick={() => {
+                  if (proOnly && !isPro) {
+                    onUpgrade("notifications");
+                    return;
+                  }
+                  setSetting(key, settings[key] === false);
+                }}
+                className="w-11 h-6 rounded-full relative shrink-0"
+                style={{ background: proOnly && !isPro ? "var(--border)" : settings[key] !== false ? "var(--brass)" : "var(--border)" }}
+              >
+                <span
+                  className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all"
+                  style={{ left: proOnly && !isPro ? 2 : settings[key] !== false ? 22 : 2 }}
+                />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="surface rounded-2xl p-5">
+        <p className="text-xs text-faint uppercase tracking-widest mb-1">Automações</p>
+        <p className="text-dim text-xs mb-4">Rotinas automáticas que não dependem de uma categoria específica.</p>
+
+        <div className="flex flex-col gap-3">
+          {[
             ["hourlyReminders", "Resumo a cada hora", true],
             ["weeklyReview", "Revisão semanal", true],
           ].map(([key, label, proOnly]) => (

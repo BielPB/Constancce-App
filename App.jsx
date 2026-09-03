@@ -24,7 +24,7 @@ import {
   Search, Clock3, Timer, Sparkles, History, Zap, SlidersHorizontal, RotateCcw, CreditCard, Repeat2,
   Palette, Share2, Archive, Image as ImageIcon,
   Activity, Layers3, Grid3X3, BrainCircuit, Star, ArrowRightLeft, Gauge, Stethoscope,
-  Car, PartyPopper, Receipt, ShoppingBag, GraduationCap,
+  Car, PartyPopper, Receipt, ShoppingBag, GraduationCap, Briefcase, Home,
 } from "lucide-react";
 
 const NotificationsView = lazy(() => import("./src/features/notifications/NotificationsView.jsx"));
@@ -1248,6 +1248,14 @@ const isRecurringTask = (task) => (task.repeat || "none") !== "none";
 const taskDoneOnDate = (task, dateStr) => isRecurringTask(task)
   ? (task.completionDates || []).includes(dateStr)
   : task.status === "concluida" && (!task.completedAt || task.completedAt === dateStr || task.dueDate === dateStr);
+function taskIsOverdue(task, todayStr) {
+  return (
+    !isRecurringTask(task) &&
+    task.status !== "concluida" &&
+    task.dueDate &&
+    task.dueDate < todayStr
+  );
+}
 const taskRepeatLabel = (task) => {
   const repeat = task.repeat || "none";
   if (repeat === "daily") return "Todo dia";
@@ -1498,15 +1506,16 @@ const goalQuestionTarget = (question, goals) => {
 };
 
 const CATEGORIES = [
-  { id: "saude", label: "Saúde", color: "var(--moss)" },
-  { id: "estudo", label: "Estudo", color: "var(--brass)" },
-  { id: "trabalho", label: "Trabalho", color: "#7C93B0" },
-  { id: "casa", label: "Casa", color: "#B08E5C" },
-  { id: "mente", label: "Mente", color: "#9C7FB0" },
-  { id: "outro", label: "Outro", color: "var(--text-dim)" },
+  { id: "saude", label: "Saúde", color: "var(--moss)", icon: Stethoscope },
+  { id: "estudo", label: "Estudo", color: "var(--brass)", icon: GraduationCap },
+  { id: "trabalho", label: "Trabalho", color: "#7C93B0", icon: Briefcase },
+  { id: "casa", label: "Casa", color: "#B08E5C", icon: Home },
+  { id: "mente", label: "Mente", color: "#9C7FB0", icon: BrainCircuit },
+  { id: "outro", label: "Outro", color: "var(--text-dim)", icon: MoreHorizontal },
 ];
 const catColor = (id) => CATEGORIES.find((c) => c.id === id)?.color || "var(--text-dim)";
 const catLabel = (id) => CATEGORIES.find((c) => c.id === id)?.label || "Outro";
+const catIcon = (id) => CATEGORIES.find((c) => c.id === id)?.icon || MoreHorizontal;
 
 const PRIORITIES = [
   { id: "baixa", label: "Baixa", color: "var(--text-faint)" },
@@ -2414,7 +2423,7 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
   const availableMonth = Math.max(0, monthlyLimit - monthOut);
 
   const pendingHabits = validHabitsToday.filter((h) => !doneIds.has(h.id));
-  const nextTask = tasksToday[0];
+  const nextTask = [...tasksToday].sort((a, b) => taskPriorityScore(b, t) - taskPriorityScore(a, t))[0];
   const nextAction = nextTask || pendingHabits[0];
 
   const pendingBills = (profile?.financeBills || [])
@@ -3004,7 +3013,7 @@ function HabitForm({ initial, onSave, onClose }) {
   );
 }
 
-function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, toggleActive, habitChecklistLog, toggleHabitChecklist, autoOpen, isPro, onUpgrade }) {
+function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, toggleActive, habitChecklistLog, toggleHabitChecklist, autoOpen, isPro, onUpgrade, streaks }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [monthCursor, setMonthCursor] = useState(today().slice(0, 7));
@@ -3117,14 +3126,22 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
 
       {habits.length > 0 && (
         <>
-          <div className="habit-grid-month-nav surface rounded-xl flex items-center justify-between gap-2 px-2 py-1.5">
-            <button className="btn-ghost rounded-lg p-2" onClick={() => moveMonth(-1)} aria-label="Mês anterior" title="Mês anterior">
-              <ChevronLeft size={16} />
-            </button>
-            <span className="text-sm font-medium">{monthLabelDisplay}</span>
-            <button className="btn-ghost rounded-lg p-2" onClick={() => moveMonth(1)} aria-label="Próximo mês" title="Próximo mês">
-              <ChevronRight size={16} />
-            </button>
+          <div className="flex items-center gap-2">
+            <div className="habit-grid-month-nav surface rounded-xl flex items-center justify-between gap-2 px-2 py-1.5 flex-1">
+              <button className="btn-ghost rounded-lg p-2" onClick={() => moveMonth(-1)} aria-label="Mês anterior" title="Mês anterior">
+                <ChevronLeft size={16} />
+              </button>
+              <span className="text-sm font-medium">{monthLabelDisplay}</span>
+              <button className="btn-ghost rounded-lg p-2" onClick={() => moveMonth(1)} aria-label="Próximo mês" title="Próximo mês">
+                <ChevronRight size={16} />
+              </button>
+            </div>
+            {streaks && (
+              <div className="surface-2 rounded-xl px-3 py-2 flex items-center gap-2 shrink-0" title={`Dias perfeitos seguidos: ${streaks.current}`}>
+                <Flame size={16} className="text-ember" />
+                <span className="font-mono text-sm">{streaks.current}d</span>
+              </div>
+            )}
           </div>
 
           <div className="surface rounded-2xl p-4 md:p-5">
@@ -3137,7 +3154,12 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
           </div>
 
           <div className="surface glass-panel rounded-2xl p-3 md:p-4">
-            <p className="text-[10px] text-faint uppercase tracking-widest mb-3 px-1">Grade de hábitos</p>
+            <p className="text-[10px] text-faint uppercase tracking-widest mb-1 px-1">Grade de hábitos</p>
+            <p className="text-[9px] text-faint mb-3 px-1 flex items-center gap-2 flex-wrap">
+              <span className="flex items-center gap-1"><span className="habit-grid-cat-dot" style={{ background: "var(--moss)" }} /> 80%+ concluído</span>
+              <span className="flex items-center gap-1"><span className="habit-grid-cat-dot" style={{ background: "var(--brass)" }} /> 50-79%</span>
+              <span className="flex items-center gap-1"><span className="habit-grid-cat-dot" style={{ background: "var(--text-faint)" }} /> abaixo de 50%</span>
+            </p>
             <div className="habit-grid-scroll">
               <table className="habit-grid-table">
                 <thead>
@@ -3165,7 +3187,14 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                         <td className="habit-grid-name-col">
                           <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 min-w-0">
                             <div className="flex items-center gap-2 min-w-0 flex-1">
-                              <span className="habit-grid-cat-dot shrink-0" style={{ background: catColor(habit.category) }} />
+                              {(() => {
+                                const CatIcon = catIcon(habit.category);
+                                return (
+                                  <span className="shrink-0" title={catLabel(habit.category)} style={{ display: "inline-flex" }}>
+                                    <CatIcon size={13} style={{ color: catColor(habit.category) }} />
+                                  </span>
+                                );
+                              })()}
                               <div className="min-w-0 flex-1">
                                 <p
                                   className="text-xs md:text-sm font-medium break-words leading-snug"
@@ -3395,63 +3424,6 @@ const taskPriorityReason = (task, referenceDate = today()) => {
   if (Number(task.deferCount || 0) >= 2) return `Adiada ${task.deferCount}x`;
   if ((task.subtasks || []).some((item) => !item.done)) return "Possui subtarefas pendentes";
   return "Próxima ação recomendada";
-};
-
-const taskCompletionRows = (tasks, fromDate, toDate) => {
-  const rows = [];
-  for (let date = fromDate; date <= toDate; date = addDays(date, 1)) {
-    (tasks || []).forEach((task) => {
-      if (!taskOccursOnDate(task, date)) return;
-      rows.push({
-        task,
-        date,
-        done: taskDoneOnDate(task, date),
-      });
-    });
-  }
-  return rows;
-};
-
-const taskIntelligenceSnapshot = (tasks) => {
-  const end = today();
-  const start30 = addDays(end, -29);
-  const rows30 = taskCompletionRows(tasks, start30, end);
-  const completionRate = rows30.length
-    ? Math.round(rows30.filter((row) => row.done).length / rows30.length * 100)
-    : 0;
-
-  const weekStart = startOfWeek(end);
-  const weekEnd = addDays(weekStart, 6);
-  const weekRows = taskCompletionRows(tasks, weekStart, weekEnd);
-  const weekCompleted = weekRows.filter((row) => row.done).length;
-
-  const weekdayMap = new Map();
-  rows30.filter((row) => row.done).forEach((row) => {
-    const weekday = weekdayIndex(row.date);
-    weekdayMap.set(weekday, (weekdayMap.get(weekday) || 0) + 1);
-  });
-  const bestDayEntry = [...weekdayMap.entries()].sort((a, b) => b[1] - a[1])[0];
-  const bestDay = bestDayEntry ? WEEKDAYS[bestDayEntry[0]] : "Sem base";
-
-  const deferred = [...(tasks || [])]
-    .filter((task) => Number(task.deferCount || 0) > 0 && task.status !== "concluida")
-    .sort((a, b) => Number(b.deferCount || 0) - Number(a.deferCount || 0));
-
-  const overdue = (tasks || []).filter((task) =>
-    !isRecurringTask(task) &&
-    task.status !== "concluida" &&
-    task.dueDate &&
-    task.dueDate < end
-  );
-
-  return {
-    completionRate,
-    weekCompleted,
-    bestDay,
-    mostDeferred: deferred[0] || null,
-    deferredCount: deferred.filter((task) => Number(task.deferCount || 0) >= 2).length,
-    overdueCount: overdue.length,
-  };
 };
 
 function TaskForm({ initial, onSave, onClose, isPro, onUpgrade, defaultDueDate = null }) {
@@ -3984,12 +3956,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
   );
 
   const overdueTasks = tasks
-    .filter((task) =>
-      !isRecurringTask(task) &&
-      task.status !== "concluida" &&
-      task.dueDate &&
-      task.dueDate < t
-    )
+    .filter((task) => taskIsOverdue(task, t))
     .sort((a, b) => taskPriorityScore(b, t) - taskPriorityScore(a, t));
 
   const unscheduledTasks = tasks
@@ -4529,7 +4496,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                 {priorityQueue.slice(0, 3).map((task, index) => (
                   <button
                     key={task.id}
-                    className="task-priority-item surface-2 rounded-xl p-3 text-left min-w-0"
+                    className="task-priority-item surface-2 interactive rounded-xl p-3 text-left min-w-0"
                     onClick={() => setFocusTask(task)}
                   >
                     <div className="flex items-center gap-2">
@@ -4810,7 +4777,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                             <div className="flex flex-wrap gap-1.5 mt-2">
                               <span className="chip">{taskMetaDate(task)}</span>
                               {task.estimatedMinutes > 0 && <span className="chip">{taskEstimatedLabel(task.estimatedMinutes)}</span>}
-                              <span className="chip">{catLabel(task.category)}</span>
+                              <span className="chip">{React.createElement(catIcon(task.category), { size: 10 })} {catLabel(task.category)}</span>
                             </div>
 
                             {!done && renderTaskActions(task)}
@@ -4952,7 +4919,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 mt-3">
                 {unscheduledTasks.map((task) => (
-                  <div key={task.id} className="surface-2 rounded-xl p-3">
+                  <div key={task.id} className="surface-2 interactive rounded-xl p-3">
                     <p className="text-xs md:text-sm font-medium break-words">{task.title}</p>
                     <div className="grid grid-cols-3 gap-1.5 mt-3">
                       <button className="btn-ghost rounded-lg py-2 text-[10px]" onClick={() => scheduleTask(task, t, false)}>
@@ -4991,7 +4958,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                 {recurringTasks.map((task) => (
                   <button
                     key={task.id}
-                    className="surface-2 rounded-xl p-3 text-left"
+                    className="surface-2 interactive rounded-xl p-3 text-left"
                     onClick={() => openEdit(task)}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -5161,12 +5128,7 @@ function calendarIntelligenceSnapshot({ tasks, workoutTemplates, workoutSessions
     )
     .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
 
-  const overdueTasks = (tasks || []).filter((task) =>
-    !isRecurringTask(task) &&
-    task.status !== "concluida" &&
-    task.dueDate &&
-    task.dueDate < today()
-  );
+  const overdueTasks = (tasks || []).filter((task) => taskIsOverdue(task, today()));
 
   const workoutDays = dayRows.filter((row) => row.workouts > 0).map((row) => row.date);
   let consecutiveWorkoutPair = null;
@@ -5318,7 +5280,10 @@ function CalendarIntelligencePanel({
         <span className="chip shrink-0">semana atual</span>
       </div>
 
-      <div className="calendar-load-grid grid grid-cols-7 gap-1.5 mt-4">
+      <p className="text-[9px] text-faint uppercase tracking-widest mt-4">
+        Carga por dia · {snapshot.hasEstimates ? "tempo estimado das tarefas" : "número de itens"}
+      </p>
+      <div className="calendar-load-grid grid grid-cols-7 gap-1.5 mt-2">
         {snapshot.dayRows.map((row) => {
           const rawLoad = snapshot.hasEstimates ? row.estimatedMinutes : row.itemCount;
           const pct = Math.round(rawLoad / maxLoad * 100);
@@ -5966,7 +5931,7 @@ function CalendarView({
               return (
                 <section
                   key={date}
-                  className={`calendar-week-column surface rounded-2xl p-3 ${isSelected ? "calendar-week-selected" : ""} ${dragTargetDate === date ? "calendar-drop-target" : ""}`}
+                  className={`calendar-week-column surface interactive rounded-2xl p-3 ${isSelected ? "calendar-week-selected" : ""} ${dragTargetDate === date ? "calendar-drop-target" : ""}`}
                   onClick={() => setSelectedDate(date)}
                   onDragOver={(event) => {
                     if (typeof window !== "undefined" && window.innerWidth < 768) return;
@@ -6110,14 +6075,14 @@ function CalendarView({
                       if (task && !isRecurringTask(task)) rescheduleTask(task, dateStr);
                       setDragTargetDate(null);
                     }}
-                    className={`calendar-day rounded-xl relative flex flex-col items-center justify-center gap-1 ${isSelected ? "calendar-day-selected" : ""} ${dragTargetDate === dateStr ? "calendar-drop-target" : ""}`}
+                    className={`calendar-day surface-2 interactive rounded-xl relative flex flex-col items-center justify-center gap-1 ${isSelected ? "calendar-day-selected" : ""} ${dragTargetDate === dateStr ? "calendar-drop-target" : ""}`}
                     style={{
-                      border: isSelected
-                        ? "1.5px solid var(--brass)"
+                      borderColor: isSelected
+                        ? "var(--brass)"
                         : isToday
-                          ? "1px solid var(--brass-dim)"
-                          : "1px solid var(--border-soft)",
-                      background: "var(--surface-2)",
+                          ? "var(--brass-dim)"
+                          : undefined,
+                      borderWidth: isSelected ? "1.5px" : undefined,
                     }}
                   >
                     <span className={`font-mono text-xs md:text-sm ${isToday ? "text-brass" : ""}`}>{day}</span>
@@ -6163,7 +6128,7 @@ function CalendarView({
         <Modal title={`Adicionar em ${dateLabel(selected, { day: "2-digit", month: "2-digit" })}`} onClose={() => setShowQuickMenu(false)} width={430}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <button
-              className="calendar-quick-create surface-2 rounded-2xl p-4 text-left"
+              className="calendar-quick-create surface-2 interactive rounded-2xl p-4 text-left"
               onClick={() => {
                 setShowQuickMenu(false);
                 setShowTaskForm(true);
@@ -6175,7 +6140,7 @@ function CalendarView({
             </button>
 
             <button
-              className="calendar-quick-create surface-2 rounded-2xl p-4 text-left"
+              className="calendar-quick-create surface-2 interactive rounded-2xl p-4 text-left"
               onClick={() => {
                 setShowQuickMenu(false);
                 if (workoutTemplates.length) setShowWorkoutPicker(true);
@@ -6188,7 +6153,7 @@ function CalendarView({
             </button>
 
             <button
-              className="calendar-quick-create surface-2 rounded-2xl p-4 text-left"
+              className="calendar-quick-create surface-2 interactive rounded-2xl p-4 text-left"
               onClick={() => {
                 setShowQuickMenu(false);
                 setShowBillForm(true);
@@ -8889,12 +8854,6 @@ function WorkoutsView({
     setActiveTemplateId(template.id);
   };
 
-  const formatTimer = (seconds) => {
-    const min = Math.floor(seconds / 60);
-    const sec = String(seconds % 60).padStart(2, "0");
-    return `${min}:${sec}`;
-  };
-
   const openPrescribeWorkout = async (template) => {
     if (!isPro) {
       onUpgrade("professional");
@@ -9028,6 +8987,11 @@ function WorkoutsView({
       })
     : [];
 
+  const sessionPrExerciseIds = useMemo(
+    () => new Set(sessionPrs.map((exercise) => exercise.id)),
+    [sessionPrs]
+  );
+
   return (
     <div className="workouts-view flex flex-col gap-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -9089,7 +9053,14 @@ function WorkoutsView({
             <div className="flex items-center justify-between gap-3 mb-3">
               <div>
                 <p className="text-[10px] text-faint uppercase tracking-widest">Sua semana</p>
-                <p className="text-dim text-xs mt-0.5">✓ feito · ● programado</p>
+                <p className="text-dim text-xs mt-0.5 flex items-center gap-2.5 flex-wrap">
+                  <span className="flex items-center gap-1">
+                    <CheckCircle2 size={11} className="text-moss" /> feito
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Circle size={11} className="text-brass" /> programado
+                  </span>
+                </p>
               </div>
               <span className="chip">
                 {sessions.filter((session) =>
@@ -9190,6 +9161,10 @@ function WorkoutsView({
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     <span className="chip">{primaryToday.exercises.length} exercícios</span>
                     <span className="chip">{workoutTotalSetsCount(primaryToday)} séries</span>
+                    {/* Não usa workoutSessionDurationMinutes aqui: esse helper exige uma
+                        sessão real (com sets concluídos ou timestamps) e retorna 0 sem
+                        ela, o que quebraria essa estimativa exibida antes/sem o treino
+                        começar. Aqui é só uma projeção a partir do plano (série×2min). */}
                     <span className="chip">
                       ~{Math.max(20, workoutTotalSetsCount(primaryToday) * 2)} min
                     </span>
@@ -9369,7 +9344,7 @@ function WorkoutsView({
                     setDraggedTemplateId(null);
                     setDragOverTemplateId(null);
                   }}
-                  className={`workout-template-card surface rounded-2xl p-4 ${
+                  className={`workout-template-card surface interactive rounded-2xl p-4 ${
                     isDragging ? "workout-template-dragging" : ""
                   } ${isDragTarget ? "workout-template-drop-target" : ""}`}
                 >
@@ -9577,12 +9552,31 @@ function WorkoutsView({
               <div className="flex flex-col gap-2 mt-3">
                 {records.length > 0 ? (
                   records.map((record, index) => (
-                    <div key={`${record.name}-${index}`} className="flex items-center justify-between gap-3 text-xs">
-                      <span className="truncate">{record.name}</span>
+                    <div key={`${record.name}-${index}`} className="flex items-center gap-3 text-xs">
+                      <div
+                        className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                        style={{
+                          background: "color-mix(in srgb, var(--brass) 16%, var(--surface-2))",
+                          border: "1px solid var(--border)",
+                        }}
+                      >
+                        <Trophy size={14} className="text-brass" />
+                      </div>
+                      <span className="truncate flex-1">{record.name}</span>
                       <span className="text-right shrink-0">
-                        <span className="font-mono text-brass block">{record.load} kg</span>
+                        <span
+                          className="font-mono text-brass block"
+                          title="Recorde pessoal — maior carga já registrada nesse exercício"
+                        >
+                          {record.load} kg
+                        </span>
                         {record.oneRepMax > 0 && (
-                          <span className="font-mono text-faint text-[9px] block">~{record.oneRepMax} kg 1RM est.</span>
+                          <span
+                            className="font-mono text-faint text-[9px] block"
+                            title="Estimativa de carga para 1 repetição máxima, calculada pela fórmula de Epley a partir da carga e repetições registradas"
+                          >
+                            ~{record.oneRepMax} kg 1RM est.
+                          </span>
                         )}
                       </span>
                     </div>
@@ -9809,7 +9803,7 @@ function WorkoutsView({
                   <button
                     key={session.id}
                     type="button"
-                    className="workout-history-card surface rounded-2xl p-4 text-left w-full"
+                    className="workout-history-card surface interactive rounded-2xl p-4 text-left w-full"
                     onClick={() => {
                       setActiveSessionId(session.id);
                       setActiveTemplateId(session.templateId);
@@ -9915,7 +9909,7 @@ function WorkoutsView({
                 <div>
                   <p className="text-[9px] text-faint uppercase tracking-widest">Descanso</p>
                   <p className={`font-mono text-sm mt-1 ${restTimer.running ? "text-brass" : ""}`}>
-                    {restTimer.running ? formatTimer(restTimer.remaining) : "—"}
+                    {restTimer.running ? formatRestCountdown(restTimer.remaining) : "—"}
                   </p>
                 </div>
               </div>
@@ -9924,7 +9918,7 @@ function WorkoutsView({
                 <div className="workout-rest-active mt-3 pt-3">
                   <div className="flex items-center justify-between gap-3 mb-2">
                     <p className="text-[9px] text-faint uppercase tracking-widest">Descansando</p>
-                    <p className="font-mono text-2xl text-brass">{formatTimer(restTimer.remaining)}</p>
+                    <p className="font-mono text-2xl text-brass">{formatRestCountdown(restTimer.remaining)}</p>
                   </div>
                   <Progress
                     value={restTimer.total > 0 ? (restTimer.remaining / restTimer.total) * 100 : 0}
@@ -9959,7 +9953,14 @@ function WorkoutsView({
                       {sessionSummary?.duration ? ` · ${sessionSummary.duration} min` : ""}
                     </p>
                   </div>
-                  {sessionPrs.length > 0 && <span className="chip text-brass">{sessionPrs.length} PR</span>}
+                  {sessionPrs.length > 0 && (
+                    <span
+                      className="chip text-brass"
+                      title="PR = recorde pessoal: maior carga já registrada nesse exercício"
+                    >
+                      {sessionPrs.length} PR
+                    </span>
+                  )}
                 </div>
 
                 {previousSessionVolume > 0 && sessionSummary?.volume > 0 && (
@@ -9997,15 +9998,9 @@ function WorkoutsView({
                 0
               );
 
-              const previousMax = workoutHistoricalMaxLoad(
-                sessions,
-                activeTemplate.id,
-                exercise.id,
-                activeSession.date
-              );
-
-              const completedSets = (activeSession.sets?.[exercise.id] || []).filter(Boolean).length;
-              const isPr = completedSets > 0 && currentLoad > 0 && currentLoad > previousMax;
+              // PR já foi calculado uma vez em sessionPrs (evita chamar
+              // workoutHistoricalMaxLoad de novo para cada exercício no render).
+              const isPr = sessionPrExerciseIds.has(exercise.id);
 
               const lastTwo = [...sessions]
                 .filter((session) =>
@@ -10059,7 +10054,14 @@ function WorkoutsView({
                             <span>{displayName}</span>
                             <Play size={11} className="text-brass shrink-0" fill="currentColor" />
                           </button>
-                          {isPr && <span className="chip text-brass">PR</span>}
+                          {isPr && (
+                            <span
+                              className="chip text-brass"
+                              title="Recorde pessoal — maior carga já registrada nesse exercício"
+                            >
+                              PR
+                            </span>
+                          )}
                           {exercise.favorite && <Star size={11} className="text-brass" fill="currentColor" />}
                         </div>
                         <p className="text-[10px] text-faint mt-0.5">
@@ -14771,7 +14773,14 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
 
   const indexValue = Math.max(0, Math.min(100, Number(stats.avg30 || 0)));
   const delta = Number(stats.monthDelta || 0);
+  const hasProgressData = Boolean(
+    (stats.habitCompletionsTotal || 0) > 0 ||
+    (stats.tasksDone || 0) > 0 ||
+    (stats.workoutsDone || 0) > 0 ||
+    (stats.goalsDone || 0) > 0
+  );
   const indexState =
+    !hasProgressData ? "Ainda sem dados suficientes" :
     indexValue >= 85 ? "Alta consistência" :
     indexValue >= 70 ? "Consistência sólida" :
     indexValue >= 50 ? "Em construção" :
@@ -14828,6 +14837,8 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
                 <p className="text-[10px] text-faint mt-0.5">escala de 0 a 100</p>
               </div>
             </div>
+
+            <p className="text-[9px] text-faint mt-3">Hábitos 40% · Tarefas 20% · Treino 20% · Dieta 10% · Metas 10%</p>
 
             <div className="surface-2 rounded-xl p-3 mt-4">
               <p className="text-[9px] text-faint uppercase tracking-widest">Leitura principal</p>
@@ -15075,7 +15086,7 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
               <p className="text-xs text-faint uppercase tracking-widest mb-3">Leitura comportamental</p>
               <div className="flex flex-col gap-3 text-sm">
                 <div className="progress-reading-row">
-                  <span className="text-dim">Melhor dia</span>
+                  <span className="text-dim">Melhor dia da semana</span>
                   <span>{stats.bestWeekday || "—"} · {stats.bestWeekdayAverage || 0}%</span>
                 </div>
                 <div className="progress-reading-row">
@@ -15809,7 +15820,7 @@ function PlanComparisonSection({ isPro, accessInfo, onUpgrade }) {
   );
 }
 
-function ProfileView({ profile, setProfile, theme, setTheme, streaks, stats, lastSaved, syncStatus, genericHasPending, taskSyncStatus, taskSyncError, session, user, onLogout, onSyncNow, onDeleteAccount, installPrompt, onInstallApp, access, accessInfo, isPro, onUpgrade, onBuyLifetime, checkoutLoading, paymentMessage, accessError }) {
+function ProfileView({ profile, setProfile, theme, setTheme, streaks, stats, game, lastSaved, syncStatus, genericHasPending, taskSyncStatus, taskSyncError, session, user, onLogout, onSyncNow, onDeleteAccount, installPrompt, onInstallApp, access, accessInfo, isPro, onUpgrade, onBuyLifetime, checkoutLoading, paymentMessage, accessError }) {
   const [name, setName] = useState(profile?.name || "");
   const [accountEmail, setAccountEmail] = useState(user?.email || "");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -15888,7 +15899,7 @@ function ProfileView({ profile, setProfile, theme, setTheme, streaks, stats, las
       <div className="grid grid-cols-3 gap-3">
         <StatMini label="Dias perfeitos" value={`${streaks.current}d`} />
         <StatMini label="Recorde" value={`${streaks.best}d`} />
-        <StatMini label="Níveis" value="4" />
+        <StatMini label="Níveis" value={`${game?.level || 1}`} />
       </div>
 
       <div className="surface rounded-2xl p-4 md:p-5" style={{ borderColor: isPro ? "var(--brass-dim)" : "var(--border)" }}>
@@ -15958,11 +15969,14 @@ function ProfileView({ profile, setProfile, theme, setTheme, streaks, stats, las
         )}
 
         {!isPro && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
-            <div className="surface-2 rounded-xl p-2.5"><p className="text-[9px] text-faint">Hábitos</p><p className="font-mono text-xs mt-1">5</p></div>
-            <div className="surface-2 rounded-xl p-2.5"><p className="text-[9px] text-faint">Tarefas ativas</p><p className="font-mono text-xs mt-1">5</p></div>
-            <div className="surface-2 rounded-xl p-2.5"><p className="text-[9px] text-faint">Treinos</p><p className="font-mono text-xs mt-1">2</p></div>
-            <div className="surface-2 rounded-xl p-2.5"><p className="text-[9px] text-faint">Metas ativas</p><p className="font-mono text-xs mt-1">2</p></div>
+          <div className="mt-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="surface-2 rounded-xl p-2.5"><p className="text-[9px] text-faint">Hábitos</p><p className="font-mono text-xs mt-1">5</p></div>
+              <div className="surface-2 rounded-xl p-2.5"><p className="text-[9px] text-faint">Tarefas ativas</p><p className="font-mono text-xs mt-1">5</p></div>
+              <div className="surface-2 rounded-xl p-2.5"><p className="text-[9px] text-faint">Treinos</p><p className="font-mono text-xs mt-1">2</p></div>
+              <div className="surface-2 rounded-xl p-2.5"><p className="text-[9px] text-faint">Metas ativas</p><p className="font-mono text-xs mt-1">2</p></div>
+            </div>
+            <p className="text-[10px] text-faint mt-1.5">Limites do seu plano atual — não é sua contagem de uso.</p>
           </div>
         )}
       </div>
@@ -19701,7 +19715,7 @@ function ConstancceApp() {
   const renderCurrentView = () => {
     switch (view) {
       case "dashboard": return <Dashboard profile={profile} setProfile={setProfile} habits={habits} completions={completions} tasks={tasks} toggleHabit={toggleHabit} streaks={usageStreaks} setView={setView} onQuickStart={handleGettingStartedAction} workoutTemplates={workoutTemplates} workoutSessions={workoutSessions} mealLog={mealLog} transactions={transactions} goals={goals} goalProgressLog={goalProgressLog} game={game} stats={stats} isPro={isPro} onUpgrade={requestPro} />;
-      case "habits": return <HabitsView habits={habits} completions={completions} toggleHabit={toggleHabit} saveHabit={saveHabit} deleteHabit={deleteHabit} toggleActive={toggleActive} habitChecklistLog={habitChecklistLog} toggleHabitChecklist={toggleHabitChecklist} autoOpen={quickTrigger.habits} isPro={isPro} onUpgrade={requestPro} />;
+      case "habits": return <HabitsView habits={habits} completions={completions} toggleHabit={toggleHabit} saveHabit={saveHabit} deleteHabit={deleteHabit} toggleActive={toggleActive} habitChecklistLog={habitChecklistLog} toggleHabitChecklist={toggleHabitChecklist} autoOpen={quickTrigger.habits} isPro={isPro} onUpgrade={requestPro} streaks={habitStreaks} />;
       case "tasks": return <TasksView tasks={tasks} saveTask={saveTask} deleteTask={deleteTask} setStatus={setTaskStatus} moveTask={moveTaskKanban} autoOpen={quickTrigger.tasks} isPro={isPro} onUpgrade={requestPro} />;
       case "calendar": return <CalendarView habits={habits} completions={completions} tasks={tasks} saveTask={saveTask} setTaskStatus={setTaskStatus} workoutTemplates={workoutTemplates} workoutSessions={workoutSessions} saveWorkoutTemplate={saveWorkoutTemplate} scheduleWorkoutSession={scheduleWorkoutSession} goals={goals} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
       case "goals": return <GoalsView goals={goals} saveGoal={saveGoal} addProgress={addGoalProgress} updateProgress={updateProgress} toggleGoalChecklist={toggleGoalChecklist} deleteGoal={deleteGoal} goalProgressLog={goalProgressLog} tasks={tasks} habits={habits} autoOpen={quickTrigger.goals} isPro={isPro} onUpgrade={requestPro} />;
@@ -19713,8 +19727,8 @@ function ConstancceApp() {
       case "progress": return <ProgressView streaks={habitStreaks} stats={stats} game={game} session={session} profile={profile} isPro={isPro} onUpgrade={requestPro} />;
       case "achievements": return <AchievementsView unlocked={unlocked} stats={stats} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
       case "notifications": return <NotificationsView items={notifications} profile={profile} setProfile={setProfile} notificationPermission={notificationPermission} pushEnabled={pushEnabled} pushSupported={pushSupported} notificationBusy={notificationBusy} onEnableNotifications={handleEnableNotifications} onDisableNotifications={handleDisableNotifications} isPro={isPro} onUpgrade={requestPro} />;
-      case "reports": return <ReportsView habits={habits} completions={completions} tasks={tasks} workoutSessions={workoutSessions} transactions={transactions} goals={goals} isPro={isPro} onUpgrade={requestPro} today={today} startOfMonth={startOfMonth} habitValidOnDate={habitValidOnDate} addDays={addDays} money={money} months={MONTHS} />;
-      case "profile": return <ProfileView profile={profile} setProfile={setProfile} theme={theme} setTheme={setTheme} streaks={habitStreaks} stats={stats} lastSaved={lastSaved} syncStatus={syncStatus} genericHasPending={Boolean(pendingSyncRef.current)} taskSyncStatus={taskSyncStatus} taskSyncError={taskSyncError} session={session} user={session?.user} onLogout={handleLogout} onSyncNow={handleManualSync} onDeleteAccount={handleDeleteAccount} installPrompt={installPrompt} onInstallApp={async () => { if (!installPrompt) return; await installPrompt.prompt(); setInstallPrompt(null); }} access={access} accessInfo={accessInfo} isPro={isPro} onUpgrade={requestPro} onBuyLifetime={handleLifetimeCheckout} checkoutLoading={checkoutLoading} paymentMessage={paymentMessage} accessError={accessError} />;
+      case "reports": return <ReportsView habits={habits} completions={completions} tasks={tasks} workoutSessions={workoutSessions} transactions={transactions} goals={goals} isPro={isPro} onUpgrade={requestPro} today={today} startOfMonth={startOfMonth} habitValidOnDate={habitValidOnDate} addDays={addDays} money={money} months={MONTHS} stats={stats} />;
+      case "profile": return <ProfileView profile={profile} setProfile={setProfile} theme={theme} setTheme={setTheme} streaks={habitStreaks} stats={stats} game={game} lastSaved={lastSaved} syncStatus={syncStatus} genericHasPending={Boolean(pendingSyncRef.current)} taskSyncStatus={taskSyncStatus} taskSyncError={taskSyncError} session={session} user={session?.user} onLogout={handleLogout} onSyncNow={handleManualSync} onDeleteAccount={handleDeleteAccount} installPrompt={installPrompt} onInstallApp={async () => { if (!installPrompt) return; await installPrompt.prompt(); setInstallPrompt(null); }} access={access} accessInfo={accessInfo} isPro={isPro} onUpgrade={requestPro} onBuyLifetime={handleLifetimeCheckout} checkoutLoading={checkoutLoading} paymentMessage={paymentMessage} accessError={accessError} />;
       default: return null;
     }
   };
