@@ -62,9 +62,24 @@
   .bg-brass{ background:var(--brass); }
   .bg-ember{ background:var(--ember); }
   .bg-moss{ background:var(--moss); }
-  .btn-primary{ background:linear-gradient(135deg, color-mix(in srgb, var(--brass) 90%, white 10%), var(--brass)); color:#141208; font-weight:700; box-shadow:0 8px 20px color-mix(in srgb, var(--brass) 18%, transparent); transition:transform 120ms ease, filter 120ms ease, box-shadow 120ms ease; }
-  .btn-primary:hover{ filter:brightness(1.08); box-shadow:0 10px 26px color-mix(in srgb, var(--brass) 24%, transparent); }
-  .btn-primary:active{ transform: scale(0.97); }
+  .btn-primary{
+    background:linear-gradient(135deg, color-mix(in srgb, var(--brass) 90%, white 10%), var(--brass));
+    color:#141208;
+    font-weight:700;
+    border:1px solid color-mix(in srgb, var(--brass) 55%, transparent);
+    box-shadow:
+      0 8px 20px color-mix(in srgb, var(--brass) 18%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 32%, transparent);
+    transition:transform 120ms ease, filter 120ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  }
+  .btn-primary:hover{
+    filter:brightness(1.08);
+    box-shadow:
+      0 10px 28px color-mix(in srgb, var(--brass) 30%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 38%, transparent);
+  }
+  .btn-primary:active{ transform: scale(0.97); filter:brightness(0.98); }
+  .btn-primary:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
   .login-submit-button{
     background:linear-gradient(135deg, #D7FF67 0%, #C6FF34 48%, #AEEE16 100%);
     color:#080B05;
@@ -79,10 +94,12 @@
     outline:2px solid #C6FF34;
     outline-offset:3px;
   }
-  .btn-ghost{ background:color-mix(in srgb, var(--surface) 75%, transparent); border:1px solid var(--border); color:var(--text); font-weight:500; transition:background 160ms ease, transform 120ms ease, border-color 160ms ease; }
-  .btn-ghost:hover{ background:var(--surface-2); }
+  .btn-ghost{ background:color-mix(in srgb, var(--surface) 75%, transparent); border:1px solid var(--border); color:var(--text); font-weight:500; transition:background 160ms ease, transform 120ms ease, border-color 160ms ease, box-shadow 180ms ease; }
+  .btn-ghost:hover{ background:var(--surface-2); border-color:color-mix(in srgb, var(--brass) 40%, var(--border)); box-shadow:0 0 0 1px color-mix(in srgb, var(--brass) 12%, transparent); }
   .btn-ghost:active{ transform: scale(0.97); }
-  .chip{ border:1px solid var(--border); background:color-mix(in srgb, var(--surface-2) 86%, transparent); border-radius:999px; padding:4px 10px; font-size:10px; font-weight:600; color:var(--text-dim); letter-spacing:.01em; }
+  .btn-ghost:focus-visible{ outline:2px solid color-mix(in srgb, var(--brass) 70%, transparent); outline-offset:2px; }
+  .chip{ border:1px solid var(--border); background:color-mix(in srgb, var(--surface-2) 86%, transparent); border-radius:999px; padding:4px 10px; font-size:10px; font-weight:600; color:var(--text-dim); letter-spacing:.01em; transition:border-color 160ms ease, color 160ms ease, background 160ms ease; }
+  button.chip:hover, a.chip:hover{ border-color:color-mix(in srgb, var(--brass) 45%, var(--border)); color:var(--text); }
   .pro-badge{
     display:inline-flex;
     align-items:center;
@@ -2735,6 +2752,24 @@
   position:sticky;
   top:44px;
   z-index:5;
+}
+.workout-live-clock{
+  border-bottom:1px solid var(--border-soft);
+}
+.workout-live-clock-dot{
+  width:7px;
+  height:7px;
+  border-radius:999px;
+  background:var(--brass);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--brass) 22%, transparent);
+  animation:workout-clock-pulse 1.6s ease-in-out infinite;
+}
+@keyframes workout-clock-pulse{
+  0%, 100%{ opacity:1; transform:scale(1); }
+  50%{ opacity:.55; transform:scale(.82); }
+}
+.workout-rest-active{
+  border-top:1px solid var(--border-soft);
 }
 
 /* Campo de carga: edição local até blur/Enter, sem saltos de foco. */

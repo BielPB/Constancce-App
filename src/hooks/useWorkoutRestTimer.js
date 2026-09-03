@@ -155,6 +155,19 @@ export function useWorkoutRestTimer(userId) {
     writeTimer(userId, null);
   }, [userId]);
 
+  const adjust = useCallback((deltaSeconds) => {
+    setTimer((current) => {
+      if (!current) return current;
+      const next = {
+        ...current,
+        endAt: Math.max(Date.now(), current.endAt + deltaSeconds * 1000),
+        total: Math.max(10, current.total + deltaSeconds),
+      };
+      writeTimer(userId, next);
+      return next;
+    });
+  }, [userId]);
+
   const acknowledgeFinished = useCallback(() => {
     setFinishedTimer(null);
     writeTimer(userId, null);
@@ -173,6 +186,7 @@ export function useWorkoutRestTimer(userId) {
     total: Number(timer?.total || 0),
     start,
     cancel,
+    adjust,
     acknowledgeFinished,
   };
 }

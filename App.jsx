@@ -1,5 +1,5 @@
 import { createClient as createSupabaseRealtimeClient } from "@supabase/supabase-js";
-import React, { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef, useId, lazy, Suspense } from "react";
 import { DATA_SCHEMA_VERSION, migrateUserData } from "./src/lib/schema.js";
 import { DOMAIN_FIELDS, mergeDomainRows, pickDataForKeys, mergePendingPayload, mergeRemoteWithPending } from "./src/lib/syncDomains.js";
 import { mergePendingPayloadV3, mergeRemoteWithPendingV3, rebasePendingV3, newMutationId, mergeEntityArray3Way } from "./src/lib/syncV3.js";
@@ -1743,7 +1743,8 @@ function smoothChartPath(points) {
   return path;
 }
 
-function MiniLineChart({ data, height = 150 }) {
+function MiniLineChart({ data, height = 150, color = "var(--brass)" }) {
+  const gradientId = useId();
   const vals = data.map((item) => Number(item.value) || 0);
   const w = 600;
   const h = height;
@@ -1752,6 +1753,7 @@ function MiniLineChart({ data, height = 150 }) {
   const max = Math.max(...vals, 1);
   const min = Math.min(...vals, 0);
   const range = Math.max(1, max - min);
+  const baseline = h - padY;
 
   const points = vals.map((value, index) => ({
     x: padX + (index * (w - padX * 2)) / Math.max(1, vals.length - 1),
@@ -1761,10 +1763,20 @@ function MiniLineChart({ data, height = 150 }) {
   }));
 
   const path = smoothChartPath(points);
+  const areaPath = points.length
+    ? `${path} L ${points[points.length - 1].x} ${baseline} L ${points[0].x} ${baseline} Z`
+    : "";
 
   return (
     <div className="tech-chart w-full overflow-hidden">
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height }} role="img" aria-label="Gráfico de evolução">
+        <defs>
+          <linearGradient id={`mlc-fill-${gradientId}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.34" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
         {[0.2, 0.4, 0.6, 0.8].map((ratio) => (
           <line
             key={ratio}
@@ -1779,15 +1791,15 @@ function MiniLineChart({ data, height = 150 }) {
           />
         ))}
 
-        <path d={path} fill="none" stroke="var(--brass)" strokeWidth="7" strokeLinecap="round" opacity=".055" />
-        <path d={path} fill="none" stroke="var(--brass)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={areaPath} fill={`url(#mlc-fill-${gradientId})`} stroke="none" />
+        <path d={path} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
 
         {points.map((point, index) => (
           <g key={index}>
             <circle cx={point.x} cy={point.y} r="7" fill="transparent">
               <title>{`${point.label || ""}: ${point.value}`}</title>
             </circle>
-            <circle cx={point.x} cy={point.y} r="2.4" fill="var(--surface)" stroke="var(--brass)" strokeWidth="1.4" />
+            <circle cx={point.x} cy={point.y} r="2" fill="var(--surface)" stroke={color} strokeWidth="1.2" />
           </g>
         ))}
       </svg>
@@ -2372,6 +2384,39 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
   const last7Dates = Array.from({ length: 7 }, (_, i) => addDays(t, i - 6));
   const weekScores = last7Dates.map((date) => getDayPerformance(date, habits, completions, tasks, workoutSessions, mealLog, goalProgressLog).score);
   const weekAvg = Math.round(weekScores.reduce((a, b) => a + b, 0) / Math.max(1, weekScores.length));
+
+  const weekGridRows = [
+    {
+      id: "habits",
+      label: "Hábitos",
+      cells: last7Dates.map((date) => {
+        const valid = habits.filter((h) => habitValidOnDate(h, date, completions));
+        if (valid.length === 0) return { na: true };
+        const done = valid.filter((h) => completions.some((c) => c.habitId === h.id && c.date === date)).length;
+        return { ratio: done / valid.length, title: `${done}/${valid.length} hábitos concluídos` };
+      }),
+    },
+    {
+      id: "tasks",
+      label: "Tarefas",
+      cells: last7Dates.map((date) => {
+        const dayTasks = tasks.filter((tk) => taskOccursOnDate(tk, date));
+        if (dayTasks.length === 0) return { na: true };
+        const done = dayTasks.filter((tk) => taskDoneOnDate(tk, date)).length;
+        return { ratio: done / dayTasks.length, title: `${done}/${dayTasks.length} tarefas concluídas` };
+      }),
+    },
+    {
+      id: "workout",
+      label: "Treino",
+      cells: last7Dates.map((date) => {
+        const scheduled = workoutTemplates.some((tp) => (tp.scheduleDays || []).includes(weekdayIndex(date)));
+        const done = workoutSessions.some((s) => s.date === date && s.completed);
+        if (!scheduled && !done) return { na: true };
+        return { ratio: done ? 1 : 0, title: done ? "Treino concluído" : "Treino não realizado" };
+      }),
+    },
+  ];
   const weekWorkouts = workoutSessions.filter((s) => s.completed && s.date >= last7Dates[0] && s.date <= t).length;
   const weekTasks = tasks.filter((task) => {
     if (isRecurringTask(task)) return (task.completionDates || []).some((date) => date >= last7Dates[0] && date <= t);
@@ -2577,9 +2622,9 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
             {pendingHabits.length === 0 && <p className="text-moss text-sm py-3">Hábitos de hoje concluídos.</p>}
             {pendingHabits.slice(0, 7).map((habit) => (
               <button key={habit.id} onClick={() => toggleHabit(habit.id, t)} className="surface-2 rounded-xl p-3 flex items-center gap-3 text-left">
-                <Circle size={16} className="text-faint" />
-                <span className="text-sm flex-1">{habit.name}</span>
-                <span className="chip text-[9px]">{catLabel(habit.category)}</span>
+                <Circle size={16} className="text-faint shrink-0" />
+                <span className="text-sm flex-1 min-w-0 break-words">{habit.name}</span>
+                <span className="chip text-[9px] shrink-0">{catLabel(habit.category)}</span>
               </button>
             ))}
           </div>
@@ -2705,6 +2750,47 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
           </div>
           <Sparkles size={20} className="text-brass" />
         </div>
+
+        <div className="habit-grid-scroll mb-4">
+          <table className="habit-grid-table">
+            <thead>
+              <tr>
+                <th className="habit-grid-name-col text-left" />
+                {last7Dates.map((date) => (
+                  <th key={date} className={`habit-grid-day-head font-mono ${date === t ? "habit-grid-today" : ""}`}>
+                    {WEEKDAYS[weekdayIndex(date)][0]}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {weekGridRows.map((row) => (
+                <tr key={row.id}>
+                  <td className="habit-grid-name-col"><span className="text-xs font-medium">{row.label}</span></td>
+                  {row.cells.map((cell, index) => (
+                    <td key={index} className={`habit-grid-cell-wrap ${last7Dates[index] === t ? "habit-grid-today" : ""}`}>
+                      <div
+                        className="habit-grid-cell"
+                        title={cell.na ? "Sem programação" : cell.title}
+                        style={{
+                          background: cell.na
+                            ? "transparent"
+                            : `color-mix(in srgb, var(--moss) ${Math.round(cell.ratio * 100)}%, var(--surface-2))`,
+                          border: cell.na
+                            ? "1px dashed var(--border-soft)"
+                            : cell.ratio > 0
+                              ? "1px solid var(--moss)"
+                              : "1px solid var(--border)",
+                        }}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
         <div className="grid grid-cols-3 gap-2 mb-4">
           <div className="surface-2 rounded-xl p-3"><p className="text-[9px] text-faint uppercase">Tarefas</p><p className="font-mono mt-1">{weekTasks}</p></div>
           <div className="surface-2 rounded-xl p-3"><p className="text-[9px] text-faint uppercase">Treinos</p><p className="font-mono mt-1">{weekWorkouts}</p></div>
@@ -4152,6 +4238,12 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
     setDragOverColumn(null);
   };
 
+  const productivityHeatmap = Array.from({ length: 90 }, (_, i) => addDays(t, i - 89)).map((date) => {
+    const dayTasks = tasks.filter((task) => taskOccursOnDate(task, date));
+    const done = dayTasks.filter((task) => taskDoneOnDate(task, date)).length;
+    return { date, score: dayTasks.length ? Math.round((done / dayTasks.length) * 100) : 0 };
+  });
+
   return (
     <div className="tasks-modern-view flex flex-col gap-4 md:gap-5">
       <div className="task-main-header flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
@@ -4444,6 +4536,22 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
               </div>
             </div>
           )}
+
+          <div className="surface rounded-2xl p-4 md:p-6">
+            <div className="flex items-center gap-2">
+              <Grid3X3 size={15} className="text-brass" />
+              <p className="text-xs text-faint uppercase tracking-widest">Padrão de produtividade</p>
+            </div>
+            <p className="text-dim text-xs mt-1 mb-4">
+              Cada bloco representa um dia. Quanto mais intenso, maior o percentual de tarefas concluídas.
+            </p>
+            <ConsistencyHeatmap days={productivityHeatmap} />
+            <div className="flex items-center justify-between mt-3 text-[9px] text-faint">
+              <span>menos tarefas concluídas</span>
+              <span>90 dias</span>
+              <span>mais tarefas concluídas</span>
+            </div>
+          </div>
 </>
       )}
 
@@ -7837,25 +7945,26 @@ const workoutEstimated1RM = (sessions, templateId, exerciseId) => {
   return Math.round(best);
 };
 
-const workoutWeeklyMuscleFrequency = (templates, sessions, endDate = today()) => {
-  const startDate = addDays(endDate, -6);
-  const map = new Map();
+const workoutMuscleWeekGrid = (templates, sessions, days) => {
+  const groupSet = new Set();
+  const perDay = days.map((date) => {
+    const dayGroups = new Set();
+    (sessions || [])
+      .filter((session) => session.completed && session.date === date)
+      .forEach((session) => {
+        const template = (templates || []).find((item) => item.id === session.templateId);
+        (template?.exercises || []).forEach((exercise) => {
+          const group = exercise.muscleGroup || inferWorkoutMuscleGroup(exercise.name);
+          dayGroups.add(group);
+          groupSet.add(group);
+        });
+      });
+    return dayGroups;
+  });
 
-  (sessions || [])
-    .filter((session) => session.completed && session.date >= startDate && session.date <= endDate)
-    .forEach((session) => {
-      const template = (templates || []).find((item) => item.id === session.templateId);
-      const groups = new Set(
-        (template?.exercises || []).map((exercise) =>
-          exercise.muscleGroup || inferWorkoutMuscleGroup(exercise.name)
-        )
-      );
-      groups.forEach((group) => map.set(group, (map.get(group) || 0) + 1));
-    });
-
-  return [...map.entries()]
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => b.count - a.count);
+  return [...groupSet]
+    .map((label) => ({ label, cells: perDay.map((dayGroups) => dayGroups.has(label)) }))
+    .sort((a, b) => b.cells.filter(Boolean).length - a.cells.filter(Boolean).length);
 };
 
 const workoutTrainingInsights = (templates, sessions) => {
@@ -8359,7 +8468,9 @@ function WorkoutsView({
   restTimer,
   onStartRest,
   onCancelRest,
+  onAdjustRest,
   resumeSessionId,
+  onResumeHandled,
 }) {
   const [section, setSection] = useState("today");
   const [promptFor, promptDialog] = usePrompt();
@@ -8419,16 +8530,22 @@ function WorkoutsView({
   }, []);
 
   useEffect(() => {
+    // resumeSessionId só existe como um pedido explícito (clique no pílula de descanso
+    // flutuante) e é consumido/zerado pelo pai (onResumeHandled) logo depois de tratado.
+    // Isso é essencial: sem o consumo, o valor continuaria "verdadeiro" e este efeito
+    // reabriria o modal do treino e forçaria a aba "Hoje" de novo a cada re-render,
+    // mesmo depois do usuário fechar o modal ou trocar para "Meus treinos" de propósito.
     if (!resumeSessionId) return;
     const sessionToResume = sessions.find(
       (session) => session.id === resumeSessionId && !session.completed
     );
-    if (!sessionToResume) return;
-
-    setSection("today");
-    setActiveSessionId(sessionToResume.id);
-    setActiveTemplateId(sessionToResume.templateId);
-  }, [resumeSessionId, sessions]);
+    if (sessionToResume) {
+      setSection("today");
+      setActiveSessionId(sessionToResume.id);
+      setActiveTemplateId(sessionToResume.templateId);
+    }
+    onResumeHandled?.();
+  }, [resumeSessionId, sessions, onResumeHandled]);
 
 
 
@@ -8443,6 +8560,24 @@ function WorkoutsView({
   const activeTemplate = activeSession
     ? templates.find((template) => template.id === activeSession.templateId)
     : templates.find((template) => template.id === activeTemplateId);
+
+  const [workoutClockTick, setWorkoutClockTick] = useState(() => Date.now());
+  const workoutInProgress = Boolean(activeSession && !activeSession.completed);
+  useEffect(() => {
+    if (!workoutInProgress) return;
+    setWorkoutClockTick(Date.now());
+    const interval = window.setInterval(() => setWorkoutClockTick(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, [workoutInProgress, activeSession?.id]);
+  const workoutElapsedSeconds = workoutInProgress && activeSession?.startedAt
+    ? Math.max(0, Math.floor((workoutClockTick - new Date(activeSession.startedAt).getTime()) / 1000))
+    : 0;
+  const formatWorkoutClock = (totalSeconds) => {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(h > 0 ? 2 : 1, "0");
+    const s = String(totalSeconds % 60).padStart(2, "0");
+    return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
+  };
 
   const allHistory = [...sessions]
     .filter((session) => !session.plannedOnly || session.date <= t)
@@ -8543,7 +8678,8 @@ function WorkoutsView({
   const weekStart = startOfWeek(t);
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
 
-  const weeklyMuscles = workoutWeeklyMuscleFrequency(templates, sessions, t);
+  const muscleWeekDays = Array.from({ length: 7 }, (_, i) => addDays(t, i - 6));
+  const muscleWeekGrid = workoutMuscleWeekGrid(templates, sessions, muscleWeekDays);
   const trainingInsights = workoutTrainingInsights(templates, sessions);
 
   const exerciseLibrary = useMemo(() => {
@@ -9303,17 +9439,43 @@ function WorkoutsView({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="surface rounded-2xl p-4 md:p-5">
               <p className="text-[10px] text-faint uppercase tracking-widest">Frequência muscular · 7 dias</p>
-              <div className="flex flex-wrap gap-1.5 mt-3">
-                {weeklyMuscles.length > 0 ? (
-                  weeklyMuscles.map((item) => (
-                    <span key={item.label} className="chip">
-                      {item.label} {item.count}x
-                    </span>
-                  ))
-                ) : (
-                  <p className="text-dim text-xs">Conclua treinos para visualizar sua frequência.</p>
-                )}
-              </div>
+              {muscleWeekGrid.length > 0 ? (
+                <div className="habit-grid-scroll mt-3">
+                  <table className="habit-grid-table">
+                    <thead>
+                      <tr>
+                        <th className="habit-grid-name-col text-left" />
+                        {muscleWeekDays.map((date) => (
+                          <th key={date} className={`habit-grid-day-head font-mono ${date === t ? "habit-grid-today" : ""}`}>
+                            {WEEKDAYS[weekdayIndex(date)][0]}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {muscleWeekGrid.map((row) => (
+                        <tr key={row.label}>
+                          <td className="habit-grid-name-col"><span className="text-xs font-medium">{row.label}</span></td>
+                          {row.cells.map((done, index) => (
+                            <td key={index} className={`habit-grid-cell-wrap ${muscleWeekDays[index] === t ? "habit-grid-today" : ""}`}>
+                              <div
+                                className="habit-grid-cell"
+                                title={done ? `${row.label} treinado` : "Não treinado"}
+                                style={{
+                                  background: done ? "var(--moss)" : "var(--surface-2)",
+                                  border: done ? "1px solid var(--moss)" : "1px solid var(--border)",
+                                }}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-dim text-xs mt-3">Conclua treinos para visualizar sua frequência.</p>
+              )}
             </div>
 
             <div className="surface rounded-2xl p-4 md:p-5">
@@ -9633,6 +9795,16 @@ function WorkoutsView({
         >
           <div className="workout-focus-mode flex flex-col gap-3">
             <div className="workout-focus-summary surface-2 rounded-2xl p-3">
+              {workoutInProgress && (
+                <div className="workout-live-clock flex items-center justify-between gap-3 pb-3 mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="workout-live-clock-dot" aria-hidden="true" />
+                    <p className="text-[9px] text-faint uppercase tracking-widest">Cronômetro do treino</p>
+                  </div>
+                  <p className="font-mono text-xl md:text-2xl text-brass">{formatWorkoutClock(workoutElapsedSeconds)}</p>
+                </div>
+              )}
+
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <p className="text-[9px] text-faint uppercase tracking-widest">Séries</p>
@@ -9655,19 +9827,27 @@ function WorkoutsView({
               </div>
 
               {restTimer.running && (
-                <div className="flex items-center gap-2 mt-3">
-                  <div className="flex-1">
-                    <Progress
-                      value={restTimer.total > 0 ? (restTimer.remaining / restTimer.total) * 100 : 0}
-                      height={4}
-                    />
+                <div className="workout-rest-active mt-3 pt-3">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <p className="text-[9px] text-faint uppercase tracking-widest">Descansando</p>
+                    <p className="font-mono text-2xl text-brass">{formatTimer(restTimer.remaining)}</p>
                   </div>
-                  <button
-                    className="text-[10px] text-faint"
-                    onClick={onCancelRest}
-                  >
-                    Pular
-                  </button>
+                  <Progress
+                    value={restTimer.total > 0 ? (restTimer.remaining / restTimer.total) * 100 : 0}
+                    height={4}
+                  />
+                  <div className="flex items-center justify-between gap-2 mt-2.5">
+                    <div className="flex gap-1.5">
+                      <button className="chip" onClick={() => onAdjustRest(-15)}>-15s</button>
+                      <button className="chip" onClick={() => onAdjustRest(15)}>+15s</button>
+                    </div>
+                    <button
+                      className="text-[10px] text-faint"
+                      onClick={onCancelRest}
+                    >
+                      Pular
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -10318,9 +10498,17 @@ function BarcodeScannerModal({ onDetected, onClose }) {
   );
 }
 
+const DIET_MONTH_METRICS = [
+  { id: "calories", label: "Calorias", unit: "kcal" },
+  { id: "protein", label: "Proteína", unit: "g" },
+  { id: "carbs", label: "Carboidratos", unit: "g" },
+  { id: "fat", label: "Gordura", unit: "g" },
+];
+
 function NutritionIntelligencePanel({ mealLog, profile, isPro, onUpgrade }) {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
+  const [monthMetric, setMonthMetric] = useState("calories");
 
   if (!isPro) {
     return (
@@ -10336,6 +10524,16 @@ function NutritionIntelligencePanel({ mealLog, profile, isPro, onUpgrade }) {
   const dates = Array.from({ length: 7 }, (_, index) => addDays(today(), index - 6));
   const rows = dates.map((date) => ({ date, ...dietDailyTotals(mealLog, date) }));
   const loggedRows = rows.filter((row) => row.calories > 0);
+
+  const currentMonthKey = monthKey(today());
+  const daysElapsedInMonth = new Date().getDate();
+  const monthDates = Array.from({ length: daysElapsedInMonth }, (_, index) => `${currentMonthKey}-${String(index + 1).padStart(2, "0")}`);
+  const monthRows = monthDates.map((date) => ({ date, ...dietDailyTotals(mealLog, date) }));
+  const hasMonthData = monthRows.some((row) => row.calories > 0);
+  const monthChartData = monthRows.map((row) => ({
+    value: row[monthMetric] || 0,
+    label: String(Number(row.date.slice(-2))),
+  }));
   const loggedDays = Math.max(1, loggedRows.length);
   const sum = (key) => loggedRows.reduce((total, row) => total + Number(row[key] || 0), 0);
   const avgCalories = Math.round(sum("calories") / loggedDays);
@@ -10430,6 +10628,29 @@ function NutritionIntelligencePanel({ mealLog, profile, isPro, onUpgrade }) {
             <p className="font-display text-sm md:text-base mt-1 break-words">{value}</p>
           </div>
         ))}
+      </div>
+
+      <div className="mt-4">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <p className="text-[9px] text-faint uppercase tracking-widest">Evolução no mês</p>
+          <div className="flex gap-1 overflow-x-auto scrollbar-none">
+            {DIET_MONTH_METRICS.map((metric) => (
+              <button
+                key={metric.id}
+                className={`chip whitespace-nowrap ${monthMetric === metric.id ? "text-brass" : ""}`}
+                style={monthMetric === metric.id ? { borderColor: "var(--brass-dim)", background: "var(--surface-2)" } : {}}
+                onClick={() => setMonthMetric(metric.id)}
+              >
+                {metric.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {hasMonthData ? (
+          <MiniLineChart data={monthChartData} height={140} />
+        ) : (
+          <p className="text-dim text-xs py-4 text-center">Sem dados suficientes neste mês ainda.</p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3">
@@ -11719,64 +11940,6 @@ function FinanceRecurringForm({ onSave, onClose }) {
         Salvar recorrência
       </button>
     </Modal>
-  );
-}
-
-
-function FinanceFlowChart({ transactions }) {
-  const [range, setRange] = useState("30d");
-  const cfg = {
-    "7d": { days: 7, buckets: 7, label: "7 dias" },
-    "30d": { days: 30, buckets: 6, label: "30 dias" },
-    "3m": { days: 90, buckets: 3, label: "3 meses" },
-    "6m": { days: 180, buckets: 6, label: "6 meses" },
-    "12m": { days: 365, buckets: 12, label: "12 meses" },
-  }[range];
-  const end = new Date(today() + "T12:00:00");
-  const start = new Date(end); start.setDate(start.getDate() - cfg.days + 1);
-  const bucketDays = cfg.days / cfg.buckets;
-  const rows = Array.from({ length: cfg.buckets }, (_, i) => {
-    const bStart = new Date(start); bStart.setDate(start.getDate() + Math.floor(i * bucketDays));
-    const bEnd = new Date(start); bEnd.setDate(start.getDate() + Math.floor((i + 1) * bucketDays) - 1);
-    if (i === cfg.buckets - 1) bEnd.setTime(end.getTime());
-    const keyStart = bStart.toISOString().slice(0,10), keyEnd = bEnd.toISOString().slice(0,10);
-    const list = transactions.filter((tx) => tx.date >= keyStart && tx.date <= keyEnd);
-    const entrada = list.filter((tx) => tx.type === "entrada").reduce((a,b)=>a+Number(b.value||0),0);
-    const saida = list.filter((tx) => tx.type === "saida").reduce((a,b)=>a+Number(b.value||0),0);
-    const label = cfg.days <= 30
-      ? bStart.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
-      : bStart.toLocaleDateString("pt-BR", { month: "short" }).replace('.', '');
-    return { label, entrada, saida };
-  });
-  const max = Math.max(1, ...rows.flatMap((r)=>[r.entrada,r.saida]));
-  const width=720, height=250, top=22, bottom=42, left=12, right=12, chartH=height-top-bottom;
-  const groupW=(width-left-right)/rows.length, barW=Math.min(24, groupW*0.26);
-  const totalIn=rows.reduce((a,b)=>a+b.entrada,0), totalOut=rows.reduce((a,b)=>a+b.saida,0);
-  return (
-    <div className="surface rounded-2xl p-4 md:p-5">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-        <div><p className="text-xs text-faint uppercase tracking-widest">Fluxo financeiro</p><p className="text-dim text-xs mt-1">Entradas e saídas registradas no período.</p></div>
-        <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-1">
-          {[['7d','7D'],['30d','30D'],['3m','3M'],['6m','6M'],['12m','1A']].map(([id,label])=><button key={id} onClick={()=>setRange(id)} className={`chip whitespace-nowrap ${range===id?'text-brass':''}`} style={range===id?{borderColor:'var(--brass-dim)',background:'var(--surface-2)'}:{}}>{label}</button>)}
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3 mb-2">
-        <div className="surface-2 p-3"><p className="text-[10px] text-faint uppercase tracking-wider">Entradas</p><p className="font-mono text-sm text-moss mt-1">{money(totalIn)}</p></div>
-        <div className="surface-2 p-3"><p className="text-[10px] text-faint uppercase tracking-wider">Saídas</p><p className="font-mono text-sm text-ember mt-1">{money(totalOut)}</p></div>
-      </div>
-      {transactions.length === 0 ? <div className="h-44 flex items-center justify-center text-dim text-sm">Registre uma entrada ou saída para visualizar o gráfico.</div> : (
-      <div className="w-full overflow-hidden">
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto min-h-[210px]" role="img" aria-label={`Gráfico financeiro dos últimos ${cfg.label}`}>
-          {[0,.25,.5,.75,1].map((f)=><line key={f} x1={left} x2={width-right} y1={top+chartH*f} y2={top+chartH*f} stroke="var(--border-soft)" strokeWidth="1" />)}
-          {rows.map((r,i)=>{ const cx=left+i*groupW+groupW/2; const hin=(r.entrada/max)*chartH; const hout=(r.saida/max)*chartH; return <g key={i}>
-            <rect x={cx-barW-2} y={top+chartH-hin} width={barW} height={hin} rx="4" fill="var(--moss)" opacity="0.9"><title>{`Entradas: ${money(r.entrada)}`}</title></rect>
-            <rect x={cx+2} y={top+chartH-hout} width={barW} height={hout} rx="4" fill="var(--ember)" opacity="0.9"><title>{`Saídas: ${money(r.saida)}`}</title></rect>
-            <text x={cx} y={height-16} textAnchor="middle" fontSize="10" fill="var(--text-faint)" style={{fontFamily:'Poppins, sans-serif'}}>{r.label}</text>
-          </g>})}
-        </svg>
-      </div>)}
-      <div className="flex items-center justify-center gap-5 text-[11px] text-dim mt-1"><span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-sm bg-moss"/>Entradas</span><span className="flex items-center gap-1.5"><i className="w-2 h-2 rounded-sm bg-ember"/>Saídas</span></div>
-    </div>
   );
 }
 
@@ -13264,6 +13427,16 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
     };
   });
 
+  const dailySpendMax = Math.max(1, ...Array.from({ length: elapsedDays }, (_, i) => {
+    const dateStr = `${selectedMonth}-${String(i + 1).padStart(2, "0")}`;
+    return monthTx.filter((tx) => tx.type === "saida" && tx.date === dateStr).reduce((sum, tx) => sum + Number(tx.value || 0), 0);
+  }));
+  const spendingHeatmap = Array.from({ length: elapsedDays }, (_, i) => {
+    const dateStr = `${selectedMonth}-${String(i + 1).padStart(2, "0")}`;
+    const spent = monthTx.filter((tx) => tx.type === "saida" && tx.date === dateStr).reduce((sum, tx) => sum + Number(tx.value || 0), 0);
+    return { date: dateStr, score: Math.round((spent / dailySpendMax) * 100) };
+  });
+
   const categoryRows = FIN_OUT.map((category) => {
     const spent = monthTx
       .filter((tx) => tx.type === "saida" && tx.category === category)
@@ -14230,6 +14403,23 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
                 <p className="text-[10px] md:text-xs text-dim mt-1 mb-3">Entradas e saídas ao longo do tempo.</p>
                 <FinanceTrendChart rows={sixMonths} />
               </div>
+            </div>
+
+            <div className="surface rounded-2xl p-4 md:p-6">
+              <p className="text-[10px] text-faint uppercase tracking-widest">Gastos por dia</p>
+              <p className="text-[10px] md:text-xs text-dim mt-1 mb-4">Cada bloco é um dia de {monthLabelDisplay}. Quanto mais intenso, maior o gasto em relação ao pico do mês.</p>
+              {spendingHeatmap.length > 0 ? (
+                <>
+                  <ConsistencyHeatmap days={spendingHeatmap} />
+                  <div className="flex items-center justify-between mt-3 text-[9px] text-faint">
+                    <span>menor gasto</span>
+                    <span>{monthLabelDisplay}</span>
+                    <span>maior gasto</span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-dim text-xs py-4 text-center">Sem dias suficientes neste mês ainda.</p>
+              )}
             </div>
 
             <div className="surface rounded-2xl p-4 md:p-5">
@@ -19434,7 +19624,7 @@ function ConstancceApp() {
       case "tasks": return <TasksView tasks={tasks} saveTask={saveTask} deleteTask={deleteTask} setStatus={setTaskStatus} moveTask={moveTaskKanban} autoOpen={quickTrigger.tasks} isPro={isPro} onUpgrade={requestPro} />;
       case "calendar": return <CalendarView habits={habits} completions={completions} tasks={tasks} saveTask={saveTask} setTaskStatus={setTaskStatus} workoutTemplates={workoutTemplates} workoutSessions={workoutSessions} saveWorkoutTemplate={saveWorkoutTemplate} scheduleWorkoutSession={scheduleWorkoutSession} goals={goals} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
       case "goals": return <GoalsView goals={goals} saveGoal={saveGoal} addProgress={addGoalProgress} updateProgress={updateProgress} toggleGoalChecklist={toggleGoalChecklist} deleteGoal={deleteGoal} goalProgressLog={goalProgressLog} tasks={tasks} habits={habits} autoOpen={quickTrigger.goals} isPro={isPro} onUpgrade={requestPro} />;
-      case "workouts": return <WorkoutsView session={session} templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateReps={updateWorkoutReps} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ remaining: workoutRest.remaining, total: workoutRest.total, running: workoutRest.running }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} resumeSessionId={workoutResumeSessionId || workoutRest.timer?.sessionId || null} />;
+      case "workouts": return <WorkoutsView session={session} templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateReps={updateWorkoutReps} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ remaining: workoutRest.remaining, total: workoutRest.total, running: workoutRest.running }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} onAdjustRest={workoutRest.adjust} resumeSessionId={workoutResumeSessionId} onResumeHandled={() => setWorkoutResumeSessionId(null)} />;
       case "food": return <FoodView foodBase={dietFoodBase} foods={foods} mealLog={mealLog} addMeal={addMeal} updateMeal={updateMeal} toggleMealConsumed={toggleMealConsumed} deleteMeal={deleteMeal} deleteFood={deleteFood} profile={profile} setProfile={setProfile} session={session} autoOpen={quickTrigger.food} isPro={isPro} onUpgrade={requestPro} />;
       case "finance": return <FinanceView transactions={transactions} addTransaction={addTransaction} addGoalProgress={addGoalProgress} deleteTransaction={deleteTransaction} removeTransactionRecord={removeTransactionRecord} profile={profile} setProfile={setProfile} goals={goals} autoOpen={quickTrigger.finance} isPro={isPro} onUpgrade={requestPro} />;
       case "friends": return <FriendsView session={session} profile={profile} game={game} streaks={habitStreaks} isPro={isPro} onUpgrade={requestPro} />;
