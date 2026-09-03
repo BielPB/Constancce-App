@@ -48,7 +48,22 @@
     --brass:#A77BFF;
     --brass-dim:#63499B;
   }
-  .app-root{ background:radial-gradient(circle at 18% -10%, color-mix(in srgb, var(--brass) 10%, transparent), transparent 28%), var(--bg); color:var(--text); font-family:'Poppins', ui-sans-serif, system-ui, sans-serif; min-height:100%; font-weight:400; }
+  .app-root{
+    background-color:var(--bg);
+    background-image:
+      radial-gradient(circle, color-mix(in srgb, var(--text) 12%, transparent) 1.1px, transparent 1.3px),
+      radial-gradient(900px 620px at 14% -8%, color-mix(in srgb, var(--brass) 20%, transparent), transparent 62%),
+      radial-gradient(760px 560px at 96% 12%, color-mix(in srgb, var(--moss) 15%, transparent), transparent 58%),
+      radial-gradient(700px 520px at 8% 72%, color-mix(in srgb, var(--brass) 13%, transparent), transparent 58%),
+      radial-gradient(640px 480px at 100% 92%, color-mix(in srgb, var(--ember) 10%, transparent), transparent 55%);
+    background-size:24px 24px, auto, auto, auto, auto;
+    background-repeat:repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+    background-position:0 0, 0 0, 0 0, 0 0, 0 0;
+    color:var(--text);
+    font-family:'Poppins', ui-sans-serif, system-ui, sans-serif;
+    min-height:100%;
+    font-weight:400;
+  }
   .font-display{ font-family:'Poppins',sans-serif; letter-spacing:-0.02em; font-weight:700; }
   .font-mono{ font-family:'Poppins',sans-serif; font-variant-numeric:tabular-nums; font-weight:600; }
   .surface{ background:linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, white 4%), var(--surface)); border:1px solid var(--border); border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.16); transition:border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease; }
@@ -1575,7 +1590,6 @@
       font-size:16px !important;
       touch-action:auto !important;
     }
-    .app-root{ background:radial-gradient(circle at 50% -5%, color-mix(in srgb, var(--brass) 9%, transparent), transparent 22%), var(--bg); }
     .surface{ border-radius:16px; box-shadow:0 7px 22px rgba(0,0,0,.13); }
     .task-card-description{
       font-size:10.5px !important;
@@ -3022,9 +3036,8 @@
 .habit-grid-today{
   color:var(--brass) !important;
 }
-td.habit-grid-today{
-  background:color-mix(in srgb, var(--brass) 6%, transparent);
-  border-radius:6px;
+td.habit-grid-today .habit-grid-cell{
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--brass) 35%, transparent);
 }
 .habit-grid-cell-wrap{
   padding:0;

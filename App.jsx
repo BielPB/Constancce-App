@@ -3888,6 +3888,8 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
   const [focusTask, setFocusTask] = useState(null);
   const [weekDragTarget, setWeekDragTarget] = useState(null);
   const [expandedSubtasks, setExpandedSubtasks] = useState({});
+  const [showAllTodayCompleted, setShowAllTodayCompleted] = useState(false);
+  const [showAllBoardCompleted, setShowAllBoardCompleted] = useState(false);
 
   useEffect(() => {
     if (autoOpen) {
@@ -4553,7 +4555,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
               </div>
 
               <div className="flex flex-col gap-1.5 mt-3">
-                {todayCompleted.slice(0, 6).map((task) => (
+                {(showAllTodayCompleted ? todayCompleted : todayCompleted.slice(0, 6)).map((task) => (
                   <button
                     key={task.id}
                     className="surface-2 rounded-xl px-3 py-2 flex items-center gap-2 text-left"
@@ -4564,6 +4566,16 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                   </button>
                 ))}
               </div>
+
+              {todayCompleted.length > 6 && (
+                <button
+                  type="button"
+                  className="text-[10px] text-brass text-left mt-2 px-1 py-1"
+                  onClick={() => setShowAllTodayCompleted((value) => !value)}
+                >
+                  {showAllTodayCompleted ? "Ver menos" : `Ver mais (${todayCompleted.length - 6})`}
+                </button>
+              )}
             </div>
           )}
 
@@ -4670,7 +4682,10 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                     </div>
                   )}
 
-                  {column.items.map((task) => {
+                  {(column.id === "concluida" && !showAllBoardCompleted
+                    ? column.items.slice(0, 6)
+                    : column.items
+                  ).map((task) => {
                     const done = boardIsDone(task);
                     const overdue =
                       !isRecurringTask(task) &&
@@ -4755,6 +4770,16 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                       </article>
                     );
                   })}
+
+                  {column.id === "concluida" && column.items.length > 6 && (
+                    <button
+                      type="button"
+                      className="text-[10px] text-brass text-left px-1 py-1"
+                      onClick={() => setShowAllBoardCompleted((value) => !value)}
+                    >
+                      {showAllBoardCompleted ? "Ver menos" : `Ver mais (${column.items.length - 6})`}
+                    </button>
+                  )}
                 </div>
               </section>
             ))}
