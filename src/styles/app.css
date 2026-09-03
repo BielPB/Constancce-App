@@ -3012,7 +3012,10 @@
   position:sticky;
   left:0;
   z-index:2;
-  background:var(--surface);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 88%, transparent), color-mix(in srgb, var(--surface-2) 82%, transparent));
+  backdrop-filter:blur(14px) saturate(140%);
+  -webkit-backdrop-filter:blur(14px) saturate(140%);
   min-width:180px;
   max-width:260px;
   padding:6px 8px;
@@ -3039,6 +3042,12 @@
 td.habit-grid-today .habit-grid-cell{
   box-shadow:0 0 0 1px color-mix(in srgb, var(--brass) 35%, transparent);
 }
+td.habit-grid-today .habit-grid-cell.habit-grid-cell-done{
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--brass) 35%, transparent),
+    0 3px 10px color-mix(in srgb, var(--moss) 45%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 30%, transparent);
+}
 .habit-grid-cell-wrap{
   padding:0;
   text-align:center;
@@ -3046,14 +3055,17 @@ td.habit-grid-today .habit-grid-cell{
 .habit-grid-cell{
   width:30px;
   height:30px;
-  border-radius:7px;
+  border-radius:9px;
   display:flex;
   align-items:center;
   justify-content:center;
-  transition:transform .1s ease, background .12s ease, border-color .12s ease;
+  transition:transform .12s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease, opacity .16s ease;
+}
+.habit-grid-cell-done{
+  box-shadow:0 3px 10px color-mix(in srgb, var(--moss) 45%, transparent), inset 0 1px 0 color-mix(in srgb, white 30%, transparent);
 }
 .habit-grid-cell:not(:disabled):hover{
-  transform:translateY(-1px);
+  transform:translateY(-1px) scale(1.04);
 }
 .habit-grid-cell:disabled{
   cursor:default;

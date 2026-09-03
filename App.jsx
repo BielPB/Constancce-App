@@ -3121,7 +3121,7 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
             )}
           </div>
 
-          <div className="surface rounded-2xl p-3 md:p-4">
+          <div className="surface glass-panel rounded-2xl p-3 md:p-4">
             <p className="text-[10px] text-faint uppercase tracking-widest mb-3 px-1">Grade de hábitos</p>
             <div className="habit-grid-scroll">
               <table className="habit-grid-table">
@@ -3182,12 +3182,16 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                         {days.map((day) => {
                           const dateStr = dateForDay(day);
                           const isFuture = dateStr > t;
-                          const valid = !isFuture && habitValidOnDate(habit, dateStr, completions);
                           const isToday = dateStr === t;
+                          const scheduledDay = habitValidOnDate(habit, dateStr, completions);
+                          // Só o dia de hoje pode ser alterado — dias passados ficam travados para
+                          // preservar a integridade do histórico (não dá pra "voltar" e marcar depois).
+                          const editable = isToday && scheduledDay;
+                          const showAsEmpty = !scheduledDay || isFuture;
                           const done = completions.some((completion) => completion.habitId === habit.id && completion.date === dateStr);
 
                           let checklistPct = null;
-                          if (hasChecklist && valid) {
+                          if (hasChecklist && scheduledDay) {
                             const total = habit.checklist.length;
                             const doneCount = habit.checklist.filter((item) =>
                               habitChecklistLog.some((row) => row.habitId === habit.id && row.itemId === item.id && row.date === dateStr && row.done)
@@ -3199,33 +3203,42 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                             <td key={day} className={`habit-grid-cell-wrap ${isToday ? "habit-grid-today" : ""}`}>
                               <button
                                 type="button"
-                                className="habit-grid-cell"
-                                disabled={!valid}
-                                title={!valid ? "Não aplicável" : hasChecklist ? "Ver etapas do dia" : done ? "Concluído — clique para desmarcar" : "Marcar como concluído"}
+                                className={`habit-grid-cell ${!showAsEmpty && (done || (hasChecklist && checklistPct > 0)) ? "habit-grid-cell-done" : ""}`}
+                                disabled={!editable}
+                                title={
+                                  showAsEmpty
+                                    ? (isFuture ? "Ainda não chegou" : "Não aplicável")
+                                    : !editable
+                                      ? "Dias passados ficam travados — não é possível alterar"
+                                      : hasChecklist ? "Ver etapas do dia" : done ? "Concluído — clique para desmarcar" : "Marcar como concluído"
+                                }
                                 onClick={() => {
-                                  if (!valid) return;
+                                  if (!editable) return;
                                   if (hasChecklist) { setChecklistCell({ habitId: habit.id, dateStr }); return; }
                                   toggleHabit(habit.id, dateStr);
                                 }}
                                 style={{
-                                  background: !valid
+                                  background: showAsEmpty
                                     ? "transparent"
                                     : hasChecklist
                                       ? `color-mix(in srgb, var(--moss) ${Math.round((checklistPct || 0) * 100)}%, var(--surface-2))`
                                       : done
-                                        ? "var(--moss)"
+                                        ? "linear-gradient(145deg, color-mix(in srgb, var(--moss) 85%, white 15%), var(--moss))"
                                         : "var(--surface-2)",
-                                  border: !valid
+                                  border: showAsEmpty
                                     ? "1px dashed var(--border-soft)"
                                     : done || (hasChecklist && checklistPct > 0)
-                                      ? "1px solid var(--moss)"
+                                      ? "1px solid color-mix(in srgb, var(--moss) 70%, transparent)"
                                       : "1px solid var(--border)",
-                                  cursor: valid ? "pointer" : "default",
+                                  cursor: editable ? "pointer" : "default",
+                                  opacity: !showAsEmpty && !editable ? 0.68 : 1,
                                 }}
                               >
-                                {hasChecklist && valid && checklistPct != null && checklistPct > 0 && checklistPct < 1 && (
+                                {hasChecklist && checklistPct != null && checklistPct > 0 && checklistPct < 1 && (
                                   <span className="habit-grid-cell-frac font-mono">{Math.round(checklistPct * 100)}</span>
                                 )}
+                                {!hasChecklist && done && <Check size={14} strokeWidth={3} color="#0A0D08" />}
+                                {hasChecklist && checklistPct === 1 && <Check size={12} strokeWidth={3} color="#0A0D08" />}
                               </button>
                             </td>
                           );
