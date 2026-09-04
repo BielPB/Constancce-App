@@ -240,6 +240,73 @@ Deno.serve(async (req) => {
     });
   }
 
+  // Tarefas e hábitos/treinos são sincronizados de forma atômica (por item) desde
+  // a 1.1.26/1.1.28 e pararam de ser escritos no snapshot legado acima — usá-lo
+  // para essas listas faz uma tarefa/hábito excluído continuar notificando para
+  // sempre, porque ele nunca é removido de uma foto que não é mais atualizada.
+  // Buscamos aqui as tabelas atômicas reais (fonte da verdade) e as usamos no
+  // lugar do snapshot legado sempre que o usuário já tiver migrado para elas.
+  const [{ data: atomicTaskRows, error: atomicTaskError }, { data: atomicEntityRows, error: atomicEntityError }] = await Promise.all([
+    admin
+      .from("constancce_tasks")
+      .select("user_id,task_id,payload,deleted_at")
+      .in("user_id", userIds),
+    admin
+      .from("constancce_sync_entities")
+      .select("user_id,collection,entity_id,payload,deleted_at")
+      .in("user_id", userIds)
+      .in("collection", ["habit", "habit_completion", "workout_template", "workout_session"]),
+  ]);
+
+  if (atomicTaskError) console.error("atomic tasks notification query error", atomicTaskError);
+  if (atomicEntityError) console.error("atomic entities notification query error", atomicEntityError);
+
+  const usersWithAtomicTasks = new Set<string>();
+  const atomicTasksByUser = new Map<string, AnyObj[]>();
+  for (const row of atomicTaskRows || []) {
+    usersWithAtomicTasks.add(row.user_id);
+    if (row.deleted_at) continue;
+    const list = atomicTasksByUser.get(row.user_id) || [];
+    list.push(row.payload || {});
+    atomicTasksByUser.set(row.user_id, list);
+  }
+
+  const ENTITY_FIELD_BY_COLLECTION: Record<string, string> = {
+    habit: "habits",
+    habit_completion: "completions",
+    workout_template: "workoutTemplates",
+    workout_session: "workoutSessions",
+  };
+  const usersWithAtomicEntities = new Set<string>();
+  const atomicEntitiesByUser = new Map<string, Record<string, AnyObj[]>>();
+  for (const row of atomicEntityRows || []) {
+    usersWithAtomicEntities.add(row.user_id);
+    if (row.deleted_at) continue;
+    const field = ENTITY_FIELD_BY_COLLECTION[row.collection];
+    if (!field) continue;
+    const perUser = atomicEntitiesByUser.get(row.user_id) || {};
+    const list = perUser[field] || [];
+    list.push(row.payload || {});
+    perUser[field] = list;
+    atomicEntitiesByUser.set(row.user_id, perUser);
+  }
+
+  for (const userId of userIds) {
+    const current = dataByUser.get(userId) || {};
+    const next: AnyObj = { ...current };
+    if (usersWithAtomicTasks.has(userId)) {
+      next.tasks = atomicTasksByUser.get(userId) || [];
+    }
+    if (usersWithAtomicEntities.has(userId)) {
+      const entities = atomicEntitiesByUser.get(userId) || {};
+      next.habits = entities.habits || [];
+      next.completions = entities.completions || [];
+      next.workoutTemplates = entities.workoutTemplates || [];
+      next.workoutSessions = entities.workoutSessions || [];
+    }
+    dataByUser.set(userId, next);
+  }
+
   const { data: accessRows } = await admin
     .from("constancce_access")
     .select("user_id,plan,trial_ends_at,payment_status")
