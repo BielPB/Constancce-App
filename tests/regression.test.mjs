@@ -6,6 +6,8 @@ const app = await readFile(new URL("../App.jsx", import.meta.url), "utf8");
 const ui = await readFile(new URL("../src/components/ui.jsx", import.meta.url), "utf8");
 const foodSearch = await readFile(new URL("../supabase/functions/food-search/index.ts", import.meta.url), "utf8");
 const notifications = await readFile(new URL("../supabase/functions/send-due-notifications/index.ts", import.meta.url), "utf8");
+const restTimerHook = await readFile(new URL("../src/hooks/useWorkoutRestTimer.js", import.meta.url), "utf8");
+const reportsView = await readFile(new URL("../src/features/reports/ReportsView.jsx", import.meta.url), "utf8");
 
 test("regressões críticas permanecem protegidas", () => {
   assert.match(app, /const renderCurrentView = \(\) =>/);
@@ -542,4 +544,55 @@ test("1.1.28 Hábitos e Treinos usam persistência atômica sem alterar Task Syn
   assert.match(sql, /alter publication supabase_realtime add table public\.constancce_sync_entities/i);
   assert.match(routine, /mergeWorkoutSession/);
   assert.match(task, /compactTaskOutbox/);
+});
+
+test("taskIsOverdue é centralizado e usado por Tarefas e pelo Calendário", () => {
+  const definitions = app.match(/function taskIsOverdue\(/g) || [];
+  assert.equal(definitions.length, 1);
+
+  const tasksViewStart = app.indexOf("function TasksView(");
+  const tasksViewEnd = app.indexOf("function calendarWorkoutCountForDate(");
+  assert.ok(tasksViewStart > -1 && tasksViewEnd > tasksViewStart);
+  const tasksViewSlice = app.slice(tasksViewStart, tasksViewEnd);
+  assert.match(tasksViewSlice, /taskIsOverdue\(task, t\)/);
+
+  const calendarSnapshotStart = app.indexOf("function calendarIntelligenceSnapshot(");
+  const calendarSnapshotEnd = app.indexOf("function CalendarIntelligencePanel(");
+  assert.ok(calendarSnapshotStart > -1 && calendarSnapshotEnd > calendarSnapshotStart);
+  const calendarSnapshotSlice = app.slice(calendarSnapshotStart, calendarSnapshotEnd);
+  assert.match(calendarSnapshotSlice, /taskIsOverdue\(task, today\(\)\)/);
+});
+
+test("Dashboard escolhe a próxima tarefa com a mesma prioridade da tela Tarefas", () => {
+  const dashboardStart = app.indexOf("function Dashboard(");
+  const dashboardEnd = app.indexOf("\nfunction ", dashboardStart + 1);
+  assert.ok(dashboardStart > -1 && dashboardEnd > dashboardStart);
+  const dashboardSlice = app.slice(dashboardStart, dashboardEnd);
+  assert.match(dashboardSlice, /const nextTask = \[\.\.\.tasksToday\]\.sort\(\(a, b\) => taskPriorityScore\(b, t\) - taskPriorityScore\(a, t\)\)\[0\];/);
+  assert.doesNotMatch(dashboardSlice, /const nextTask = tasksToday\[0\];/);
+});
+
+test("cronômetro de descanso: ajuste manual respeita o mesmo teto de 300s do início", () => {
+  assert.match(restTimerHook, /const start = useCallback\(\(seconds = 90, metadata = \{\}\) => \{\s*const total = Math\.max\(30, Math\.min\(300, Number\(seconds\) \|\| 90\)\);/);
+  assert.match(restTimerHook, /const adjust = useCallback\(\(deltaSeconds\) => \{/);
+  assert.match(restTimerHook, /const total = Math\.max\(10, Math\.min\(300, current\.total \+ deltaSeconds\)\);/);
+  assert.match(restTimerHook, /endAt: Math\.max\(Date\.now\(\), Math\.min\(current\.startedAt \+ 300 \* 1000, current\.endAt \+ deltaSeconds \* 1000\)\),/);
+});
+
+test("Relatórios: progresso de metas não gera NaN/Infinity com meta zerada ou negativa", () => {
+  assert.match(reportsView, /const target = Math\.max\(0, Number\(g\.target \|\| 0\)\);/);
+  assert.match(reportsView, /const pct = target > 0 \? Math\.min\(100, Math\.max\(0, Math\.round\(\(current \/ target\) \* 100\)\)\) : 0;/);
+});
+
+test("PR de treino não é recalculado no render, usa o Set já derivado de sessionPrs", () => {
+  const exerciseMapStart = app.indexOf("{activeTemplate.exercises.map((exercise, exerciseIndex) => {");
+  const exerciseMapEnd = app.indexOf("\n            })}", exerciseMapStart);
+  assert.ok(exerciseMapStart > -1 && exerciseMapEnd > exerciseMapStart);
+  const exerciseMapSlice = app.slice(exerciseMapStart, exerciseMapEnd);
+
+  assert.match(exerciseMapSlice, /const isPr = sessionPrExerciseIds\.has\(exercise\.id\);/);
+  assert.doesNotMatch(exerciseMapSlice, /workoutHistoricalMaxLoad\(/);
+
+  assert.match(app, /const sessionPrs = activeSession && activeTemplate[\s\S]{0,200}workoutHistoricalMaxLoad\(/);
+  assert.match(app, /const sessionPrExerciseIds = useMemo\(\s*\(\) => new Set\(sessionPrs\.map\(\(exercise\) => exercise\.id\)\),\s*\[sessionPrs\]\s*\);/);
 });

@@ -498,8 +498,6 @@ function goalMilestonesReached(goal) {
 }
 
 function moduleEnabled(profile, id) {
-  // Relatórios fica só no código (uso interno) — nunca aparece na navegação do usuário.
-  if (id === "reports") return false;
   if (["dashboard", "profile", "notifications"].includes(id)) return true;
   return profile?.moduleVisibility?.[id] !== false;
 }
@@ -1020,7 +1018,7 @@ async function showConstanccePermissionTest(registration) {
   } catch (_) {}
 }
 
-async function enableConstanccePush(session) {
+async function enableConstanccePush(session, { silent = false } = {}) {
   if (!("Notification" in window) || !("PushManager" in window) || !("serviceWorker" in navigator)) {
     throw new Error("push_not_supported");
   }
@@ -1039,8 +1037,11 @@ async function enableConstanccePush(session) {
   const registration = await ensureConstancceServiceWorker();
 
   // Confirma visualmente que a permissão do navegador funciona, mesmo antes
-  // da etapa de cadastro da assinatura no backend.
-  await showConstanccePermissionTest(registration);
+  // da etapa de cadastro da assinatura no backend. Pulado nas verificações
+  // silenciosas em segundo plano, que não devem gerar nenhuma notificação visível.
+  if (!silent) {
+    await showConstanccePermissionTest(registration);
+  }
 
   const config = await edgeFunctionRequest(session, "push-subscription", { action: "config" });
   if (!config?.public_key) throw new Error("vapid_not_configured");
@@ -1068,15 +1069,17 @@ async function enableConstanccePush(session) {
     user_agent: navigator.userAgent,
   });
 
-  try {
-    await registration.showNotification("Notificações ativadas", {
-      body: "Você receberá lembretes da sua rotina.",
-      icon: "/icon-192.png",
-      badge: "/favicon-32x32.png",
-      tag: "constancce-notifications-enabled",
-      data: { url: "/?view=notifications" },
-    });
-  } catch (_) {}
+  if (!silent) {
+    try {
+      await registration.showNotification("Notificações ativadas", {
+        body: "Você receberá lembretes da sua rotina.",
+        icon: "/icon-192.png",
+        badge: "/favicon-32x32.png",
+        tag: "constancce-notifications-enabled",
+        data: { url: "/?view=notifications" },
+      });
+    } catch (_) {}
+  }
 
   return subscription;
 }
@@ -16908,7 +16911,7 @@ function ConstancceApp() {
       setShowNotificationPrompt(false);
       localStorage.setItem(`constancce_notification_prompt_${session.user.id}`, "permission-granted");
 
-      await enableConstanccePush(session);
+      await enableConstanccePush(session, { silent: false });
 
       setPushEnabled(true);
       localStorage.setItem(`constancce_notification_prompt_${session.user.id}`, "enabled");
@@ -17486,8 +17489,9 @@ function ConstancceApp() {
 
   const flushTaskSync = useCallback(async () => {
     if (!session?.user?.id || taskSyncInFlightRef.current) return false;
-    let outbox = compactTaskOutbox(taskOutboxRef.current || loadTaskOutbox(session.user.id));
-    if (!outbox.length) {
+    if (!taskOutboxRef.current) taskOutboxRef.current = loadTaskOutbox(session.user.id);
+    taskOutboxRef.current = compactTaskOutbox(taskOutboxRef.current || []);
+    if (!taskOutboxRef.current.length) {
       clearTaskOutbox(session.user.id);
       setTaskSyncStatus("idle");
       setTaskSyncError("");
@@ -17505,8 +17509,26 @@ function ConstancceApp() {
       let activeSession = session;
       try { activeSession = await getFreshSession(false); } catch (_) {}
 
-      while (outbox.length) {
-        let op = outbox[0];
+      // Mesmo princípio de flushRoutineSync: relê taskOutboxRef.current a cada
+      // volta e só remove um op se o mutationId que acabou de ser confirmado
+      // ainda for o que está na fila — assim marcar/desmarcar outra tarefa
+      // enquanto esta está em voo de rede não é apagado quando a fila é
+      // regravada no fim da volta.
+      const removeSentOp = (sentOp) => {
+        taskOutboxRef.current = compactTaskOutbox(taskOutboxRef.current || [])
+          .filter((item) => String(item.id) !== String(sentOp.id) || String(item.mutationId || "") !== String(sentOp.mutationId || ""));
+        saveTaskOutbox(session.user.id, taskOutboxRef.current);
+      };
+      const replacePendingOp = (updatedOp) => {
+        taskOutboxRef.current = compactTaskOutbox(taskOutboxRef.current || [])
+          .map((item) => (String(item.id) === String(updatedOp.id) ? updatedOp : item));
+        saveTaskOutbox(session.user.id, taskOutboxRef.current);
+      };
+
+      while (true) {
+        const liveOutbox = compactTaskOutbox(taskOutboxRef.current || []);
+        if (!liveOutbox.length) break;
+        let op = liveOutbox[0];
         let response;
         const send = (currentSession, currentOp) => applyAtomicTaskOpForUser(currentSession, currentOp, {
           mutationId: currentOp.mutationId || newMutationId(),
@@ -17525,13 +17547,11 @@ function ConstancceApp() {
           taskRevisionRef.current = { ...(fresh.taskRevisions || {}) };
           const remoteExists = (fresh.tasks || []).some((task) => String(task?.id || "") === String(op.id));
           if (response?.reason === "deleted_remotely" || (op.op === "delete" && !remoteExists)) {
-            outbox.shift();
-          } else {
-            op = { ...op, baseRevision: Number(fresh.taskRevisions?.[op.id] || 0), mutationId: newMutationId() };
-            outbox[0] = op;
+            removeSentOp(op);
+            continue;
           }
-          taskOutboxRef.current = compactTaskOutbox(outbox);
-          saveTaskOutbox(session.user.id, taskOutboxRef.current);
+          op = { ...op, baseRevision: Number(fresh.taskRevisions?.[op.id] || 0), mutationId: newMutationId() };
+          replacePendingOp(op);
           if (response?.reason !== "revision_conflict") continue;
           response = await send(activeSession, op);
           if (response?.conflict) throw new Error(`task_conflict_${response?.reason || "unknown"}`);
@@ -17543,21 +17563,17 @@ function ConstancceApp() {
             [String(response.task_id)]: Number(response.revision || taskRevisionRef.current?.[response.task_id] || 0),
           };
         }
-        outbox.shift();
-        taskOutboxRef.current = compactTaskOutbox(outbox);
-        saveTaskOutbox(session.user.id, taskOutboxRef.current);
+        removeSentOp(op);
       }
 
       clearTaskOutbox(session.user.id);
-      taskOutboxRef.current = [];
       const pulled = await pullTaskState({ preservePending: false });
       setTaskSyncStatus(pulled ? "idle" : "error");
       setTaskSyncError(pulled ? "" : "task_pull_after_flush_failed");
       return pulled;
     } catch (error) {
       captureClientError(error, { module: "task-sync-v6", action: "flush" });
-      taskOutboxRef.current = compactTaskOutbox(outbox);
-      saveTaskOutbox(session.user.id, taskOutboxRef.current);
+      saveTaskOutbox(session.user.id, compactTaskOutbox(taskOutboxRef.current || []));
       const message = String(error?.message || "task_sync_failed");
       setTaskSyncError(message);
       if (message.toLowerCase().includes("task_time_required")) {
@@ -17683,8 +17699,9 @@ function ConstancceApp() {
 
   const flushRoutineSync = useCallback(async () => {
     if (!session?.user?.id || routineSyncInFlightRef.current) return false;
-    let outbox = compactRoutineOutbox(routineOutboxRef.current || loadRoutineOutbox(session.user.id));
-    if (!outbox.length) {
+    if (!routineOutboxRef.current) routineOutboxRef.current = loadRoutineOutbox(session.user.id);
+    routineOutboxRef.current = compactRoutineOutbox(routineOutboxRef.current || []);
+    if (!routineOutboxRef.current.length) {
       clearRoutineOutbox(session.user.id);
       return true;
     }
@@ -17695,8 +17712,30 @@ function ConstancceApp() {
       let activeSession = session;
       try { activeSession = await getFreshSession(false); } catch (_) {}
 
-      while (outbox.length) {
-        let op = outbox[0];
+      // Relê routineOutboxRef.current a cada volta e nunca sobrescreve a fila com
+      // uma cópia local congelada: toggleHabit/queueRoutinePatch podem escrever no
+      // ref enquanto o await de rede abaixo está em voo (ex.: marcar outro hábito
+      // enquanto o primeiro ainda está sincronizando), e um op só é removido daqui
+      // se o mutationId que acabou de ser confirmado ainda for o mesmo — se um op
+      // mais novo pra mesma entidade chegou nesse meio-tempo, ele sobrevive para a
+      // próxima volta em vez de ser apagado silenciosamente.
+      const removeSentOp = (sentOp) => {
+        const key = `${sentOp.collection}:${sentOp.id}`;
+        routineOutboxRef.current = compactRoutineOutbox(routineOutboxRef.current || [])
+          .filter((item) => `${item.collection}:${item.id}` !== key || String(item.mutationId || "") !== String(sentOp.mutationId || ""));
+        saveRoutineOutbox(session.user.id, routineOutboxRef.current);
+      };
+      const replacePendingOp = (updatedOp) => {
+        const key = `${updatedOp.collection}:${updatedOp.id}`;
+        routineOutboxRef.current = compactRoutineOutbox(routineOutboxRef.current || [])
+          .map((item) => (`${item.collection}:${item.id}` === key ? updatedOp : item));
+        saveRoutineOutbox(session.user.id, routineOutboxRef.current);
+      };
+
+      while (true) {
+        const liveOutbox = compactRoutineOutbox(routineOutboxRef.current || []);
+        if (!liveOutbox.length) break;
+        let op = liveOutbox[0];
         const send = async (currentSession, currentOp) => applyAtomicRoutineOpForUser(currentSession, currentOp, {
           mutationId: currentOp.mutationId || newMutationId(),
           clientId: getSyncClientId(session.user.id),
@@ -17724,13 +17763,13 @@ function ConstancceApp() {
             return false;
           });
           if (response?.reason === "deleted_remotely" || (op.op === "delete" && !remoteExists)) {
-            outbox.shift();
-          } else {
-            op = { ...op, baseRevision: Number(fresh.revisions?.[revisionKey] || 0), mutationId: newMutationId() };
-            outbox[0] = op;
-            response = await send(activeSession, op);
-            if (response?.conflict) throw new Error(`routine_conflict_${response?.reason || "unknown"}`);
+            removeSentOp(op);
+            continue;
           }
+          op = { ...op, baseRevision: Number(fresh.revisions?.[revisionKey] || 0), mutationId: newMutationId() };
+          replacePendingOp(op);
+          response = await send(activeSession, op);
+          if (response?.conflict) throw new Error(`routine_conflict_${response?.reason || "unknown"}`);
         }
 
         if (response?.entity_id) {
@@ -17739,18 +17778,14 @@ function ConstancceApp() {
             [`${response.collection}:${response.entity_id}`]: Number(response.revision || 0),
           };
         }
-        outbox.shift();
-        routineOutboxRef.current = compactRoutineOutbox(outbox);
-        saveRoutineOutbox(session.user.id, routineOutboxRef.current);
+        removeSentOp(op);
       }
 
       clearRoutineOutbox(session.user.id);
-      routineOutboxRef.current = [];
       return await pullRoutineState({ preservePending: false });
     } catch (error) {
       captureClientError(error, { module: "routine-sync-v1", action: "flush" });
-      routineOutboxRef.current = compactRoutineOutbox(outbox);
-      saveRoutineOutbox(session.user.id, routineOutboxRef.current);
+      saveRoutineOutbox(session.user.id, compactRoutineOutbox(routineOutboxRef.current || []));
       return false;
     } finally {
       routineSyncInFlightRef.current = false;
@@ -19530,6 +19565,53 @@ function ConstancceApp() {
       return () => window.clearTimeout(timer);
     }
   }, [dataReady, session?.user?.id, refreshPushState]);
+
+  // Autocura silenciosa da assinatura push: o navegador pode invalidar/rotacionar
+  // a assinatura em segundo plano (comportamento normal do SO/navegador). Sem isso,
+  // as notificações param de vir para sempre até o usuário notar e reativar manualmente.
+  // Aqui apenas verificamos e, se necessário, re-registramos — nunca pedimos permissão
+  // nem mostramos qualquer notificação/toast nessa checagem em segundo plano.
+  useEffect(() => {
+    if (!dataReady || !session?.user?.id) return;
+
+    let cancelled = false;
+
+    const healPushSubscription = async () => {
+      try {
+        if (typeof window === "undefined" || !("Notification" in window) || !("serviceWorker" in navigator)) return;
+        if (Notification.permission !== "granted") return;
+
+        const registration = await ensureConstancceServiceWorker();
+        if (cancelled) return;
+
+        const subscription = await registration.pushManager.getSubscription();
+        if (cancelled) return;
+
+        if (!subscription) {
+          await enableConstanccePush(session, { silent: true });
+        }
+      } catch (_) {
+        // Melhor esforço: nunca deve travar o app nem exibir erro (ex.: offline).
+      }
+    };
+
+    healPushSubscription();
+
+    const handleVisibilityHeal = () => {
+      if (document.visibilityState === "visible") healPushSubscription();
+    };
+
+    window.addEventListener("focus", healPushSubscription);
+    window.addEventListener("pageshow", healPushSubscription);
+    document.addEventListener("visibilitychange", handleVisibilityHeal);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", healPushSubscription);
+      window.removeEventListener("pageshow", healPushSubscription);
+      document.removeEventListener("visibilitychange", handleVisibilityHeal);
+    };
+  }, [dataReady, session]);
 
   // Quando o usuário toca/clica em uma notificação, abre a área correspondente do app.
   useEffect(() => {

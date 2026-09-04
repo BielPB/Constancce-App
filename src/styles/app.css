@@ -3105,3 +3105,44 @@ td.habit-grid-today .habit-grid-cell.habit-grid-cell-done{
     padding:5px !important;
   }
 }
+
+/* -----------------------------------------------------------------------
+   Impressão — usada pelo botão "Baixar PDF" da tela de Relatórios
+   (window.print(); o navegador oferece "Salvar como PDF" como destino).
+   Esconde a navegação e reforça fundos sólidos, já que a maioria dos
+   motores de impressão ignora/remove backdrop-filter e pode achatar
+   cores no tema escuro.
+------------------------------------------------------------------------ */
+.print-hidden{ display:inherit; }
+
+@media print{
+  body, .app-root{
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+    color-adjust:exact;
+    background:var(--bg) !important;
+  }
+  .sidebar,
+  .mobile-nav,
+  .workout-global-rest,
+  .print-hidden{
+    display:none !important;
+  }
+  .app-main{
+    margin-left:0 !important;
+    padding:0 !important;
+    height:auto !important;
+    overflow:visible !important;
+  }
+  .glass-panel,
+  .glass-panel-strong{
+    backdrop-filter:none !important;
+    -webkit-backdrop-filter:none !important;
+    background:var(--surface) !important;
+  }
+  .surface,
+  .surface-2{
+    box-shadow:none !important;
+    break-inside:avoid;
+  }
+}
