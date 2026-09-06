@@ -171,9 +171,9 @@ export function EmptyState({ icon: Icon, title, hint, action }) {
   );
 }
 
-export function StatMini({ label, value }) {
+export function StatMini({ label, value, title }) {
   return (
-    <div className="surface rounded-2xl p-4">
+    <div className="surface rounded-2xl p-4" title={title}>
       <p className="text-faint text-xs mb-1">{label}</p>
       <p className="font-mono text-xl">{value}</p>
     </div>

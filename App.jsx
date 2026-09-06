@@ -35,16 +35,25 @@ const ProfessionalView = lazy(() => import("./src/features/professional/Professi
 
 const constancceLogo = "/constancce-logo.png";
 
+// Cada tela remonta o FirstVisitTip ao trocar de aba (o wrapper usa
+// key={view}), então o estado "visto" tem que sobreviver a isso mesmo
+// quando o localStorage falha silenciosamente (modo privado, quota cheia,
+// partição de storage no navegador) — sem isso, "Entendi" clicado nessas
+// condições faz a dica sumir na hora e voltar assim que a tela é reaberta.
+const dismissedFirstVisitTips = new Set();
+
 function FirstVisitTip({ id, icon: Icon = Sparkles, title, children }) {
   const storageKey = `constancce_first_visit_tip_${id}`;
   const [visible, setVisible] = useState(() => {
     if (typeof window === "undefined") return false;
+    if (dismissedFirstVisitTips.has(storageKey)) return false;
     try { return localStorage.getItem(storageKey) !== "seen"; } catch (_) { return true; }
   });
 
   if (!visible) return null;
 
   const dismiss = () => {
+    dismissedFirstVisitTips.add(storageKey);
     try { localStorage.setItem(storageKey, "seen"); } catch (_) {}
     setVisible(false);
   };
@@ -2551,10 +2560,14 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
             type="button"
             className="surface-2 px-3 py-2 flex items-center gap-2 shrink-0"
             onClick={() => setShowStreakInfo(true)}
-            aria-label={`Ver detalhes do streak atual de ${streaks.current} dias`}
+            aria-label={`Ver detalhes do streak de uso atual de ${streaks.current} dias`}
+            title="Dias seguidos usando o Constancce (não é o mesmo streak dos hábitos)"
           >
             <Flame size={16} className="text-ember" />
-            <span className="font-mono text-sm">{streaks.current}d</span>
+            <span className="flex flex-col items-start leading-none">
+              <span className="font-mono text-sm">{streaks.current}d</span>
+              <span className="text-[8px] text-faint uppercase tracking-wide">uso</span>
+            </span>
           </button>
         </div>
 
@@ -2861,7 +2874,7 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
         <div className="grid grid-cols-3 gap-2 mb-4">
           <div className="surface-2 rounded-xl p-3"><p className="text-[9px] text-faint uppercase">Tarefas</p><p className="font-mono mt-1">{weekTasks}</p></div>
           <div className="surface-2 rounded-xl p-3"><p className="text-[9px] text-faint uppercase">Treinos</p><p className="font-mono mt-1">{weekWorkouts}</p></div>
-          <div className="surface-2 rounded-xl p-3"><p className="text-[9px] text-faint uppercase">Streak</p><p className="font-mono mt-1">{streaks.current}d</p></div>
+          <div className="surface-2 rounded-xl p-3" title="Dias seguidos usando o Constancce"><p className="text-[9px] text-faint uppercase">Streak de uso</p><p className="font-mono mt-1">{streaks.current}d</p></div>
         </div>
         <div className="surface-2 rounded-xl p-3">
           <p className="text-[9px] text-faint uppercase tracking-widest">O que isso significa</p>
@@ -3140,9 +3153,15 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
               </button>
             </div>
             {streaks && (
-              <div className="surface-2 rounded-xl px-3 py-2 flex items-center gap-2 shrink-0" title={`Dias perfeitos seguidos: ${streaks.current}`}>
+              <div
+                className="surface-2 rounded-xl px-3 py-2 flex items-center gap-2 shrink-0"
+                title={`Dias seguidos com todos os hábitos elegíveis concluídos: ${streaks.current} (diferente do streak de uso do app)`}
+              >
                 <Flame size={16} className="text-ember" />
-                <span className="font-mono text-sm">{streaks.current}d</span>
+                <span className="flex flex-col items-start leading-none">
+                  <span className="font-mono text-sm">{streaks.current}d</span>
+                  <span className="text-[8px] text-faint uppercase tracking-wide">100%</span>
+                </span>
               </div>
             )}
           </div>
@@ -15696,7 +15715,7 @@ function FriendsView({ session, profile, game, streaks, isPro, onUpgrade }) {
         <div className="font-mono text-sm w-6 text-center text-brass">#{i+1}</div><Avatar r={r}/><div className="flex-1 min-w-0"><div className="flex items-center gap-2"><p className="font-semibold text-sm truncate">{r.display_name||'Usuário'}</p>{r.isMe&&<span className="chip">Você</span>}</div><p className="text-faint text-[11px] truncate">{r.rank_name||'Recruta'} · Nível {r.level||1}</p></div><div className="text-right shrink-0"><p className="font-mono text-sm">{Number(r.xp||0).toLocaleString('pt-BR')} XP</p><p className="text-faint text-[10px]">{r.streak_current||0}d perfeitos</p></div>
       </button>)}</div>}
     </div>
-    {selected&&<Modal title="Perfil do amigo" onClose={()=>setSelected(null)}><div className="flex flex-col gap-4"><div className="flex items-center gap-4"><Avatar r={selected} size="w-16 h-16"/><div className="min-w-0"><p className="font-display text-xl truncate">{selected.display_name||'Usuário'}</p><p className="text-faint text-xs truncate">{selected.email}</p><p className="text-brass text-xs mt-1">{selected.rank_name||'Recruta'} · Nível {selected.level||1}</p></div></div><div className="grid grid-cols-2 gap-2"><StatMini label="XP" value={Number(selected.xp||0).toLocaleString('pt-BR')}/><StatMini label="Score atual" value={`${selected.score||0}/100`}/><StatMini label="Dias perfeitos" value={`${selected.streak_current||0}d`}/><StatMini label="Recorde" value={`${selected.streak_best||0}d`}/></div><button className="btn-ghost rounded-xl py-2.5 text-sm text-ember" onClick={()=>remove(selected.friendship_id)}>Remover amigo</button></div></Modal>}
+    {selected&&<Modal title="Perfil do amigo" onClose={()=>setSelected(null)}><div className="flex flex-col gap-4"><div className="flex items-center gap-4"><Avatar r={selected} size="w-16 h-16"/><div className="min-w-0"><p className="font-display text-xl truncate">{selected.display_name||'Usuário'}</p><p className="text-faint text-xs truncate">{selected.email}</p><p className="text-brass text-xs mt-1">{selected.rank_name||'Recruta'} · Nível {selected.level||1}</p></div></div><div className="grid grid-cols-2 gap-2"><StatMini label="XP" value={Number(selected.xp||0).toLocaleString('pt-BR')}/><StatMini label="Score atual" value={`${selected.score||0}/100`}/><StatMini label="Dias perfeitos" value={`${selected.streak_current||0}d`} title="Dias seguidos com todos os hábitos elegíveis concluídos"/><StatMini label="Recorde" value={`${selected.streak_best||0}d`} title="Maior sequência de dias perfeitos já alcançada"/></div><button className="btn-ghost rounded-xl py-2.5 text-sm text-ember" onClick={()=>remove(selected.friendship_id)}>Remover amigo</button></div></Modal>}
     {confirmDialog}
   </div>;
 }
@@ -15900,8 +15919,8 @@ function ProfileView({ profile, setProfile, theme, setTheme, streaks, stats, gam
         </div>
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <StatMini label="Dias perfeitos" value={`${streaks.current}d`} />
-        <StatMini label="Recorde" value={`${streaks.best}d`} />
+        <StatMini label="Dias perfeitos" value={`${streaks.current}d`} title="Dias seguidos com todos os hábitos elegíveis concluídos (diferente do streak de uso do app)" />
+        <StatMini label="Recorde" value={`${streaks.best}d`} title="Maior sequência de dias perfeitos já alcançada" />
         <StatMini label="Níveis" value={`${game?.level || 1}`} />
       </div>
 
@@ -16669,6 +16688,8 @@ function ConstancceApp() {
   const workoutRest = useWorkoutRestTimer(session?.user?.id);
 
   const pendingSyncRef = useRef(null);
+  const realtimeClientRef = useRef(null);
+  const publicProfileSyncedRef = useRef(null);
   const materializedRecurringRef = useRef(new Set());
   const materializedDietPlanRef = useRef(new Set());
   const taskOutboxRef = useRef([]);
@@ -17268,10 +17289,19 @@ function ConstancceApp() {
           : routineBase;
         routineVisibleRef.current = visibleRoutine;
 
+        // Se a leitura genérica falhar (rede instável, cold start da Edge
+        // Function etc.) mas a tabela atômica de Hábitos/Treinos responder,
+        // NÃO tratamos isso como um snapshot completo vazio: usar apenas
+        // `visibleRoutine` aqui zeraria perfil, conquistas (`unlocked`),
+        // metas etc. a cada reload em que a leitura genérica falha, fazendo
+        // marcos já desbloqueados parecerem "novos" de novo (toast repetido)
+        // e potencialmente apagando outros dados de conta. O cache local
+        // (já carregado acima) é a base mais segura para os campos que a
+        // leitura genérica não conseguiu confirmar desta vez.
         const remote = genericRemote
           ? migrateUserData({ ...genericRemote, ...visibleRoutine })
           : (Object.values(visibleRoutine).some((value) => Array.isArray(value) && value.length)
-              ? migrateUserData({ ...visibleRoutine })
+              ? migrateUserData({ ...(cached || {}), ...visibleRoutine })
               : null);
 
         if (remote) {
@@ -18155,16 +18185,30 @@ function ConstancceApp() {
     return () => clearTimeout(routineRetryTimerRef.current);
   }, [dataReady, session?.user?.id, pullRoutineState, flushRoutineSync]);
 
+  // Cliente Realtime único, compartilhado entre os canais de Hábitos/Treinos e de
+  // Tarefas abaixo. Cada useEffect antes criava sua própria instância via
+  // createSupabaseRealtimeClient — como os dois efeitos disparam no mesmo tick
+  // (assim que a sessão fica pronta), isso criava dois GoTrueClient distintos no
+  // mesmo contexto do navegador ("Multiple GoTrueClient instances detected"),
+  // podendo competir entre si. Cada canal continua com seu próprio subscribe/
+  // cleanup via removeChannel — só o cliente/GoTrueClient de base é reaproveitado.
+  const getRealtimeClient = useCallback((accessToken) => {
+    if (!realtimeClientRef.current) {
+      realtimeClientRef.current = createSupabaseRealtimeClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+        realtime: { params: { eventsPerSecond: 20 } },
+      });
+    }
+    realtimeClientRef.current.realtime.setAuth(accessToken);
+    return realtimeClientRef.current;
+  }, []);
+
   // Realtime dedicado para Hábitos e Treinos. A tabela é filtrada por user_id
   // via RLS; qualquer alteração em outro dispositivo dispara um pull imediato.
   useEffect(() => {
     if (!dataReady || !session?.user?.id || !session?.access_token || !SUPABASE_CONFIGURED) return;
     let disposed = false;
-    const realtime = createSupabaseRealtimeClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-      realtime: { params: { eventsPerSecond: 20 } },
-    });
-    realtime.realtime.setAuth(session.access_token);
+    const realtime = getRealtimeClient(session.access_token);
     const channel = realtime
       .channel(`constancce-routine-${session.user.id}`)
       .on(
@@ -18188,7 +18232,7 @@ function ConstancceApp() {
       disposed = true;
       realtime.removeChannel(channel).catch(() => {});
     };
-  }, [dataReady, session?.user?.id, session?.access_token, pullRoutineState, flushRoutineSync]);
+  }, [dataReady, session?.user?.id, session?.access_token, pullRoutineState, flushRoutineSync, getRealtimeClient]);
 
   // Polling curto é somente fallback do Realtime, seguindo o padrão estável do
   // Task Sync V6. Mantém hábitos e treinos em harmonia mesmo se o websocket cair.
@@ -18209,11 +18253,7 @@ function ConstancceApp() {
   useEffect(() => {
     if (!dataReady || !session?.user?.id || !session?.access_token || !SUPABASE_CONFIGURED) return;
     let disposed = false;
-    const realtime = createSupabaseRealtimeClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-      realtime: { params: { eventsPerSecond: 10 } },
-    });
-    realtime.realtime.setAuth(session.access_token);
+    const realtime = getRealtimeClient(session.access_token);
     const channel = realtime
       .channel(`constancce-tasks-${session.user.id}`)
       .on(
@@ -18237,7 +18277,7 @@ function ConstancceApp() {
       disposed = true;
       realtime.removeChannel(channel).catch(() => {});
     };
-  }, [dataReady, session?.user?.id, session?.access_token, pullTaskState, flushTaskSync]);
+  }, [dataReady, session?.user?.id, session?.access_token, pullTaskState, flushTaskSync, getRealtimeClient]);
 
   // Polling dedicado de Tarefas como fallback do Realtime. É barato (uma tabela
   // pequena, filtrada por user_id) e não depende da saúde da domain-sync.
@@ -18290,6 +18330,21 @@ function ConstancceApp() {
           clientId: getSyncClientId(session.user.id),
           baseFieldRevisions: pending.baseFieldRevisions || fieldRevisionRef.current || {},
           taskOps: [],
+        }).then((response) => {
+          // "hidden" dispara aqui mesmo quando a aba só perdeu o foco (troca de aba),
+          // não necessariamente fechou — a página segue viva e esta resposta chega
+          // normalmente na maioria das vezes. Sem confirmar aqui, o próximo carregamento
+          // sempre credita esta alteração como "ainda pendente" e a reenvia com
+          // baseFieldRevisions desatualizado, gerando um 409 previsível (o app já se
+          // recupera sozinho no retry, mas o round-trip extra e o log de erro são
+          // evitáveis). Só confirma se nada mais novo foi enfileirado nesse meio-tempo.
+          if (pendingSyncRef.current === pending) {
+            pendingSyncRef.current = null;
+            clearPendingSync(session.user.id);
+            syncRevisionRef.current = Number(response?.revision || syncRevisionRef.current || 0);
+            fieldRevisionRef.current = { ...(response?.fieldRevisions || fieldRevisionRef.current || {}) };
+            lastRemoteSyncStampRef.current = response?.updated_at || lastRemoteSyncStampRef.current || null;
+          }
         }).catch((error) => captureClientError(error, { module: "sync", action: "pagehide_flush_v3" }));
       }
     };
@@ -19566,11 +19621,16 @@ function ConstancceApp() {
     }
   }, [dataReady, session?.user?.id, refreshPushState]);
 
-  // Autocura silenciosa da assinatura push: o navegador pode invalidar/rotacionar
-  // a assinatura em segundo plano (comportamento normal do SO/navegador). Sem isso,
-  // as notificações param de vir para sempre até o usuário notar e reativar manualmente.
-  // Aqui apenas verificamos e, se necessário, re-registramos — nunca pedimos permissão
-  // nem mostramos qualquer notificação/toast nessa checagem em segundo plano.
+  // Autocura silenciosa da assinatura push. Dois jeitos dela morrer sozinha:
+  // (1) o navegador invalida/rotaciona a assinatura em segundo plano (aí
+  // pushManager.getSubscription() volta null), ou (2) o servidor marca
+  // enabled=false depois de UM envio que falhou com 404/410 — o que pode
+  // acontecer sem a assinatura do navegador ter realmente morrido — e nada
+  // no cliente reativa isso sozinho, já que o objeto de assinatura local
+  // continua existindo normalmente. Por isso não basta checar se existe uma
+  // assinatura local: sempre reconfirmamos no servidor (o "save" já é
+  // idempotente e marca enabled=true de novo), sem nunca pedir permissão
+  // nem mostrar qualquer notificação/toast nessa checagem em segundo plano.
   useEffect(() => {
     if (!dataReady || !session?.user?.id) return;
 
@@ -19580,16 +19640,9 @@ function ConstancceApp() {
       try {
         if (typeof window === "undefined" || !("Notification" in window) || !("serviceWorker" in navigator)) return;
         if (Notification.permission !== "granted") return;
-
-        const registration = await ensureConstancceServiceWorker();
         if (cancelled) return;
 
-        const subscription = await registration.pushManager.getSubscription();
-        if (cancelled) return;
-
-        if (!subscription) {
-          await enableConstanccePush(session, { silent: true });
-        }
+        await enableConstanccePush(session, { silent: true });
       } catch (_) {
         // Melhor esforço: nunca deve travar o app nem exibir erro (ex.: offline).
       }
@@ -19656,25 +19709,53 @@ function ConstancceApp() {
   }, [dataReady, session?.user?.id]);
 
   // Perfil competitivo público: apenas métricas de gamificação e identificação necessária aos amigos.
+  // Só reenvia quando o conteúdo realmente muda desde a última confirmação (evita
+  // regravar em todo carregamento) e tenta de novo em caso de falha (ex.: 503
+  // pontual do Supabase) em vez de desistir silenciosamente — crítico justamente
+  // no primeiro cadastro, que é quando essa linha é criada pela primeira vez.
   useEffect(() => {
     if (!dataReady || !session?.user?.id || !profile || !SUPABASE_CONFIGURED) return;
-    const timer = setTimeout(() => {
-      upsertPublicProfile(session, {
-        display_name: profile?.name || "Usuário",
-        avatar_data_url: profile?.avatarDataUrl || null,
-        level: Number(game.level || 1),
-        rank_name: game.rank?.title || "Recruta",
-        xp: Number(game.xp || 0),
-        score: Number(game.score || 0),
-        streak_current: Number(habitStreaks.current || 0),
-        streak_best: Number(habitStreaks.best || 0),
-      }).catch(() => {});
-    }, 350);
-    return () => clearTimeout(timer);
+    const payload = {
+      display_name: profile?.name || "Usuário",
+      avatar_data_url: profile?.avatarDataUrl || null,
+      level: Number(game.level || 1),
+      rank_name: game.rank?.title || "Recruta",
+      xp: Number(game.xp || 0),
+      score: Number(game.score || 0),
+      streak_current: Number(habitStreaks.current || 0),
+      streak_best: Number(habitStreaks.best || 0),
+    };
+    const signature = JSON.stringify(payload);
+    if (publicProfileSyncedRef.current === signature) return;
+
+    let cancelled = false;
+    const attempt = (retriesLeft) => {
+      upsertPublicProfile(session, payload)
+        .then(() => {
+          if (!cancelled) publicProfileSyncedRef.current = signature;
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          if (retriesLeft > 0) {
+            setTimeout(() => attempt(retriesLeft - 1), 4000);
+          } else {
+            captureClientError(error, { module: "public-profile", action: "upsert" });
+          }
+        });
+    };
+    const timer = setTimeout(() => attempt(2), 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [dataReady, session, profile?.name, profile?.avatarDataUrl, game.level, game.xp, game.rank, game.score, habitStreaks.current, habitStreaks.best]);
 
   // achievement + record + day-complete celebrations
+  // Só avalia depois que os dados da conta (incluindo `unlocked`, os marcos já
+  // confirmados) terminaram de carregar — checar contra um `unlocked` ainda
+  // não hidratado faria qualquer marco já conquistado parecer "novo".
   useEffect(() => {
+    if (!dataReady) return;
     if (habitStreaks.best > prevBest.current && prevBest.current > 0) fireToast("NOVO RECORDE", <Flame size={16} className="text-ember" />);
     prevBest.current = habitStreaks.best;
     const newlyUnlocked = ACHIEVEMENT_DEFS.filter((a) => !unlocked.includes(a.id) && a.check(stats));
@@ -19683,7 +19764,7 @@ function ConstancceApp() {
       fireToast(`MARCO DESBLOQUEADO — ${newlyUnlocked[0].label}`, <Award size={16} className="text-brass" />);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stats, habitStreaks]);
+  }, [dataReady, stats, habitStreaks]);
 
   const notifications = useMemo(() => {
     const t = today();
