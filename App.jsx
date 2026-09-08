@@ -1821,7 +1821,7 @@ function MiniLineChart({ data, height = 150, color = "var(--brass)" }) {
 
   return (
     <div className="tech-chart w-full overflow-hidden">
-      <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height }} role="img" aria-label="Gráfico de evolução">
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="w-full" style={{ height }} role="img" aria-label="Gráfico de evolução">
         <defs>
           <linearGradient id={`mlc-fill-${gradientId}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity="0.34" />
