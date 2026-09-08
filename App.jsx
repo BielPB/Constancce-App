@@ -494,6 +494,17 @@ function weekdayIndex(dateStr = today()) {
   return new Date(dateStr + "T12:00:00").getDay();
 }
 
+// Dia da semana "efetivo" de um treino, considerando profile.workoutScheduleOffsetDays.
+// Os treinos continuam configurados por dia fixo da semana (scheduleDays), mas quando
+// o usuário "puxa" o treino de ontem pra hoje, esse deslocamento aumenta em 1 — o que
+// faz a agenda inteira (hoje e todos os dias seguintes) deslizar um dia pra frente,
+// sem precisar reescrever scheduleDays de cada treino. Um deslocamento de N dias faz
+// o dia D ser resolvido como se fosse o dia D-N.
+function workoutEffectiveWeekday(dateStr, offsetDays) {
+  const offset = Number(offsetDays) || 0;
+  return weekdayIndex(offset ? addDays(dateStr, -offset) : dateStr);
+}
+
 function goalMilestonePercents(goal) {
   if (goal?.checklist?.length) return [];
   if (goal?.milestones?.length) return goal.milestones;
@@ -2423,7 +2434,7 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
   const performance = getDayPerformance(t, habits, completions, tasks, workoutSessions, mealLog, goalProgressLog);
   const score = performance.score;
   const workoutToday = workoutSessions.some((s) => s.date === t && s.completed);
-  const scheduledWorkout = workoutTemplates.find((tp) => (tp.scheduleDays || []).includes(weekdayIndex(t)));
+  const scheduledWorkout = workoutTemplates.find((tp) => (tp.scheduleDays || []).includes(workoutEffectiveWeekday(t, profile?.workoutScheduleOffsetDays)));
   const kcalToday = mealLog.filter((m) => m.date === t && dietMealConsumed(m)).reduce((s, m) => s + Number(m.calories || 0), 0);
   const spentToday = transactions.filter((tx) => tx.date === t && tx.type === "saida").reduce((s, tx) => s + Number(tx.value || 0), 0);
 
@@ -2482,7 +2493,7 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
       id: "workout",
       label: "Treino",
       cells: last7Dates.map((date) => {
-        const scheduled = workoutTemplates.some((tp) => (tp.scheduleDays || []).includes(weekdayIndex(date)));
+        const scheduled = workoutTemplates.some((tp) => (tp.scheduleDays || []).includes(workoutEffectiveWeekday(date, profile?.workoutScheduleOffsetDays)));
         const done = workoutSessions.some((s) => s.date === date && s.completed);
         if (!scheduled && !done) return { na: true };
         return { ratio: done ? 1 : 0, title: done ? "Treino concluído" : "Treino não realizado" };
@@ -5075,7 +5086,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
 /* ---------------------------------------------------------------
    CALENDAR
 ----------------------------------------------------------------*/
-function calendarWorkoutCountForDate(workoutTemplates, workoutSessions, date) {
+function calendarWorkoutCountForDate(workoutTemplates, workoutSessions, date, offsetDays = 0) {
   const templateIds = new Set(
     (workoutSessions || [])
       .filter((session) => session.date === date)
@@ -5083,13 +5094,13 @@ function calendarWorkoutCountForDate(workoutTemplates, workoutSessions, date) {
   );
 
   (workoutTemplates || [])
-    .filter((template) => (template.scheduleDays || []).includes(weekdayIndex(date)))
+    .filter((template) => (template.scheduleDays || []).includes(workoutEffectiveWeekday(date, offsetDays)))
     .forEach((template) => templateIds.add(template.id));
 
   return templateIds.size;
 }
 
-function calendarIntelligenceSnapshot({ tasks, workoutTemplates, workoutSessions, bills, anchorDate }) {
+function calendarIntelligenceSnapshot({ tasks, workoutTemplates, workoutSessions, bills, anchorDate, workoutScheduleOffsetDays = 0 }) {
   const weekStart = startOfWeek(anchorDate || today());
   const days = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
 
@@ -5100,7 +5111,7 @@ function calendarIntelligenceSnapshot({ tasks, workoutTemplates, workoutSessions
       (sum, task) => sum + Math.max(0, Number(task.estimatedMinutes || 0)),
       0
     );
-    const workouts = calendarWorkoutCountForDate(workoutTemplates, workoutSessions, date);
+    const workouts = calendarWorkoutCountForDate(workoutTemplates, workoutSessions, date, workoutScheduleOffsetDays);
     const dayBills = (bills || []).filter((bill) => bill.status !== "pago" && bill.dueDate === date);
 
     const timeMap = new Map();
@@ -5184,6 +5195,7 @@ function CalendarIntelligencePanel({
   workoutSessions,
   bills,
   anchorDate,
+  workoutScheduleOffsetDays,
   isPro,
   onUpgrade,
 }) {
@@ -5195,6 +5207,7 @@ function CalendarIntelligencePanel({
     workoutSessions,
     bills,
     anchorDate,
+    workoutScheduleOffsetDays,
   });
 
   if (!isPro) {
@@ -5453,7 +5466,7 @@ function CalendarView({
 
     const scheduledRows = workoutTemplates
       .filter((template) =>
-        (template.scheduleDays || []).includes(weekdayIndex(date)) &&
+        (template.scheduleDays || []).includes(workoutEffectiveWeekday(date, profile?.workoutScheduleOffsetDays)) &&
         !existingTemplateIds.has(template.id)
       )
       .map((template) => ({
@@ -6142,6 +6155,7 @@ function CalendarView({
         workoutSessions={workoutSessions}
         bills={bills}
         anchorDate={selected}
+        workoutScheduleOffsetDays={profile?.workoutScheduleOffsetDays || 0}
         isPro={isPro}
         onUpgrade={onUpgrade}
       />
@@ -8534,6 +8548,8 @@ function WorkoutNoteInput({ value, disabled, onCommit, className, placeholder })
 
 function WorkoutsView({
   session,
+  profile,
+  setProfile,
   templates,
   sessions,
   saveTemplate,
@@ -8541,6 +8557,7 @@ function WorkoutsView({
   reorderTemplates,
   moveTemplateByStep,
   startOrGetSession,
+  scheduleWorkoutSession,
   toggleSet,
   toggleExercise,
   updateLoad,
@@ -8747,17 +8764,22 @@ function WorkoutsView({
       .filter((session) => session.date === t && session.plannedOnly)
       .map((session) => session.templateId)
   );
+  const workoutScheduleOffsetDays = Number(profile?.workoutScheduleOffsetDays || 0);
   const scheduledToday = templates.filter((template) =>
-    (template.scheduleDays || []).includes(weekdayIndex(t)) ||
+    (template.scheduleDays || []).includes(workoutEffectiveWeekday(t, workoutScheduleOffsetDays)) ||
     plannedTodayTemplateIds.has(template.id)
   );
 
   const yesterdayMissed = templates.filter((template) =>
-    (template.scheduleDays || []).includes(weekdayIndex(yesterday)) &&
+    (template.scheduleDays || []).includes(workoutEffectiveWeekday(yesterday, workoutScheduleOffsetDays)) &&
     !sessions.some((session) =>
       session.templateId === template.id &&
       session.date === yesterday &&
       session.completed
+    ) &&
+    !sessions.some((session) =>
+      session.templateId === template.id &&
+      session.date === t
     )
   );
 
@@ -8811,7 +8833,7 @@ function WorkoutsView({
 
   const selectedHistoryPlannedTemplates = selectedHistoryDate
     ? templates.filter((template) =>
-        (template.scheduleDays || []).includes(weekdayIndex(selectedHistoryDate)) ||
+        (template.scheduleDays || []).includes(workoutEffectiveWeekday(selectedHistoryDate, workoutScheduleOffsetDays)) ||
         sessions.some((session) =>
           session.date === selectedHistoryDate &&
           session.templateId === template.id &&
@@ -8874,6 +8896,21 @@ function WorkoutsView({
     setActiveSessionId(null);
     startOrGetSession(template.id);
     setActiveTemplateId(template.id);
+  };
+
+  // Puxa o treino perdido de ontem pra hoje e desliza a sequência inteira um dia pra
+  // frente a partir de hoje (profile.workoutScheduleOffsetDays), já que os treinos são
+  // agendados por dia fixo da semana — sem esse deslocamento, o treino de amanhã (no
+  // calendário real) continuaria sendo o que já era esperado pra amanhã, duplicando ou
+  // pulando um treino da rotação.
+  const pullYesterdayWorkout = (template) => {
+    openTodaySession(template);
+    if (typeof setProfile === "function") {
+      setProfile((current) => ({
+        ...current,
+        workoutScheduleOffsetDays: Number(current?.workoutScheduleOffsetDays || 0) + 1,
+      }));
+    }
   };
 
   const openPrescribeWorkout = async (template) => {
@@ -9097,7 +9134,7 @@ function WorkoutsView({
               {weekDays.map((date) => {
                 const done = sessions.some((session) => session.completed && session.date === date);
                 const scheduled = templates.some((template) =>
-                  (template.scheduleDays || []).includes(weekdayIndex(date))
+                  (template.scheduleDays || []).includes(workoutEffectiveWeekday(date, workoutScheduleOffsetDays))
                 );
                 const isToday = date === t;
 
@@ -9166,6 +9203,26 @@ function WorkoutsView({
                 </div>
               }
             />
+          )}
+
+          {workoutScheduleOffsetDays > 0 && (
+            <div className="surface-2 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <p className="text-[10px] md:text-xs text-dim">
+                <RefreshCw size={11} className="inline mr-1 text-brass" />
+                Sua rotação está deslocada {workoutScheduleOffsetDays} dia{workoutScheduleOffsetDays === 1 ? "" : "s"} pra frente por causa de um treino puxado.
+              </p>
+              <button
+                className="btn-ghost rounded-lg px-2.5 py-1.5 text-[10px] md:text-xs shrink-0 self-start sm:self-auto"
+                onClick={() => {
+                  if (typeof setProfile === "function") {
+                    setProfile((current) => ({ ...current, workoutScheduleOffsetDays: 0 }));
+                  }
+                }}
+                title="Volta a agenda dos treinos para os dias da semana originais"
+              >
+                Voltar ao normal
+              </button>
+            </div>
           )}
 
           {primaryToday ? (
@@ -9258,9 +9315,10 @@ function WorkoutsView({
               </div>
               <button
                 className="btn-ghost rounded-xl px-3 py-2 text-xs flex items-center gap-1"
-                onClick={() => openTodaySession(yesterdayMissed[0])}
+                onClick={() => pullYesterdayWorkout(yesterdayMissed[0])}
+                title="Faz este treino hoje e empurra os próximos um dia pra frente, para não perder a ordem da sua rotação"
               >
-                <Repeat2 size={13} /> Fazer hoje
+                <Repeat2 size={13} /> Puxar pra hoje
               </button>
             </div>
           )}
@@ -19882,7 +19940,7 @@ function ConstancceApp() {
       case "tasks": return <TasksView tasks={tasks} saveTask={saveTask} deleteTask={deleteTask} setStatus={setTaskStatus} moveTask={moveTaskKanban} autoOpen={quickTrigger.tasks} isPro={isPro} onUpgrade={requestPro} />;
       case "calendar": return <CalendarView habits={habits} completions={completions} tasks={tasks} saveTask={saveTask} setTaskStatus={setTaskStatus} workoutTemplates={workoutTemplates} workoutSessions={workoutSessions} saveWorkoutTemplate={saveWorkoutTemplate} scheduleWorkoutSession={scheduleWorkoutSession} goals={goals} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
       case "goals": return <GoalsView goals={goals} saveGoal={saveGoal} addProgress={addGoalProgress} updateProgress={updateProgress} toggleGoalChecklist={toggleGoalChecklist} deleteGoal={deleteGoal} goalProgressLog={goalProgressLog} tasks={tasks} habits={habits} autoOpen={quickTrigger.goals} isPro={isPro} onUpgrade={requestPro} />;
-      case "workouts": return <WorkoutsView session={session} templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateReps={updateWorkoutReps} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ remaining: workoutRest.remaining, total: workoutRest.total, running: workoutRest.running }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} onAdjustRest={workoutRest.adjust} resumeSessionId={workoutResumeSessionId} onResumeHandled={() => setWorkoutResumeSessionId(null)} />;
+      case "workouts": return <WorkoutsView session={session} profile={profile} setProfile={setProfile} templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} scheduleWorkoutSession={scheduleWorkoutSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateReps={updateWorkoutReps} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ remaining: workoutRest.remaining, total: workoutRest.total, running: workoutRest.running }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} onAdjustRest={workoutRest.adjust} resumeSessionId={workoutResumeSessionId} onResumeHandled={() => setWorkoutResumeSessionId(null)} />;
       case "food": return <FoodView foodBase={dietFoodBase} foods={foods} mealLog={mealLog} addMeal={addMeal} updateMeal={updateMeal} toggleMealConsumed={toggleMealConsumed} deleteMeal={deleteMeal} deleteFood={deleteFood} profile={profile} setProfile={setProfile} session={session} autoOpen={quickTrigger.food} isPro={isPro} onUpgrade={requestPro} />;
       case "finance": return <FinanceView transactions={transactions} addTransaction={addTransaction} addGoalProgress={addGoalProgress} deleteTransaction={deleteTransaction} removeTransactionRecord={removeTransactionRecord} profile={profile} setProfile={setProfile} goals={goals} autoOpen={quickTrigger.finance} isPro={isPro} onUpgrade={requestPro} />;
       case "friends": return <FriendsView session={session} profile={profile} game={game} streaks={habitStreaks} isPro={isPro} onUpgrade={requestPro} />;

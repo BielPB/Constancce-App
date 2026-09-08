@@ -596,3 +596,17 @@ test("PR de treino não é recalculado no render, usa o Set já derivado de sess
   assert.match(app, /const sessionPrs = activeSession && activeTemplate[\s\S]{0,200}workoutHistoricalMaxLoad\(/);
   assert.match(app, /const sessionPrExerciseIds = useMemo\(\s*\(\) => new Set\(sessionPrs\.map\(\(exercise\) => exercise\.id\)\),\s*\[sessionPrs\]\s*\);/);
 });
+
+test("puxar treino de ontem desliza a rotação de treinos (workoutScheduleOffsetDays)", () => {
+  assert.match(app, /function workoutEffectiveWeekday\(dateStr, offsetDays\) \{/);
+  assert.match(app, /const pullYesterdayWorkout = \(template\) => \{\s*openTodaySession\(template\);/);
+  assert.match(app, /workoutScheduleOffsetDays: Number\(current\?\.workoutScheduleOffsetDays \|\| 0\) \+ 1,/);
+
+  const workoutsViewStart = app.indexOf("function WorkoutsView({");
+  const workoutsViewEnd = app.indexOf("\nfunction ", workoutsViewStart + 1);
+  assert.ok(workoutsViewStart > -1 && workoutsViewEnd > workoutsViewStart);
+  const workoutsViewSlice = app.slice(workoutsViewStart, workoutsViewEnd);
+
+  assert.match(workoutsViewSlice, /scheduledToday = templates\.filter\(\(template\) =>\s*\(template\.scheduleDays \|\| \[\]\)\.includes\(workoutEffectiveWeekday\(t, workoutScheduleOffsetDays\)\)/);
+  assert.match(workoutsViewSlice, /yesterdayMissed = templates\.filter\(\(template\) =>\s*\(template\.scheduleDays \|\| \[\]\)\.includes\(workoutEffectiveWeekday\(yesterday, workoutScheduleOffsetDays\)\)/);
+});
