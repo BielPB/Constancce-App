@@ -610,3 +610,19 @@ test("puxar treino de ontem desliza a rotação de treinos (workoutScheduleOffse
   assert.match(workoutsViewSlice, /scheduledToday = templates\.filter\(\(template\) =>\s*\(template\.scheduleDays \|\| \[\]\)\.includes\(workoutEffectiveWeekday\(t, workoutScheduleOffsetDays\)\)/);
   assert.match(workoutsViewSlice, /yesterdayMissed = templates\.filter\(\(template\) =>\s*\(template\.scheduleDays \|\| \[\]\)\.includes\(workoutEffectiveWeekday\(yesterday, workoutScheduleOffsetDays\)\)/);
 });
+
+test("pull pós-flush de hábitos/tarefas preserva alteração feita durante o próprio round-trip", () => {
+  const routineFlushStart = app.indexOf("const flushRoutineSync = useCallback(async () => {");
+  const routineFlushEnd = app.indexOf("\n  }, [session, getFreshSession, pullRoutineState]);", routineFlushStart);
+  assert.ok(routineFlushStart > -1 && routineFlushEnd > routineFlushStart);
+  const routineFlushSlice = app.slice(routineFlushStart, routineFlushEnd);
+  assert.match(routineFlushSlice, /clearRoutineOutbox\(session\.user\.id\);\s*(?:\/\/[^\n]*\n\s*)*return await pullRoutineState\(\{ preservePending: true \}\);/);
+  assert.doesNotMatch(routineFlushSlice, /return await pullRoutineState\(\{ preservePending: false \}\);/);
+
+  const taskFlushStart = app.indexOf("const flushTaskSync = useCallback(async () => {");
+  const taskFlushEnd = app.indexOf("\n  }, [session, getFreshSession, pullTaskState, fireToast]);", taskFlushStart);
+  assert.ok(taskFlushStart > -1 && taskFlushEnd > taskFlushStart);
+  const taskFlushSlice = app.slice(taskFlushStart, taskFlushEnd);
+  assert.match(taskFlushSlice, /clearTaskOutbox\(session\.user\.id\);\s*(?:\/\/[^\n]*\n\s*)*const pulled = await pullTaskState\(\{ preservePending: true \}\);/);
+  assert.doesNotMatch(taskFlushSlice, /const pulled = await pullTaskState\(\{ preservePending: false \}\);/);
+});

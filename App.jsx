@@ -17655,7 +17655,10 @@ function ConstancceApp() {
       }
 
       clearTaskOutbox(session.user.id);
-      const pulled = await pullTaskState({ preservePending: false });
+      // Mesmo motivo do equivalente em flushRoutineSync: preservePending:true evita
+      // que uma tarefa marcada/desmarcada bem no meio do round-trip desta chamada
+      // seja descartada e a tela volte para o snapshot remoto sem essa alteração.
+      const pulled = await pullTaskState({ preservePending: true });
       setTaskSyncStatus(pulled ? "idle" : "error");
       setTaskSyncError(pulled ? "" : "task_pull_after_flush_failed");
       return pulled;
@@ -17870,7 +17873,13 @@ function ConstancceApp() {
       }
 
       clearRoutineOutbox(session.user.id);
-      return await pullRoutineState({ preservePending: false });
+      // preservePending:true (não false) é essencial aqui: entre o fim do loop acima
+      // e a resposta desta chamada chegar, o usuário pode marcar outro item do
+      // checklist (ou outro hábito) — isso entra em routineOutboxRef.current na hora
+      // (síncrono). Com preservePending:false essa alteração recém-chegada era
+      // descartada e o setHabitChecklistLog/setCompletions seguinte sobrescrevia a
+      // tela com o snapshot remoto (sem o item), fazendo-o parecer desmarcado sozinho.
+      return await pullRoutineState({ preservePending: true });
     } catch (error) {
       captureClientError(error, { module: "routine-sync-v1", action: "flush" });
       saveRoutineOutbox(session.user.id, compactRoutineOutbox(routineOutboxRef.current || []));
