@@ -108,7 +108,7 @@ export default function NotificationsView({
       <div className="flex flex-col gap-2">
         {visible.length === 0 && <EmptyState icon={Bell} title="Tudo em dia." hint="Nenhum aviso no momento. Continue assim." />}
         {visible.map((n, i) => (
-          <div key={i} className="surface rounded-2xl p-4 flex items-center gap-3">
+          <div key={n.id ?? `${n.category}-${n.message}`} className="surface rounded-2xl p-4 flex items-center gap-3">
             <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
               {n.icon}
             </div>

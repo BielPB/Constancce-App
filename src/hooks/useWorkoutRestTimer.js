@@ -2,12 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 const STORAGE_PREFIX = "constancce_workout_rest_";
 
+const MIN_REST_SECONDS = 10;
+const MAX_REST_SECONDS = 300;
+
 const storageKey = (userId) => `${STORAGE_PREFIX}${userId || "anonymous"}`;
 
 const safeTimer = (value) => {
   if (!value || typeof value !== "object") return null;
 
-  const total = Math.max(30, Math.min(300, Number(value.total) || 90));
+  const total = Math.max(MIN_REST_SECONDS, Math.min(MAX_REST_SECONDS, Number(value.total) || 90));
   const endAt = Number(value.endAt || 0);
 
   if (!Number.isFinite(endAt) || endAt <= 0) return null;
@@ -127,7 +130,7 @@ export function useWorkoutRestTimer(userId) {
   }, [timer?.id, timer?.endAt, finish]);
 
   const start = useCallback((seconds = 90, metadata = {}) => {
-    const total = Math.max(30, Math.min(300, Number(seconds) || 90));
+    const total = Math.max(MIN_REST_SECONDS, Math.min(MAX_REST_SECONDS, Number(seconds) || 90));
     const startedAt = Date.now();
     const next = {
       id: `${startedAt}-${Math.random().toString(36).slice(2, 8)}`,
@@ -158,10 +161,13 @@ export function useWorkoutRestTimer(userId) {
   const adjust = useCallback((deltaSeconds) => {
     setTimer((current) => {
       if (!current) return current;
-      const total = Math.max(10, Math.min(300, current.total + deltaSeconds));
+      const total = Math.max(MIN_REST_SECONDS, Math.min(MAX_REST_SECONDS, current.total + deltaSeconds));
       const next = {
         ...current,
-        endAt: Math.max(Date.now(), Math.min(current.startedAt + 300 * 1000, current.endAt + deltaSeconds * 1000)),
+        endAt: Math.max(
+          Date.now(),
+          Math.min(current.startedAt + MAX_REST_SECONDS * 1000, current.endAt + deltaSeconds * 1000)
+        ),
         total,
       };
       writeTimer(userId, next);

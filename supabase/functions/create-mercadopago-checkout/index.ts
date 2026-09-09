@@ -66,6 +66,45 @@ Deno.serve(async (req) => {
       return json({ error: "invalid_app_url" }, 500, headers);
     }
 
+    // Evita cobrança duplicada real: se já existe um checkout pendente recente
+    // (ex.: usuário abriu em duas abas ou usou o botão voltar), reutiliza a
+    // preferência já criada no Mercado Pago em vez de gerar uma nova cobrança.
+    const recentPendingCutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const { data: pendingCheckout } = await admin
+      .from("constancce_checkout_sessions")
+      .select("id,preference_id,updated_at")
+      .eq("user_id", user.id)
+      .eq("product_code", PRODUCT.code)
+      .eq("status", "pending")
+      .not("preference_id", "is", null)
+      .gte("updated_at", recentPendingCutoff)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (pendingCheckout?.preference_id) {
+      const existingRes = await fetch(
+        `https://api.mercadopago.com/checkout/preferences/${encodeURIComponent(pendingCheckout.preference_id)}`,
+        { headers: { Authorization: `Bearer ${mpAccessToken}` } },
+      );
+      const existingData = await existingRes.json().catch(() => ({}));
+
+      if (existingRes.ok && isMercadoPagoCheckoutUrl(existingData?.init_point)) {
+        return json({
+          preference_id: String(pendingCheckout.preference_id),
+          init_point: String(existingData.init_point),
+          reused: true,
+        }, 200, headers);
+      }
+
+      // Preferência antiga não pôde ser recuperada (expirada/inválida no MP):
+      // marca a sessão pendente como expirada antes de seguir com uma nova.
+      await admin.from("constancce_checkout_sessions").update({
+        status: "expired",
+        updated_at: new Date().toISOString(),
+      }).eq("id", pendingCheckout.id);
+    }
+
     const { data: checkout, error: checkoutError } = await admin
       .from("constancce_checkout_sessions")
       .insert({

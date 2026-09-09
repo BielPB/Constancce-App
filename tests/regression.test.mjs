@@ -572,11 +572,19 @@ test("Dashboard escolhe a próxima tarefa com a mesma prioridade da tela Tarefas
   assert.doesNotMatch(dashboardSlice, /const nextTask = tasksToday\[0\];/);
 });
 
-test("cronômetro de descanso: ajuste manual respeita o mesmo teto de 300s do início", () => {
-  assert.match(restTimerHook, /const start = useCallback\(\(seconds = 90, metadata = \{\}\) => \{\s*const total = Math\.max\(30, Math\.min\(300, Number\(seconds\) \|\| 90\)\);/);
+test("cronômetro de descanso: início, hidratação e ajuste manual usam o mesmo teto mínimo/máximo", () => {
+  assert.match(restTimerHook, /const MIN_REST_SECONDS = 10;/);
+  assert.match(restTimerHook, /const MAX_REST_SECONDS = 300;/);
+  assert.match(restTimerHook, /const total = Math\.max\(MIN_REST_SECONDS, Math\.min\(MAX_REST_SECONDS, Number\(value\.total\) \|\| 90\)\);/);
+  assert.match(restTimerHook, /const start = useCallback\(\(seconds = 90, metadata = \{\}\) => \{\s*const total = Math\.max\(MIN_REST_SECONDS, Math\.min\(MAX_REST_SECONDS, Number\(seconds\) \|\| 90\)\);/);
   assert.match(restTimerHook, /const adjust = useCallback\(\(deltaSeconds\) => \{/);
-  assert.match(restTimerHook, /const total = Math\.max\(10, Math\.min\(300, current\.total \+ deltaSeconds\)\);/);
-  assert.match(restTimerHook, /endAt: Math\.max\(Date\.now\(\), Math\.min\(current\.startedAt \+ 300 \* 1000, current\.endAt \+ deltaSeconds \* 1000\)\),/);
+  assert.match(restTimerHook, /const total = Math\.max\(MIN_REST_SECONDS, Math\.min\(MAX_REST_SECONDS, current\.total \+ deltaSeconds\)\);/);
+  assert.match(restTimerHook, /Math\.min\(current\.startedAt \+ MAX_REST_SECONDS \* 1000, current\.endAt \+ deltaSeconds \* 1000\)/);
+});
+
+test("cronômetro de descanso: fim do tempo vibra o dispositivo, sem tocar som", () => {
+  assert.match(restTimerHook, /navigator\.vibrate\(\[180, 80, 180\]\);/);
+  assert.doesNotMatch(restTimerHook, /AudioContext/);
 });
 
 test("Relatórios: progresso de metas não gera NaN/Infinity com meta zerada ou negativa", () => {
@@ -599,8 +607,10 @@ test("PR de treino não é recalculado no render, usa o Set já derivado de sess
 
 test("puxar treino de ontem desliza a rotação de treinos (workoutScheduleOffsetDays)", () => {
   assert.match(app, /function workoutEffectiveWeekday\(dateStr, offsetDays\) \{/);
-  assert.match(app, /const pullYesterdayWorkout = \(template\) => \{\s*openTodaySession\(template\);/);
+  assert.match(app, /const pullYesterdayWorkout = \(template\) => \{\s*(?:\/\/[^\n]*\n\s*)*if \(pullingWorkoutRef\.current\) return;/);
   assert.match(app, /workoutScheduleOffsetDays: Number\(current\?\.workoutScheduleOffsetDays \|\| 0\) \+ 1,/);
+  // Duplo toque acidental não deve incrementar o offset duas vezes.
+  assert.match(app, /pullingWorkoutRef\.current = true;\s*window\.setTimeout\(\(\) => \{ pullingWorkoutRef\.current = false; \}, 1000\);/);
 
   const workoutsViewStart = app.indexOf("function WorkoutsView({");
   const workoutsViewEnd = app.indexOf("\nfunction ", workoutsViewStart + 1);
@@ -668,4 +678,78 @@ test("Tarefas: planejamento semanal aceita arrastar tarefa por toque, não só p
   assert.match(plannerSlice, /onTouchEnd=\{\(event\) => \{/);
   assert.match(plannerSlice, /document\.elementFromPoint\(touch\.clientX, touch\.clientY\)/);
   assert.match(plannerSlice, /scheduleTask\(draggedTask, dropDate, false\)/);
+
+  // scheduleTask reabre status "concluida" pra "pendente" ao mudar a data — arrastar uma
+  // tarefa já feita (mouse ou toque) não pode ser permitido, senão reorganizar a semana
+  // desfaz a conclusão sem querer.
+  assert.match(plannerSlice, /draggable=\{!isRecurringTask\(task\) && task\.status !== "concluida"\}/);
+  assert.match(plannerSlice, /if \(isRecurringTask\(task\) \|\| task\.status === "concluida"\) return;/);
+  assert.match(plannerSlice, /if \(draggedTask && !isRecurringTask\(draggedTask\) && draggedTask\.status !== "concluida"\) scheduleTask/);
+  assert.match(plannerSlice, /onTouchCancel=\{\(\) => \{/);
+});
+
+test("Metas: adicionar etapa não converte silenciosamente meta financeira\\/numérica em checklist", () => {
+  const goalFormStart = app.indexOf("function GoalForm({");
+  const goalFormEnd = app.indexOf("\nfunction GoalAddValue", goalFormStart);
+  assert.ok(goalFormStart > -1 && goalFormEnd > goalFormStart, "GoalForm não encontrado");
+  const goalFormSlice = app.slice(goalFormStart, goalFormEnd);
+
+  // "checklist" agora é uma escolha explícita do seletor de tipo, não um efeito colateral
+  // de digitar numa etapa — antes, qualquer "Etapa" preenchida convertia a meta (perdendo
+  // valor acumulado, prazo e marcos configurados) mesmo que o tipo selecionado fosse outro.
+  assert.match(goalFormSlice, /const isChecklist = type === "checklist";/);
+  assert.match(goalFormSlice, /<option value="checklist">Etapas \(checklist\)<\/option>/);
+  assert.doesNotMatch(goalFormSlice, /type: cleanChecklist\.length \? "checklist" : type,/);
+  assert.match(goalFormSlice, /type,\s*target: savedTarget,/);
+  assert.match(goalFormSlice, /const savedCurrent = isChecklist \? checklistCurrent : Math\.max\(0, Number\(current\) \|\| 0\);/);
+});
+
+test("Sincronização: reconciliar conflito de tarefa/hábito não sobrescreve edição mais nova feita durante o await", () => {
+  const taskFlushStart = app.indexOf("const flushTaskSync = useCallback(async () => {");
+  const taskFlushEnd = app.indexOf("\n  }, [session, getFreshSession, pullTaskState, fireToast]);", taskFlushStart);
+  assert.ok(taskFlushStart > -1 && taskFlushEnd > taskFlushStart);
+  const taskFlushSlice = app.slice(taskFlushStart, taskFlushEnd);
+  // replacePendingOp só comparava por id — se uma edição mais nova da mesma tarefa entrasse
+  // na fila durante o fetch de reconciliação, a versão antiga (pré-conflito) a sobrescrevia.
+  assert.match(taskFlushSlice, /const supersededMeanwhile = !compactTaskOutbox\(taskOutboxRef\.current \|\| \[\]\)/);
+  assert.match(taskFlushSlice, /if \(supersededMeanwhile\) continue;/);
+
+  const routineFlushStart = app.indexOf("const flushRoutineSync = useCallback(async () => {");
+  const routineFlushEnd = app.indexOf("\n  }, [session, getFreshSession, pullRoutineState]);", routineFlushStart);
+  assert.ok(routineFlushStart > -1 && routineFlushEnd > routineFlushStart);
+  const routineFlushSlice = app.slice(routineFlushStart, routineFlushEnd);
+  assert.match(routineFlushSlice, /const supersededMeanwhile = !compactRoutineOutbox\(routineOutboxRef\.current \|\| \[\]\)/);
+  assert.match(routineFlushSlice, /if \(supersededMeanwhile\) continue;/);
+});
+
+test("Sincronização: poll de segurança não ignora hábito\\/tarefa ainda não confirmado pelo servidor", () => {
+  // As duas chamadas com preservePending:false (poll de 30s e volta de foco/aba) ignoravam
+  // a fila de tarefas/hábitos ainda em voo, podendo fazer um item recém-marcado "voltar"
+  // por alguns segundos até o próximo pull com preservePending:true corrigir sozinho.
+  const guardOccurrences = app.match(/if \(taskOutboxRef\.current\?\.length \|\| routineOutboxRef\.current\?\.length\) return;/g) || [];
+  assert.equal(guardOccurrences.length, 2);
+});
+
+test("Finanças: excluir lançamento de aporte para meta devolve o valor à meta", () => {
+  assert.match(app, /const removeTransactionRecord = \(id\) => \{\s*setTransactions\(\(prev\) => \{\s*const removed = prev\.find\(\(t\) => t\.id === id\);/);
+  assert.match(app, /if \(removed\?\.goalId && removed\.type === "saida" && removed\.category === "Aporte para meta"\) \{\s*addGoalProgress\(removed\.goalId, -Number\(removed\.value \|\| 0\)\);/);
+});
+
+test("Hoje: card de hábito com checklist não marca 100% direto no Dashboard", () => {
+  // O Dashboard não tem habitChecklistLog/toggleHabitChecklist — marcar direto por lá deixava
+  // a grade de Hábitos com o dia "concluído" sem nenhuma etapa registrada.
+  assert.match(app, /const hasChecklist = Array\.isArray\(habit\.checklist\) && habit\.checklist\.length > 0;/);
+  assert.match(app, /onClick=\{\(\) => \(hasChecklist \? setView\("habits"\) : toggleHabit\(habit\.id, t\)\)\}/);
+});
+
+test("Conquistas: galeria de marcos usa a prop unlocked (30 ACHIEVEMENT_DEFS ficam visíveis)", () => {
+  const achievementsStart = app.indexOf("function AchievementsView({");
+  const achievementsEnd = app.indexOf("\nfunction ChallengeForm", achievementsStart);
+  assert.ok(achievementsStart > -1 && achievementsEnd > achievementsStart);
+  const achievementsSlice = app.slice(achievementsStart, achievementsEnd);
+  // Antes a tela só mostrava os 4 níveis de prêmio físico por streak — a prop `unlocked`
+  // (os ~30 marcos que disparam toast) nunca era referenciada no componente.
+  assert.match(achievementsSlice, /const unlockedBadgeIds = unlocked \|\| \[\];/);
+  assert.match(achievementsSlice, /ACHIEVEMENT_DEFS\.reduce\(/);
+  assert.match(achievementsSlice, /unlockedBadgeIds\.includes\(item\.id\)/);
 });

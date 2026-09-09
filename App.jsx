@@ -507,13 +507,19 @@ function workoutEffectiveWeekday(dateStr, offsetDays) {
 
 function goalMilestonePercents(goal) {
   if (goal?.checklist?.length) return [];
-  if (goal?.milestones?.length) return goal.milestones;
+  // Array.isArray (não .length) distingue "usuário escolheu nenhum marco" ([])
+  // de "nunca definiu" (undefined) — com .length, um [] salvo de propósito
+  // sempre revertia pro padrão de 4 marcos.
+  if (Array.isArray(goal?.milestones)) return goal.milestones;
   return [25, 50, 75, 100];
 }
 
 function goalMilestonesReached(goal) {
   const target = Math.max(1, Number(goal?.target || 0));
-  const currentPct = Math.min(100, Math.max(0, (Number(goal?.current || 0) / target) * 100));
+  // Arredondado igual a goalProgressPercent(), usado pela trilha visual e pelo
+  // toast de "marco alcançado" — sem isso, a trilha comemorava um marco (ex.:
+  // 24,6% arredondado pra 25%) que o score de ritmo/XP não reconhecia.
+  const currentPct = Math.round(Math.min(100, Math.max(0, (Number(goal?.current || 0) / target) * 100)));
   return goalMilestonePercents(goal).filter((pct) => currentPct >= pct).length;
 }
 
@@ -1263,7 +1269,16 @@ const taskOccursOnDate = (task, dateStr) => {
   const repeat = task.repeat || "none";
   if (repeat === "daily") return true;
   if (repeat === "weekly") return dayOfWeek(dateStr) === dayOfWeek(start);
-  if (repeat === "monthly") return new Date(dateStr + "T00:00:00").getDate() === new Date(start + "T00:00:00").getDate();
+  if (repeat === "monthly") {
+    // Dia-alvo (ex.: 31) travado por getDate() nunca bate em meses mais curtos
+    // (abril tem só 30, fevereiro 28/29) — a tarefa simplesmente pulava esses
+    // meses inteiros. Trava no último dia do mês corrente quando o dia-alvo
+    // não existe nele, igual à semântica comum de recorrência mensal.
+    const startDay = new Date(start + "T00:00:00").getDate();
+    const current = new Date(dateStr + "T00:00:00");
+    const daysInCurrentMonth = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate();
+    return current.getDate() === Math.min(startDay, daysInCurrentMonth);
+  }
   if (repeat === "custom") return (task.repeatDays || []).includes(dayOfWeek(dateStr));
   return task.dueDate === dateStr;
 };
@@ -1745,6 +1760,15 @@ const ACHIEVEMENT_DEFS = [
 ACHIEVEMENT_DEFS.forEach((a) => {
   a.check = (stats) => Number(a.value(stats) || 0) >= Number(a.target || 1);
 });
+const ACHIEVEMENT_CATEGORY_ICONS = {
+  "Constância": Flame,
+  "Hábitos": CheckCircle2,
+  "Tarefas": ListChecks,
+  "Treinos": Dumbbell,
+  "Metas": Target,
+  "Finanças": Wallet,
+  "Secretas": Sparkles,
+};
 
 
 /* ---------------------------------------------------------------
@@ -1802,8 +1826,12 @@ function MiniLineChart({ data, height = 150, color = "var(--brass)" }) {
   const h = height;
   const padX = 22;
   const padY = 18;
-  const max = Math.max(...vals, 1);
-  const min = Math.min(...vals, 0);
+  // Forçar o teto em pelo menos 1 e o piso em no máximo 0 fazia uma série
+  // 100% negativa (ex.: saldo sempre no vermelho) desenhar espremida perto do
+  // fundo do gráfico, reservando espaço vertical inútil até 0/+1. O range
+  // abaixo já protege contra altura zero quando todos os valores são iguais.
+  const max = Math.max(...vals);
+  const min = Math.min(...vals);
   const range = Math.max(1, max - min);
   const baseline = h - padY;
 
@@ -2001,10 +2029,17 @@ function computeStreaks(habits, completions, refDate) {
     }
   }
 
+  // Cap de segurança (~10 anos) contra travamento de UI em contas muito
+  // antigas ou com createdAt corrompido — não afeta nenhuma conta real, já
+  // que o app tem bem menos tempo de existência que isso.
+  const MAX_SCAN_DAYS = 3650;
+
   let best = 0;
   let run = 0;
   let scan = earliestCreated;
-  while (scan <= refDate) {
+  let scanGuard = 0;
+  while (scan <= refDate && scanGuard < MAX_SCAN_DAYS) {
+    scanGuard++;
     const status = isDayComplete(streakHabits, completions, scan);
     if (status === true) {
       run++;
@@ -2017,7 +2052,9 @@ function computeStreaks(habits, completions, refDate) {
 
   let totalPerfectDays = 0;
   scan = earliestCreated;
-  while (scan <= refDate) {
+  scanGuard = 0;
+  while (scan <= refDate && scanGuard < MAX_SCAN_DAYS) {
+    scanGuard++;
     if (isDayComplete(streakHabits, completions, scan) === true) totalPerfectDays++;
     scan = addDays(scan, 1);
   }
@@ -2711,13 +2748,25 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
           </div>
           <div className="flex flex-col gap-2.5 md:gap-2">
             {pendingHabits.length === 0 && <p className="text-moss text-sm py-3">Hábitos de hoje concluídos.</p>}
-            {pendingHabits.slice(0, 7).map((habit) => (
-              <button key={habit.id} onClick={() => toggleHabit(habit.id, t)} className="surface-2 interactive rounded-xl p-3.5 md:p-3 flex items-center gap-3.5 md:gap-3 text-left">
-                <Circle size={16} className="text-faint shrink-0" />
-                <span className="text-[15px] md:text-sm flex-1 min-w-0 break-words">{habit.name}</span>
-                <span className="chip text-[10px] md:text-[9px] shrink-0">{catLabel(habit.category)}</span>
-              </button>
-            ))}
+            {pendingHabits.slice(0, 7).map((habit) => {
+              const hasChecklist = Array.isArray(habit.checklist) && habit.checklist.length > 0;
+              return (
+                <button
+                  key={habit.id}
+                  // Hábito com checklist precisa das etapas marcadas uma a uma —
+                  // o Dashboard não tem esse estado, então marcar 100% aqui direto
+                  // deixava a grade de Hábitos com o dia "concluído" sem nenhuma
+                  // etapa registrada. Leva pra Hábitos, que já trata isso corretamente.
+                  onClick={() => (hasChecklist ? setView("habits") : toggleHabit(habit.id, t))}
+                  className="surface-2 interactive rounded-xl p-3.5 md:p-3 flex items-center gap-3.5 md:gap-3 text-left"
+                  title={hasChecklist ? "Abrir Hábitos para marcar as etapas do dia" : undefined}
+                >
+                  <Circle size={16} className="text-faint shrink-0" />
+                  <span className="text-[15px] md:text-sm flex-1 min-w-0 break-words">{habit.name}</span>
+                  <span className="chip text-[10px] md:text-[9px] shrink-0">{catLabel(habit.category)}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -4880,7 +4929,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                           event.dataTransfer.getData("text/plain") ||
                           draggedTaskId;
                         const task = tasks.find((item) => item.id === taskId);
-                        if (task && !isRecurringTask(task)) {
+                        if (task && !isRecurringTask(task) && task.status !== "concluida") {
                           scheduleTask(task, dateStr, false);
                         }
                         setDraggedTaskId(null);
@@ -4902,9 +4951,13 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                         {dayTasks.map((task) => (
                           <article
                             key={`${dateStr}-${task.id}`}
-                            draggable={!isRecurringTask(task)}
+                            // Tarefa já concluída não pode ser arrastada: scheduleTask() sempre
+                            // reabre o status pra "pendente" ao mudar a data, então arrastar uma
+                            // tarefa feita (reorganizando a semana, por exemplo) desfazia a
+                            // conclusão sem intenção — nem mouse nem toque excluíam esse caso.
+                            draggable={!isRecurringTask(task) && task.status !== "concluida"}
                             onDragStart={(event) => {
-                              if (isRecurringTask(task)) return;
+                              if (isRecurringTask(task) || task.status === "concluida") return;
                               setDraggedTaskId(task.id);
                               event.dataTransfer.effectAllowed = "move";
                               event.dataTransfer.setData("text/plain", task.id);
@@ -4916,7 +4969,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                               // ~380ms parado pra virar "arraste" (senão qualquer rolagem de
                               // página seria confundida com um arraste, já que os dias ficam
                               // empilhados na vertical no celular).
-                              if (isRecurringTask(task)) return;
+                              if (isRecurringTask(task) || task.status === "concluida") return;
                               const touch = event.touches[0];
                               const timer = window.setTimeout(() => {
                                 if (touchDragRef.current) {
@@ -4953,12 +5006,22 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                               const dropDate = dayEl?.getAttribute("data-planner-date");
                               if (dropDate) {
                                 const draggedTask = tasks.find((item) => item.id === drag.taskId);
-                                if (draggedTask && !isRecurringTask(draggedTask)) scheduleTask(draggedTask, dropDate, false);
+                                if (draggedTask && !isRecurringTask(draggedTask) && draggedTask.status !== "concluida") scheduleTask(draggedTask, dropDate, false);
                               }
                               setDraggedTaskId(null);
                               setWeekDragTarget(null);
                             }}
-                            style={draggedTaskId === task.id ? { touchAction: "none", opacity: 0.6 } : undefined}
+                            onTouchCancel={() => {
+                              // Sem isso, um gesto interrompido pelo sistema (notificação,
+                              // troca de app) nunca disparava touchend — o card ficava preso
+                              // semi-transparente e a coluna do dia continuava destacada.
+                              const drag = touchDragRef.current;
+                              if (drag?.timer) clearTimeout(drag.timer);
+                              touchDragRef.current = null;
+                              setDraggedTaskId(null);
+                              setWeekDragTarget(null);
+                            }}
+                            style={draggedTaskId === task.id ? { touchAction: "none", opacity: 0.6 } : task.status === "concluida" ? { opacity: 0.55 } : undefined}
                             className="task-week-card task-week-card-full rounded-lg p-2.5"
                           >
                             <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -4969,7 +5032,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                                   </span>
                                 )}
                                 <span className="task-week-priority text-[8px] text-faint shrink-0">
-                                  {PRIORITIES.find((item) => item.id === task.priority)?.label || "Média"}
+                                  {task.status === "concluida" ? "Concluída" : (PRIORITIES.find((item) => item.id === task.priority)?.label || "Média")}
                                 </span>
                               </div>
                               {(task.subtasks || []).length > 0 && (
@@ -4978,7 +5041,10 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                                 </span>
                               )}
                             </div>
-                            <p className="task-week-title-full text-[10px] md:text-[11px] font-medium leading-snug whitespace-normal break-words">
+                            <p
+                              className="task-week-title-full text-[10px] md:text-[11px] font-medium leading-snug whitespace-normal break-words"
+                              style={task.status === "concluida" ? { textDecoration: "line-through" } : undefined}
+                            >
                               {task.title}
                             </p>
                           </article>
@@ -6343,7 +6409,7 @@ function CalendarView({
 ----------------------------------------------------------------*/
 function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habits = [] }) {
   const [name, setName] = useState(initial?.name || "");
-  const [type, setType] = useState(initial?.type === "checklist" ? "numerica" : (initial?.type || "financeira"));
+  const [type, setType] = useState(initial?.type || "financeira");
   const [target, setTarget] = useState(Number(initial?.type === "checklist" ? 1 : (initial?.target ?? 1000)));
   const [current, setCurrent] = useState(Number(initial?.type === "checklist" ? 0 : (initial?.current ?? 0)));
   const [endDate, setEndDate] = useState(initial?.endDate || "");
@@ -6402,7 +6468,7 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
   const cleanChecklist = checklist
     .filter((item) => item.text.trim())
     .map((item) => ({ ...item, text: item.text.trim() }));
-  const isChecklist = cleanChecklist.length > 0;
+  const isChecklist = type === "checklist";
 
   return (
     <Modal title={initial ? "Editar meta" : "Nova meta"} onClose={onClose} width={620}>
@@ -6515,6 +6581,7 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
             <option value="quantidade">Quantidade</option>
             <option value="frequencia">Frequência</option>
             <option value="prazo">Prazo</option>
+            <option value="checklist">Etapas (checklist)</option>
           </select>
         </Field>
 
@@ -6535,29 +6602,31 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
         </Field>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Field label={type === "financeira" ? "Meta final (R$)" : "Valor alvo"}>
-          <input
-            type="number"
-            min="0"
-            step={type === "financeira" ? "0.01" : "1"}
-            className="w-full p-3 ring-focus"
-            value={target}
-            onChange={(event) => setTarget(Math.max(0, Number(event.target.value)))}
-          />
-        </Field>
+      {!isChecklist && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label={type === "financeira" ? "Meta final (R$)" : "Valor alvo"}>
+            <input
+              type="number"
+              min="0"
+              step={type === "financeira" ? "0.01" : "1"}
+              className="w-full p-3 ring-focus"
+              value={target}
+              onChange={(event) => setTarget(Math.max(0, Number(event.target.value)))}
+            />
+          </Field>
 
-        <Field label={type === "financeira" ? "Valor já acumulado (R$)" : "Progresso atual"}>
-          <input
-            type="number"
-            min="0"
-            step={type === "financeira" ? "0.01" : "1"}
-            className="w-full p-3 ring-focus"
-            value={current}
-            onChange={(event) => setCurrent(Math.max(0, Number(event.target.value)))}
-          />
-        </Field>
-      </div>
+          <Field label={type === "financeira" ? "Valor já acumulado (R$)" : "Progresso atual"}>
+            <input
+              type="number"
+              min="0"
+              step={type === "financeira" ? "0.01" : "1"}
+              className="w-full p-3 ring-focus"
+              value={current}
+              onChange={(event) => setCurrent(Math.max(0, Number(event.target.value)))}
+            />
+          </Field>
+        </div>
+      )}
 
       {endDate && !isChecklist && Number(target) > 0 && (
         <div className="goal-form-pace surface-2 rounded-2xl p-4 mb-3">
@@ -6601,30 +6670,32 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
         </Field>
       )}
 
-      <Field label="Etapas da meta (opcional)">
-        <div className="flex flex-col gap-2">
-          {checklist.map((item, index) => (
-            <div key={item.id} className="flex items-center gap-2">
-              {item.done ? <CheckCircle2 size={16} className="text-moss shrink-0" /> : <Circle size={16} className="text-faint shrink-0" />}
-              <input
-                className="flex-1 min-w-0 p-2.5 text-sm ring-focus"
-                placeholder={`Etapa ${index + 1}`}
-                value={item.text}
-                onChange={(event) => updateChecklistItem(item.id, event.target.value)}
-              />
-              <button className="btn-ghost rounded-lg p-2" onClick={() => removeChecklistItem(item.id)}>
-                <X size={14} />
-              </button>
-            </div>
-          ))}
-          <button
-            className="btn-ghost rounded-xl py-2 text-sm flex items-center justify-center gap-1"
-            onClick={addChecklistItem}
-          >
-            <Plus size={14} /> Adicionar etapa
-          </button>
-        </div>
-      </Field>
+      {isChecklist && (
+        <Field label="Etapas da meta">
+          <div className="flex flex-col gap-2">
+            {checklist.map((item, index) => (
+              <div key={item.id} className="flex items-center gap-2">
+                {item.done ? <CheckCircle2 size={16} className="text-moss shrink-0" /> : <Circle size={16} className="text-faint shrink-0" />}
+                <input
+                  className="flex-1 min-w-0 p-2.5 text-sm ring-focus"
+                  placeholder={`Etapa ${index + 1}`}
+                  value={item.text}
+                  onChange={(event) => updateChecklistItem(item.id, event.target.value)}
+                />
+                <button className="btn-ghost rounded-lg p-2" onClick={() => removeChecklistItem(item.id)}>
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+            <button
+              className="btn-ghost rounded-xl py-2 text-sm flex items-center justify-center gap-1"
+              onClick={addChecklistItem}
+            >
+              <Plus size={14} /> Adicionar etapa
+            </button>
+          </div>
+        </Field>
+      )}
 
       {(tasks.length > 0 || habits.length > 0) && (
         <div className="goal-related-form surface-2 rounded-2xl p-3 md:p-4 mb-3">
@@ -6687,22 +6758,22 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
       )}
 
       <button
-        disabled={!name.trim() || (!isChecklist && Number(target) <= 0)}
+        disabled={!name.trim() || (isChecklist ? cleanChecklist.length === 0 : Number(target) <= 0)}
         className="btn-primary w-full rounded-xl py-3 mt-2 disabled:opacity-40"
         onClick={() => {
           const checklistCurrent = cleanChecklist.filter((item) => item.done).length;
-          const savedCurrent = cleanChecklist.length ? checklistCurrent : Math.max(0, Number(current) || 0);
-          const savedTarget = cleanChecklist.length ? cleanChecklist.length : Math.max(0, Number(target) || 0);
+          const savedCurrent = isChecklist ? checklistCurrent : Math.max(0, Number(current) || 0);
+          const savedTarget = isChecklist ? cleanChecklist.length : Math.max(0, Number(target) || 0);
 
           onSave({
             ...initial,
             id: initial?.id || uid(),
             name: name.trim(),
-            type: cleanChecklist.length ? "checklist" : type,
+            type,
             target: savedTarget,
             current: savedCurrent,
-            checklist: cleanChecklist,
-            milestones: cleanChecklist.length ? [] : milestones,
+            checklist: isChecklist ? cleanChecklist : [],
+            milestones: isChecklist ? [] : milestones,
             imageDataUrl: imageDataUrl || null,
             startDate: initial?.startDate || today(),
             endDate: endDate || "",
@@ -8642,6 +8713,7 @@ function WorkoutsView({
   const [showImportWorkout, setShowImportWorkout] = useState(false);
   const [importWorkoutValue, setImportWorkoutValue] = useState("");
   const [shareNotice, setShareNotice] = useState("");
+  const pullingWorkoutRef = useRef(false);
   const [selectedHistoryDate, setSelectedHistoryDate] = useState(null);
   const [exerciseGuide, setExerciseGuide] = useState(null);
   const [prescribeTemplate, setPrescribeTemplate] = useState(null);
@@ -8955,6 +9027,13 @@ function WorkoutsView({
   // calendário real) continuaria sendo o que já era esperado pra amanhã, duplicando ou
   // pulando um treino da rotação.
   const pullYesterdayWorkout = (template) => {
+    // Sem essa trava, um duplo toque acidental (comum no mobile) incrementa
+    // workoutScheduleOffsetDays duas vezes antes do primeiro re-render
+    // remover o botão, deslocando a agenda 2 dias em vez de 1.
+    if (pullingWorkoutRef.current) return;
+    pullingWorkoutRef.current = true;
+    window.setTimeout(() => { pullingWorkoutRef.current = false; }, 1000);
+
     openTodaySession(template);
     if (typeof setProfile === "function") {
       setProfile((current) => ({
@@ -10644,6 +10723,8 @@ function BarcodeScannerModal({ onDetected, onClose }) {
   const streamRef = useRef(null);
   const [status, setStatus] = useState("Abrindo câmera…");
   const [supported, setSupported] = useState(true);
+  const [cameraFailed, setCameraFailed] = useState(false);
+  const [manualCode, setManualCode] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -10699,6 +10780,7 @@ function BarcodeScannerModal({ onDetected, onClose }) {
         }, 550);
       } catch (_) {
         setStatus("Não foi possível acessar a câmera. Digite o código manualmente.");
+        setCameraFailed(true);
       }
     };
 
@@ -10709,18 +10791,45 @@ function BarcodeScannerModal({ onDetected, onClose }) {
     };
   }, [onDetected]);
 
+  // A mensagem de status já prometia "digite manualmente" quando a câmera
+  // falhava ou o navegador não tinha BarcodeDetector, mas o modal não tinha
+  // nenhum campo pra isso — o usuário ficava sem forma de prosseguir.
+  const showManualInput = !supported || cameraFailed;
+  const submitManualCode = () => {
+    const value = manualCode.trim();
+    if (!value) return;
+    onDetected(value);
+  };
+
   return (
     <Modal title="Escanear código de barras" onClose={onClose} width={460}>
       <div className="diet-barcode-camera surface-2 rounded-2xl overflow-hidden">
-        {supported ? (
+        {supported && !cameraFailed ? (
           <video ref={videoRef} muted playsInline className="w-full block" style={{ minHeight: 220, objectFit: "cover" }} />
         ) : (
           <div className="min-h-[220px] flex items-center justify-center p-5 text-center text-dim text-sm">
-            Seu navegador não possui leitor de código de barras integrado.
+            {supported ? "Não foi possível acessar a câmera." : "Seu navegador não possui leitor de código de barras integrado."}
           </div>
         )}
       </div>
       <p className="text-xs text-dim mt-3 text-center">{status}</p>
+      {showManualInput && (
+        <div className="flex items-center gap-2 mt-3">
+          <input
+            type="text"
+            inputMode="numeric"
+            autoFocus
+            className="flex-1 p-3 ring-focus"
+            placeholder="Digite o código de barras"
+            value={manualCode}
+            onChange={(event) => setManualCode(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") submitManualCode(); }}
+          />
+          <button type="button" className="btn-primary rounded-xl px-4 py-3 text-sm shrink-0" onClick={submitManualCode} disabled={!manualCode.trim()}>
+            Usar
+          </button>
+        </div>
+      )}
     </Modal>
   );
 }
@@ -11133,11 +11242,18 @@ function MealForm({
 function DietMealEditModal({ meal, isPro, onSave, onClose }) {
   const sourceFood = meal?.foodSnapshot || null;
   const sourceMeasures = sourceFood ? dietFoodMeasureOptions(sourceFood) : [];
-  const initialMeasureIndex = Math.max(0, sourceMeasures.findIndex((item) => item.label === meal?.unit));
+  const initialMeasureIndex = sourceMeasures.findIndex((item) => item.label === meal?.unit);
 
   const [mealType, setMealType] = useState(meal?.mealType || MEAL_TYPES[0]);
   const [name, setName] = useState(meal?.name || "");
-  const [measureIndex, setMeasureIndex] = useState(initialMeasureIndex);
+  const [measureIndex, setMeasureIndex] = useState(Math.max(0, initialMeasureIndex));
+  // Só recalcula automaticamente quando a medida salva bate com uma opção
+  // conhecida hoje. Sem essa distinção, um registro cuja medida não é mais
+  // encontrada (ex.: base de alimentos mudou os rótulos) caía no índice 0 por
+  // padrão e reabrir + salvar sem tocar em nada recalculava macros errados
+  // silenciosamente — agora esse caso cai no fallback manual, com os valores
+  // originais preservados até o usuário escolher uma medida de propósito.
+  const [measureIsTrusted, setMeasureIsTrusted] = useState(initialMeasureIndex >= 0);
   const [quantity, setQuantity] = useState(Number(meal?.quantity || 1));
   const [unit, setUnit] = useState(meal?.unit || "porção");
   const [calories, setCalories] = useState(Number(meal?.calories || 0));
@@ -11149,10 +11265,10 @@ function DietMealEditModal({ meal, isPro, onSave, onClose }) {
   const [sugar, setSugar] = useState(Number(meal?.sugar || 0));
 
   const activeMeasure = sourceMeasures[measureIndex] || sourceMeasures[0] || null;
-  const consumedAmount = sourceFood && activeMeasure
+  const consumedAmount = sourceFood && activeMeasure && measureIsTrusted
     ? Math.max(0, Number(quantity || 0)) * Number(activeMeasure.amount || 0)
     : Number(meal?.consumedAmount || 0);
-  const recalculated = sourceFood && activeMeasure
+  const recalculated = sourceFood && activeMeasure && measureIsTrusted
     ? dietNutrientsForAmount(sourceFood, consumedAmount)
     : null;
 
@@ -11173,8 +11289,8 @@ function DietMealEditModal({ meal, isPro, onSave, onClose }) {
       name: name.trim(),
       mealType,
       quantity: Number(quantity),
-      unit: sourceFood && activeMeasure ? activeMeasure.label : unit,
-      consumedAmount: sourceFood && activeMeasure ? consumedAmount : meal?.consumedAmount,
+      unit: sourceFood && activeMeasure && measureIsTrusted ? activeMeasure.label : unit,
+      consumedAmount: sourceFood && activeMeasure && measureIsTrusted ? consumedAmount : meal?.consumedAmount,
       ...nutrition,
     });
   };
@@ -11185,6 +11301,9 @@ function DietMealEditModal({ meal, isPro, onSave, onClose }) {
         <p className="text-[9px] text-faint uppercase tracking-widest">Registro da dieta</p>
         <p className="text-sm font-medium mt-1">{meal?.name}</p>
         <p className="text-[10px] text-faint mt-1">Edite a refeição, quantidade e informações do item sem precisar excluí-lo.</p>
+        {meal?.dietPlanId && (
+          <p className="text-[10px] text-brass mt-1.5">Este item faz parte de "Manter esta dieta" — a alteração vale só para hoje; os próximos dias voltam a usar o plano original.</p>
+        )}
       </div>
 
       <Field label="Refeição">
@@ -11200,11 +11319,21 @@ function DietMealEditModal({ meal, isPro, onSave, onClose }) {
       {sourceFood && sourceMeasures.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Medida">
-            <select className="w-full p-3 ring-focus" value={measureIndex} onChange={(event) => setMeasureIndex(Number(event.target.value))}>
+            <select
+              className="w-full p-3 ring-focus"
+              value={measureIndex}
+              onChange={(event) => {
+                setMeasureIndex(Number(event.target.value));
+                setMeasureIsTrusted(true);
+              }}
+            >
               {sourceMeasures.map((measure, index) => (
                 <option key={`${measure.label}-${index}`} value={index}>{measure.label}</option>
               ))}
             </select>
+            {!measureIsTrusted && (
+              <p className="text-[9px] text-faint mt-1">Medida original não encontrada — escolha uma acima ou ajuste os valores manualmente abaixo.</p>
+            )}
           </Field>
           <Field label={activeMeasure?.custom ? "Quantidade (g)" : "Quantidade"}>
             <input
@@ -12590,7 +12719,7 @@ function detectFinancePeriod(text, fallbackMonth = today().slice(0, 7), contextP
     return { id: "before_yesterday", start: date, end: date, label: "anteontem", explicit: true };
   }
 
-  if (/(essa|esta|nesta) semana/.test(q)) {
+  if (/(essa|esta|nesta|nessa) semana/.test(q)) {
     const start = new Date(now);
     start.setDate(start.getDate() - start.getDay());
     return {
@@ -12637,7 +12766,7 @@ function detectFinancePeriod(text, fallbackMonth = today().slice(0, 7), contextP
     return { id: "previous_month", ...range, label: "mês passado", explicit: true };
   }
 
-  if (/(esse|este|neste) mes/.test(q)) {
+  if (/(esse|este|neste|nesse) mes/.test(q)) {
     const range = financeMonthRange(currentYear, currentMonth);
     return { id: "current_month", start: range.start, end: today(), label: "este mês", explicit: true };
   }
@@ -13314,15 +13443,18 @@ function executeFinanceIntelligence({
       if (previousValue === 0 && currentValue === 0) {
         return success("Não há entradas suficientes para comparar esses períodos.");
       }
-      if (diff === 0) return success(`Suas entradas ficaram iguais: ${money(currentValue)}.`);
+      // Tolerância de meio centavo: diff === 0 exato quase nunca bate por
+      // resíduo de ponto flutuante em somas de valores monetários, mesmo
+      // quando os totais são, na prática, iguais.
+      if (Math.abs(diff) < 0.005) return success(`Suas entradas ficaram iguais: ${money(currentValue)}.`);
       if (diff > 0) return success(`Você recebeu ${money(diff)} a mais que no período anterior.`);
       return success(`Você recebeu ${money(Math.abs(diff))} a menos que no período anterior.`);
     }
 
     case "savings_total": {
       const saved = financeSum(incomes) - financeSum(expenses);
-      if (saved > 0) return success(`Você economizou ${money(saved)} ${financePeriodLabel(period)}.`);
-      if (saved === 0) return success(`Você ficou no zero a zero ${financePeriodLabel(period)}.`);
+      if (saved > 0.005) return success(`Você economizou ${money(saved)} ${financePeriodLabel(period)}.`);
+      if (Math.abs(saved) < 0.005) return success(`Você ficou no zero a zero ${financePeriodLabel(period)}.`);
       return success(`Não houve economia líquida. O período ficou negativo em ${money(Math.abs(saved))}.`);
     }
 
@@ -13346,7 +13478,7 @@ function executeFinanceIntelligence({
       if (previousValue === 0 && currentValue === 0) {
         return success("Não há gastos suficientes para comparar esses períodos.");
       }
-      if (diff === 0) return success(`Seus gastos ficaram iguais: ${money(currentValue)}.`);
+      if (Math.abs(diff) < 0.005) return success(`Seus gastos ficaram iguais: ${money(currentValue)}.`);
       if (diff > 0) return success(`Você gastou ${money(diff)} a mais que no período anterior.`);
       return success(`Você gastou ${money(Math.abs(diff))} a menos que no período anterior.`);
     }
@@ -13834,9 +13966,16 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
     .filter((bill) => bill.dueDate && bill.dueDate >= today());
   const monthlyLimitUsedPct = monthlyLimit > 0 ? Math.round((monthOut / monthlyLimit) * 100) : 0;
   const topCategory = byCategory[0] || null;
+  // Mesmo corte usado em previousOutComparable: sem isso, o "maior gasto por
+  // categoria" comparava o ritmo parcial deste mês contra o mês anterior
+  // INTEIRO, fazendo uma categoria com ritmo acelerado parecer neutra/em queda
+  // só por o mês anterior completo somar mais.
+  const previousTxComparable = isCurrentMonthView
+    ? previousTx.filter((tx) => Number(String(tx.date || "").slice(8, 10)) <= dayOfMonthCutoff)
+    : previousTx;
   const previousByCategory = FIN_OUT.map((category) => ({
     category,
-    total: previousTx
+    total: previousTxComparable
       .filter((tx) => tx.type === "saida" && tx.category === category)
       .reduce((sum, tx) => sum + Number(tx.value || 0), 0),
   }));
@@ -14160,6 +14299,9 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
                   </p>
                   <p className={`font-mono text-sm md:text-base mt-1 truncate ${outDeltaPct !== null && outDeltaPct <= 0 ? "text-moss" : outDeltaPct !== null ? "text-ember" : "text-dim"}`}>
                     {outDeltaPct === null ? "Sem base" : `${outDeltaPct >= 0 ? "+" : ""}${outDeltaPct}% gastos`}
+                  </p>
+                  <p className={`font-mono text-[10px] mt-1 truncate ${inDeltaPct !== null && inDeltaPct >= 0 ? "text-moss" : inDeltaPct !== null ? "text-ember" : "text-faint"}`}>
+                    {inDeltaPct === null ? "Sem base de entradas" : `${inDeltaPct >= 0 ? "+" : ""}${inDeltaPct}% entradas`}
                   </p>
                 </div>
               </div>
@@ -15250,7 +15392,15 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
 function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgrade }) {
   const [confirm, confirmDialog] = useConfirm();
   const [selectedReward, setSelectedReward] = useState(null);
+  const [selectedBadge, setSelectedBadge] = useState(null);
   const bestStreak = Math.max(0, Number(stats?.bestStreak || 0));
+  const safeStats = stats || {};
+  const unlockedBadgeIds = unlocked || [];
+  const achievementsByCategory = ACHIEVEMENT_DEFS.reduce((acc, item) => {
+    (acc[item.category] = acc[item.category] || []).push(item);
+    return acc;
+  }, {});
+  const achievementCategories = Object.keys(achievementsByCategory);
 
   const levels = [
     {
@@ -15304,7 +15454,96 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
       <div>
         <h2 className="font-display text-2xl md:text-3xl">Conquistas</h2>
         <p className="text-dim text-sm mt-1">
-          Os prêmios são liberados pela sua maior sequência de dias perfeitos — dias em que todos os hábitos marcados para contar streak foram concluídos. Não é o mesmo número do foguinho de uso no topo do app.
+          Cada marco abaixo fica registrado aqui pra sempre — mesmo depois que o aviso de desbloqueio sumir da tela.
+        </p>
+      </div>
+
+      <div className="surface rounded-2xl p-4 md:p-5">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <p className="text-[10px] text-faint uppercase tracking-widest">Marcos desbloqueados</p>
+            <p className="font-display text-2xl mt-1">
+              {unlockedBadgeIds.length}<span className="text-dim text-base">/{ACHIEVEMENT_DEFS.length}</span>
+            </p>
+          </div>
+          <Award size={22} className="text-brass shrink-0" />
+        </div>
+
+        <div className="flex flex-col gap-4">
+          {achievementCategories.map((category) => (
+            <div key={category}>
+              <p className="text-[9px] text-faint uppercase tracking-widest mb-2">{category}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {achievementsByCategory[category].map((item) => {
+                  const isUnlocked = unlockedBadgeIds.includes(item.id);
+                  const hideDetails = item.secret && !isUnlocked;
+                  const CategoryIcon = ACHIEVEMENT_CATEGORY_ICONS[item.category] || Award;
+                  const progressPct = Math.min(100, Math.round((Number(item.value(safeStats) || 0) / Number(item.target || 1)) * 100));
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setSelectedBadge(item)}
+                      className="surface-2 rounded-xl p-3 flex items-center gap-3 text-left"
+                    >
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                        style={{ background: isUnlocked ? "var(--brass)" : "var(--surface)", border: "1px solid var(--border)" }}
+                      >
+                        {isUnlocked ? <CategoryIcon size={16} color="#141208" /> : <Lock size={14} className="text-faint" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium break-words">{hideDetails ? "Conquista secreta" : item.label}</p>
+                        <p className="text-[10px] text-faint mt-0.5 break-words">
+                          {hideDetails ? "Continue usando o app para descobrir." : item.desc}
+                        </p>
+                        {!isUnlocked && !hideDetails && (
+                          <div className="mt-1.5"><Progress value={progressPct} height={4} /></div>
+                        )}
+                      </div>
+                      {isUnlocked && <CheckCircle2 size={15} className="text-moss shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {selectedBadge && (
+        <Modal title={selectedBadge.secret && !unlockedBadgeIds.includes(selectedBadge.id) ? "Conquista secreta" : selectedBadge.label} onClose={() => setSelectedBadge(null)} width={420}>
+          <div className="surface-2 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="chip">{selectedBadge.category}</span>
+              <span className="chip">{selectedBadge.rarity}</span>
+            </div>
+            <p className="text-sm text-dim leading-relaxed">
+              {selectedBadge.secret && !unlockedBadgeIds.includes(selectedBadge.id)
+                ? "Continue usando o app para descobrir como desbloquear esta conquista."
+                : selectedBadge.desc}
+            </p>
+            {unlockedBadgeIds.includes(selectedBadge.id) ? (
+              <div className="flex items-center gap-2 text-moss text-xs mt-3"><CheckCircle2 size={14} /> Desbloqueada</div>
+            ) : !selectedBadge.secret && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between text-[10px] text-faint mb-1.5">
+                  <span>Progresso</span>
+                  <span>
+                    {Math.min(Number(selectedBadge.value(safeStats) || 0), Number(selectedBadge.target || 1)).toLocaleString("pt-BR")}/{Number(selectedBadge.target || 1).toLocaleString("pt-BR")}
+                  </span>
+                </div>
+                <Progress value={Math.min(100, Math.round((Number(selectedBadge.value(safeStats) || 0) / Number(selectedBadge.target || 1)) * 100))} height={5} />
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      <div>
+        <h3 className="font-display text-lg">Prêmios físicos por sequência</h3>
+        <p className="text-dim text-sm mt-1">
+          Liberados pela sua maior sequência de dias perfeitos — dias em que todos os hábitos marcados para contar streak foram concluídos. Não é o mesmo número do foguinho de uso no topo do app.
         </p>
       </div>
 
@@ -15713,15 +15952,21 @@ function TimelineView({ habits, completions, tasks, goals, workoutSessions, goal
       rows.push({ id: `task-${task.id}`, date: task.completedAt, title: `Tarefa entregue: ${task.title}`, desc: "Execução concluída.", icon: CheckCircle2 });
     });
 
+    // Um Set por meta+marco evita que o mesmo marco (ex.: 50%) apareça duas vezes
+    // na Jornada quando o progresso oscila dentro da margem de tolerância (±3%)
+    // em registros diferentes.
+    const emittedGoalMilestones = new Set();
     goalProgressLog.forEach((log) => {
       const goal = goals.find((g) => g.id === log.goalId);
       if (!goal || !goal.target || goal.completed) return;
       const pct = Math.round(Number(log.value || 0) / Number(goal.target) * 100);
       const milestone = [25, 50, 75].find((m) => Math.abs(pct - m) <= 3);
-      if (milestone) rows.push({ id: `milestone-${log.id}`, date: log.date, title: `${milestone}% da meta ${goal.name}`, desc: "Marco intermediário alcançado.", icon: Target });
+      if (!milestone) return;
+      const milestoneKey = `${goal.id}:${milestone}`;
+      if (emittedGoalMilestones.has(milestoneKey)) return;
+      emittedGoalMilestones.add(milestoneKey);
+      rows.push({ id: `milestone-${log.id}`, date: log.date, title: `${milestone}% da meta ${goal.name}`, desc: "Marco intermediário alcançado.", icon: Target });
     });
-
-    if (stats.bestStreak >= 7) rows.push({ id: "streak-current-best", date: today(), title: `Recorde de ${stats.bestStreak} dias`, desc: "Sua maior sequência de dias perfeitos registrada até agora.", icon: Flame });
 
     const sorted = rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
     return isPro ? sorted.slice(0, 120) : sorted.filter((event) => event.date >= proCutoffDate()).slice(0, 60);
@@ -15733,6 +15978,21 @@ function TimelineView({ habits, completions, tasks, goals, workoutSessions, goal
         <h2 className="font-display text-2xl md:text-3xl">Jornada</h2>
         <p className="text-dim text-sm mt-1">Sua história de disciplina, evolução e marcos importantes.</p>
       </div>
+
+      {stats.bestStreak >= 7 && (
+        // Fica fora da lista ordenada por data de propósito: é um recorde vigente,
+        // não um evento datado — misturado com data de "hoje" na timeline ele
+        // sempre flutuava pro topo, fazendo um recorde antigo parecer recente.
+        <div className="surface-2 rounded-2xl p-3.5 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full shrink-0 flex items-center justify-center" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+            <Flame size={15} className="text-brass" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-medium text-sm">Recorde atual: {stats.bestStreak} dias</p>
+            <p className="text-dim text-xs mt-0.5">Sua maior sequência de dias perfeitos registrada até agora.</p>
+          </div>
+        </div>
+      )}
 
       <div className="surface rounded-2xl p-4 md:p-5">
         {events.length === 0 && <p className="text-dim text-sm py-4">Sua timeline aparecerá conforme você conclui hábitos, tarefas, treinos e metas.</p>}
@@ -17644,6 +17904,7 @@ function ConstancceApp() {
     taskSyncInFlightRef.current = true;
     setTaskSyncStatus("syncing");
     setTaskSyncError("");
+    let permanentRejection = false;
     try {
       let activeSession = session;
       try { activeSession = await getFreshSession(false); } catch (_) {}
@@ -17689,6 +17950,14 @@ function ConstancceApp() {
             removeSentOp(op);
             continue;
           }
+          // Se uma edição mais nova pra esta mesma tarefa chegou na fila enquanto
+          // aguardávamos fetchAtomicTasksForUser (ex.: usuário editou de novo durante
+          // o conflito), abandona esta reconciliação em vez de sobrescrever o op novo
+          // com o payload antigo — a próxima volta do while processa a versão atual.
+          const staleOp = op;
+          const supersededMeanwhile = !compactTaskOutbox(taskOutboxRef.current || [])
+            .some((item) => String(item.id) === String(staleOp.id) && String(item.mutationId || "") === String(staleOp.mutationId || ""));
+          if (supersededMeanwhile) continue;
           op = { ...op, baseRevision: Number(fresh.taskRevisions?.[op.id] || 0), mutationId: newMutationId() };
           replacePendingOp(op);
           if (response?.reason !== "revision_conflict") continue;
@@ -17720,14 +17989,20 @@ function ConstancceApp() {
       setTaskSyncError(message);
       if (message.toLowerCase().includes("task_time_required")) {
         fireToast("Uma tarefa nova sem horário foi recusada. Defina o horário e tente novamente.", <Clock3 size={16} color="#FFFFFF" />);
+        permanentRejection = true;
       } else if (message.toLowerCase().includes("free_limit_tasks")) {
-        fireToast("O plano Free permite até 5 tarefas ativas.", <RefreshCw size={16} className="text-ember" />);
+        fireToast("O plano Free permite até 5 tarefas ativas. Exclua uma tarefa ativa ou assine o PRO para sincronizar esta.", <RefreshCw size={16} className="text-ember" />);
+        permanentRejection = true;
       }
       setTaskSyncStatus(typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "error");
       return false;
     } finally {
       taskSyncInFlightRef.current = false;
-      if (taskOutboxRef.current?.length && (typeof navigator === "undefined" || navigator.onLine !== false)) {
+      // Rejeições permanentes (limite do plano, tarefa sem horário) não se resolvem
+      // sozinhas em 1,8s — reagendar aqui bombardeava o servidor e repetia o toast
+      // de erro indefinidamente. O op continua na fila e será retentado na próxima
+      // vez que algo real disparar flushTaskSync (outra edição, foco na aba, etc.).
+      if (!permanentRejection && taskOutboxRef.current?.length && (typeof navigator === "undefined" || navigator.onLine !== false)) {
         clearTimeout(taskRetryTimerRef.current);
         taskRetryTimerRef.current = setTimeout(() => flushTaskSync(), 1800);
       }
@@ -17908,6 +18183,15 @@ function ConstancceApp() {
             removeSentOp(op);
             continue;
           }
+          // Mesma proteção do equivalente em flushTaskSync: se uma edição mais nova
+          // pra esta mesma entidade chegou na fila enquanto aguardávamos
+          // fetchAtomicRoutineForUser, abandona esta reconciliação em vez de
+          // sobrescrever o op novo com o payload antigo.
+          const staleOp = op;
+          const staleKey = `${staleOp.collection}:${staleOp.id}`;
+          const supersededMeanwhile = !compactRoutineOutbox(routineOutboxRef.current || [])
+            .some((item) => `${item.collection}:${item.id}` === staleKey && String(item.mutationId || "") === String(staleOp.mutationId || ""));
+          if (supersededMeanwhile) continue;
           op = { ...op, baseRevision: Number(fresh.revisions?.[revisionKey] || 0), mutationId: newMutationId() };
           replacePendingOp(op);
           response = await send(activeSession, op);
@@ -17976,6 +18260,11 @@ function ConstancceApp() {
     if (!changedKeys.length) {
       pendingSyncRef.current = null;
       clearPendingSync(session.user.id);
+      // Sem isso, um conflito 409 resolvido sem sobra pendente (ver o catch de
+      // sync_conflict abaixo) deixava o indicador travado em "sincronizando"
+      // indefinidamente: aquele branch força "syncing" e reagenda esta função,
+      // que retornava aqui sem nunca reverter o status.
+      setSyncStatus("idle");
       return;
     }
 
@@ -18419,7 +18708,12 @@ function ConstancceApp() {
 
     clearInterval(safetySyncInterval.current);
     safetySyncInterval.current = window.setInterval(() => {
+      // taskOutboxRef/routineOutboxRef também contam como "há algo pendente":
+      // sem checar aqui, este poll de segurança rodava com preservePending:false
+      // mesmo com uma tarefa/hábito recém-marcado ainda não confirmado pelo
+      // servidor, fazendo-o "voltar" na tela por alguns segundos.
       if (pendingSyncRef.current || syncInFlightRef.current || remotePullInFlightRef.current) return;
+      if (taskOutboxRef.current?.length || routineOutboxRef.current?.length) return;
       if (typeof navigator !== "undefined" && navigator.onLine === false) return;
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       pullRemoteState({ preservePending: false });
@@ -18495,6 +18789,7 @@ function ConstancceApp() {
         if (routineOutboxRef.current.length) flushRoutineSync();
       });
       if (pendingSyncRef.current || syncInFlightRef.current || remotePullInFlightRef.current) return;
+      if (taskOutboxRef.current?.length || routineOutboxRef.current?.length) return;
       if (Date.now() - lastRemotePullAtRef.current < 1500) return;
       pullRemoteState({ preservePending: false });
     };
@@ -18559,6 +18854,10 @@ function ConstancceApp() {
     routineVisibleRef.current = null;
     routineRevisionRef.current = {};
     clearTimeout(routineRetryTimerRef.current);
+    // Sem isso, eventos de telemetria da conta anterior ainda na fila eram
+    // enviados depois, já atribuídos à sessão da conta seguinte que logar no
+    // mesmo dispositivo sem recarregar a página.
+    telemetryQueueRef.current = [];
     const current = session;
     saveStoredSession(null);
     setSession(null);
@@ -19207,7 +19506,21 @@ function ConstancceApp() {
     });
     return true;
   };
-  const removeTransactionRecord = (id) => { setTransactions((prev) => { const next = prev.filter((t) => t.id !== id); persist({ transactions: next }); return next; }); };
+  const removeTransactionRecord = (id) => {
+    setTransactions((prev) => {
+      const removed = prev.find((t) => t.id === id);
+      const next = prev.filter((t) => t.id !== id);
+      persist({ transactions: next });
+      // Sem isso, excluir um lançamento de "Aporte para meta" (saveFinanceTransaction
+      // soma esse valor à meta ao salvar) deixava o "atual" da meta inflado pra
+      // sempre, já que nada revertia o progresso quando o lançamento que o gerou
+      // era removido.
+      if (removed?.goalId && removed.type === "saida" && removed.category === "Aporte para meta") {
+        addGoalProgress(removed.goalId, -Number(removed.value || 0));
+      }
+      return next;
+    });
+  };
   const deleteTransaction = async (id) => { if (!(await confirm("Tem certeza que deseja excluir este lançamento?"))) return; removeTransactionRecord(id); };
 
   // Materializa automaticamente as recorrências mensais quando o dia programado chega.
@@ -19753,8 +20066,13 @@ function ConstancceApp() {
     if (!dataReady || !session?.user?.id) return;
 
     let cancelled = false;
+    let healing = false;
 
     const healPushSubscription = async () => {
+      // focus/pageshow/visibilitychange podem disparar quase juntos ao voltar
+      // pra aba — sem essa trava, cada um dispara sua própria chamada concorrente.
+      if (healing) return;
+      healing = true;
       try {
         if (typeof window === "undefined" || !("Notification" in window) || !("serviceWorker" in navigator)) return;
         if (Notification.permission !== "granted") return;
@@ -19763,6 +20081,8 @@ function ConstancceApp() {
         await enableConstanccePush(session, { silent: true });
       } catch (_) {
         // Melhor esforço: nunca deve travar o app nem exibir erro (ex.: offline).
+      } finally {
+        healing = false;
       }
     };
 
@@ -19879,7 +20199,12 @@ function ConstancceApp() {
     const newlyUnlocked = ACHIEVEMENT_DEFS.filter((a) => !unlocked.includes(a.id) && a.check(stats));
     if (newlyUnlocked.length > 0) {
       setUnlocked((prev) => { const next = [...prev, ...newlyUnlocked.map((a) => a.id)]; persist({ unlocked: next }); return next; });
-      fireToast(`MARCO DESBLOQUEADO — ${newlyUnlocked[0].label}`, <Award size={16} className="text-brass" />);
+      // Antes só o primeiro item era anunciado quando vários desbloqueavam juntos —
+      // os demais ficavam salvos sem nenhuma notificação.
+      const toastLabel = newlyUnlocked.length === 1
+        ? `MARCO DESBLOQUEADO — ${newlyUnlocked[0].label}`
+        : `MARCOS DESBLOQUEADOS — ${newlyUnlocked.map((a) => a.label).join(" · ")}`;
+      fireToast(toastLabel, <Award size={16} className="text-brass" />);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataReady, stats, habitStreaks]);

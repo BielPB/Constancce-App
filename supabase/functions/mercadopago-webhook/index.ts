@@ -15,7 +15,7 @@ function constantTimeEqual(a: string, b: string) {
   return diff === 0;
 }
 
-async function validateSignature(req: Request, dataId: string, secret: string) {
+function parseSignatureHeader(req: Request) {
   const signature = req.headers.get("x-signature") || "";
   const requestId = req.headers.get("x-request-id") || "";
   const parts: Record<string, string> = {};
@@ -23,9 +23,22 @@ async function validateSignature(req: Request, dataId: string, secret: string) {
     const [key, value] = piece.trim().split("=", 2);
     if (key && value) parts[key] = value;
   }
-  const ts = parts.ts || "";
-  const received = (parts.v1 || "").toLowerCase();
+  return { ts: parts.ts || "", received: (parts.v1 || "").toLowerCase(), requestId };
+}
+
+// Defesa em profundidade: rejeita manifestos com timestamp fora de uma janela
+// generosa de ~1h, para não permitir o reenvio futuro de um request assinado
+// capturado uma vez, sem quebrar retries legítimos do Mercado Pago (que podem
+// demorar para reentregar o webhook).
+function isFreshTimestamp(ts: string) {
+  const tsMillis = Number(ts) * (ts.length <= 10 ? 1000 : 1);
+  return Number.isFinite(tsMillis) && Math.abs(Date.now() - tsMillis) <= 60 * 60 * 1000;
+}
+
+async function validateSignature(req: Request, dataId: string, secret: string) {
+  const { ts, received, requestId } = parseSignatureHeader(req);
   if (!ts || !received || !requestId || !dataId) return false;
+  if (!isFreshTimestamp(ts)) return false;
 
   const normalizedId = /[a-zA-Z]/.test(dataId) ? dataId.toLowerCase() : dataId;
   const manifest = `id:${normalizedId};request-id:${requestId};ts:${ts};`;
@@ -61,6 +74,11 @@ Deno.serve(async (req) => {
     const eventType = String(body?.type || url.searchParams.get("type") || "");
     if (eventType && eventType !== "payment") return response("ok", 200);
     if (!dataId) return response("ok", 200);
+
+    const { ts: signatureTs } = parseSignatureHeader(req);
+    if (signatureTs && !isFreshTimestamp(signatureTs)) {
+      return response("stale signature timestamp", 401);
+    }
 
     if (!(await validateSignature(req, dataId, webhookSecret))) {
       return response("invalid signature", 401);

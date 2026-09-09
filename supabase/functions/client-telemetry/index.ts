@@ -31,6 +31,7 @@ Deno.serve(async (req) => {
     const body = JSON.parse(raw || "{}");
     const events = Array.isArray(body?.events) ? body.events.slice(0, 50) : [];
     if (!events.length) return json({ accepted: 0 }, 200, headers);
+    const clientAppVersion = safeString(body?.appVersion || body?.app_version || "", 20) || "1.1.28";
     const rows = events.map((event: Record<string, unknown>) => ({
       user_id: user.id,
       kind: event?.kind === "error" ? "error" : "analytics",
@@ -45,7 +46,7 @@ Deno.serve(async (req) => {
         } : {}),
       },
       client_created_at: event?.createdAt ? safeString(event.createdAt, 40) : null,
-      app_version: "1.1.16",
+      app_version: safeString(event?.appVersion || event?.app_version || "", 20) || clientAppVersion,
     }));
     const { error } = await admin.from("constancce_events").insert(rows);
     if (error) return json({ error: "telemetry_insert_failed" }, 503, headers);

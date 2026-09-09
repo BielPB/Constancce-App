@@ -45,8 +45,18 @@ function stripOrder(item) {
   return rest;
 }
 
+function stripInternalFields(item) {
+  if (!item || typeof item !== "object") return item;
+  const out = {};
+  for (const [key, value] of Object.entries(item)) {
+    if (key.startsWith("__")) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
 function samePayload(a, b) {
-  try { return JSON.stringify(a) === JSON.stringify(b); } catch (_) { return false; }
+  try { return JSON.stringify(stripInternalFields(a)) === JSON.stringify(stripInternalFields(b)); } catch (_) { return false; }
 }
 
 export function compactRoutineOutbox(entries = []) {

@@ -277,10 +277,22 @@ Deno.serve(async (req) => {
     workout_template: "workoutTemplates",
     workout_session: "workoutSessions",
   };
-  const usersWithAtomicEntities = new Set<string>();
+  // Cada sub-coleção tem sua própria flag de migração: a presença de linhas de
+  // um tipo (ex.: workout_session) não pode decidir a sobrescrita dos outros
+  // tipos (ex.: habits) quando esses ainda só existem no snapshot legado.
+  const usersWithAtomicHabits = new Set<string>();
+  const usersWithAtomicHabitCompletions = new Set<string>();
+  const usersWithAtomicWorkoutTemplates = new Set<string>();
+  const usersWithAtomicWorkoutSessions = new Set<string>();
+  const ATOMIC_FLAG_SET_BY_COLLECTION: Record<string, Set<string>> = {
+    habit: usersWithAtomicHabits,
+    habit_completion: usersWithAtomicHabitCompletions,
+    workout_template: usersWithAtomicWorkoutTemplates,
+    workout_session: usersWithAtomicWorkoutSessions,
+  };
   const atomicEntitiesByUser = new Map<string, Record<string, AnyObj[]>>();
   for (const row of atomicEntityRows || []) {
-    usersWithAtomicEntities.add(row.user_id);
+    ATOMIC_FLAG_SET_BY_COLLECTION[row.collection]?.add(row.user_id);
     if (row.deleted_at) continue;
     const field = ENTITY_FIELD_BY_COLLECTION[row.collection];
     if (!field) continue;
@@ -297,11 +309,17 @@ Deno.serve(async (req) => {
     if (usersWithAtomicTasks.has(userId)) {
       next.tasks = atomicTasksByUser.get(userId) || [];
     }
-    if (usersWithAtomicEntities.has(userId)) {
-      const entities = atomicEntitiesByUser.get(userId) || {};
+    const entities = atomicEntitiesByUser.get(userId) || {};
+    if (usersWithAtomicHabits.has(userId)) {
       next.habits = entities.habits || [];
+    }
+    if (usersWithAtomicHabitCompletions.has(userId)) {
       next.completions = entities.completions || [];
+    }
+    if (usersWithAtomicWorkoutTemplates.has(userId)) {
       next.workoutTemplates = entities.workoutTemplates || [];
+    }
+    if (usersWithAtomicWorkoutSessions.has(userId)) {
       next.workoutSessions = entities.workoutSessions || [];
     }
     dataByUser.set(userId, next);

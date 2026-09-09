@@ -137,13 +137,11 @@ export default function ProfessionalView({ session, profile, setProfile, isPro, 
       const raw = (err.message || "").toLowerCase();
       const text = raw.includes("pro_required")
         ? "É preciso ser PRO para convidar alunos/pacientes."
-        : raw.includes("not found")
-          ? "Nenhum usuário cadastrado com esse e-mail."
-          : raw.includes("yourself")
-            ? "Você não pode convidar sua própria conta."
-            : raw.includes("already exists")
-              ? "Já existe um convite ou vínculo desse tipo com esse usuário."
-              : "Não foi possível enviar o convite.";
+        : raw.includes("yourself")
+          ? "Você não pode convidar sua própria conta."
+          : raw.includes("not found") || raw.includes("already exists")
+            ? "Não foi possível enviar o convite para esse e-mail. Verifique se está correto e tente novamente."
+            : "Não foi possível enviar o convite.";
       setNotice({ type: "error", text });
     } finally {
       setActionLoading(false);

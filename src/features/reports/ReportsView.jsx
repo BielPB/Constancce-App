@@ -160,21 +160,33 @@ function ReportConsistencyHeatmap({ days }) {
 export default function ReportsView({ habits, completions, tasks, workoutSessions, transactions, goals, isPro, onUpgrade, today, startOfMonth, habitValidOnDate, addDays, money, months, stats }) {
   const t = today();
   const monthStart = startOfMonth(t);
+  // Primeiro dia do mês seguinte ao selecionado — usado como limite superior
+  // (exclusivo) de todos os filtros "deste mês", para não incluir lançamentos
+  // futuros de meses posteriores. new Date(ano, mês+1, 1) normaliza sozinho a
+  // virada dezembro (11) -> janeiro do ano seguinte.
+  const monthStartDate = new Date(`${monthStart}T00:00:00`);
+  const nextMonthDate = new Date(monthStartDate.getFullYear(), monthStartDate.getMonth() + 1, 1);
+  const nextMonthStart = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}-01`;
   const monthLabel = months[new Date(`${t}T12:00:00`).getMonth()];
 
   const best = stats?.bestHabit && stats.bestHabit !== "—" ? { name: stats.bestHabit, rate: stats.bestHabitRate || 0 } : null;
   const worst = stats?.worstHabit && stats.worstHabit !== "—" ? { name: stats.worstHabit, rate: stats.worstHabitRate || 0 } : null;
 
-  const tasksDoneMonth = tasks.filter((tk) => tk.status === "concluida" && (tk.completedAt || "") >= monthStart).length;
-  const tasksTotalMonth = tasks.filter((tk) => (tk.createdAt || "") >= monthStart).length;
+  // Coorte = tarefas com vencimento dentro do mês (carga de trabalho do mês).
+  // Antes o numerador usava completedAt e o denominador usava createdAt —
+  // critérios diferentes, o que podia gerar "3/1" quando uma tarefa era
+  // criada num mês e concluída em outro. Agora ambos usam o mesmo critério.
+  const tasksInMonth = tasks.filter((tk) => tk.dueDate && tk.dueDate >= monthStart && tk.dueDate < nextMonthStart);
+  const tasksTotalMonth = tasksInMonth.length;
+  const tasksDoneMonth = tasksInMonth.filter((tk) => tk.status === "concluida" || !!tk.completedAt).length;
   const overdueTasks = tasks.filter((tk) => (tk.repeat || "none") === "none" && tk.status !== "concluida" && tk.dueDate && tk.dueDate < t).length;
 
-  const workoutsMonth = workoutSessions.filter((s) => s.date >= monthStart && s.completed).length;
+  const workoutsMonth = workoutSessions.filter((s) => s.date >= monthStart && s.date < nextMonthStart && s.completed).length;
 
-  const inMonth = transactions.filter((tx) => tx.type === "entrada" && tx.date >= monthStart).reduce((s, tx) => s + tx.value, 0);
-  const outMonth = transactions.filter((tx) => tx.type === "saida" && tx.date >= monthStart).reduce((s, tx) => s + tx.value, 0);
+  const inMonth = transactions.filter((tx) => tx.type === "entrada" && tx.date >= monthStart && tx.date < nextMonthStart).reduce((s, tx) => s + tx.value, 0);
+  const outMonth = transactions.filter((tx) => tx.type === "saida" && tx.date >= monthStart && tx.date < nextMonthStart).reduce((s, tx) => s + tx.value, 0);
   const categoryTotalsMonth = transactions
-    .filter((tx) => tx.type === "saida" && tx.date >= monthStart)
+    .filter((tx) => tx.type === "saida" && tx.date >= monthStart && tx.date < nextMonthStart)
     .reduce((acc, tx) => {
       const key = tx.category || "Outros";
       acc[key] = (acc[key] || 0) + Number(tx.value || 0);
