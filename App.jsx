@@ -3941,6 +3941,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
   const [dragOverColumn, setDragOverColumn] = useState(null);
   const [focusTask, setFocusTask] = useState(null);
   const [weekDragTarget, setWeekDragTarget] = useState(null);
+  const touchDragRef = useRef(null);
   const [expandedSubtasks, setExpandedSubtasks] = useState({});
   const [showAllTodayCompleted, setShowAllTodayCompleted] = useState(false);
   const [showAllBoardCompleted, setShowAllBoardCompleted] = useState(false);
@@ -4860,6 +4861,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                   return (
                     <section
                       key={dateStr}
+                      data-planner-date={dateStr}
                       className={`task-planning-day surface rounded-xl p-2.5 min-h-[100px] ${
                         weekDragTarget === dateStr ? "kanban-column-active" : ""
                       }`}
@@ -4908,6 +4910,55 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                               event.dataTransfer.setData("text/plain", task.id);
                             }}
                             onDragEnd={() => setDraggedTaskId(null)}
+                            onTouchStart={(event) => {
+                              // Drag nativo (draggable/onDragStart) só responde a mouse — em
+                              // toque nada disso dispara. Recriamos o gesto manualmente: espera
+                              // ~380ms parado pra virar "arraste" (senão qualquer rolagem de
+                              // página seria confundida com um arraste, já que os dias ficam
+                              // empilhados na vertical no celular).
+                              if (isRecurringTask(task)) return;
+                              const touch = event.touches[0];
+                              const timer = window.setTimeout(() => {
+                                if (touchDragRef.current) {
+                                  touchDragRef.current.dragging = true;
+                                  setDraggedTaskId(task.id);
+                                }
+                              }, 380);
+                              touchDragRef.current = { taskId: task.id, startX: touch.clientX, startY: touch.clientY, timer, dragging: false };
+                            }}
+                            onTouchMove={(event) => {
+                              const drag = touchDragRef.current;
+                              if (!drag || drag.taskId !== task.id) return;
+                              const touch = event.touches[0];
+                              if (!drag.dragging) {
+                                if (Math.abs(touch.clientX - drag.startX) > 8 || Math.abs(touch.clientY - drag.startY) > 8) {
+                                  clearTimeout(drag.timer);
+                                  touchDragRef.current = null;
+                                }
+                                return;
+                              }
+                              event.preventDefault();
+                              const target = document.elementFromPoint(touch.clientX, touch.clientY);
+                              const dayEl = target?.closest?.("[data-planner-date]");
+                              setWeekDragTarget(dayEl?.getAttribute("data-planner-date") || null);
+                            }}
+                            onTouchEnd={(event) => {
+                              const drag = touchDragRef.current;
+                              if (drag?.timer) clearTimeout(drag.timer);
+                              touchDragRef.current = null;
+                              if (!drag?.dragging) return;
+                              const touch = event.changedTouches[0];
+                              const target = document.elementFromPoint(touch.clientX, touch.clientY);
+                              const dayEl = target?.closest?.("[data-planner-date]");
+                              const dropDate = dayEl?.getAttribute("data-planner-date");
+                              if (dropDate) {
+                                const draggedTask = tasks.find((item) => item.id === drag.taskId);
+                                if (draggedTask && !isRecurringTask(draggedTask)) scheduleTask(draggedTask, dropDate, false);
+                              }
+                              setDraggedTaskId(null);
+                              setWeekDragTarget(null);
+                            }}
+                            style={draggedTaskId === task.id ? { touchAction: "none", opacity: 0.6 } : undefined}
                             className="task-week-card task-week-card-full rounded-lg p-2.5"
                           >
                             <div className="flex items-center justify-between gap-2 mb-1.5">

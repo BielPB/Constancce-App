@@ -652,3 +652,20 @@ test("foguinho de hábitos: habitValidOnDate e toggleActive tratam active indefi
   // pausado; qualquer outro valor, incluindo undefined, pausa).
   assert.match(app, /const toggleActive = \(id\) => setHabits\(\(prev\) => \{ const next = prev\.map\(\(h\) => h\.id === id \? \{ \.\.\.h, active: h\.active === false, pausedAt: h\.active !== false \? today\(\) : h\.pausedAt, resumedAt: h\.active === false \? today\(\) : h\.resumedAt \} : h\); persist\(\{ habits: next \}\); return next; \}\);/);
 });
+
+test("Tarefas: planejamento semanal aceita arrastar tarefa por toque, não só por mouse", () => {
+  // draggable/onDragStart é HTML5 DnD nativo, que só responde a mouse — toque nunca disparava
+  // isso em nenhum navegador. Adiciona um long-press manual (touchstart/touchmove/touchend) que
+  // reaproveita o mesmo draggedTaskId/weekDragTarget/scheduleTask já usados pelo fluxo de mouse.
+  const plannerStart = app.indexOf('{section === "planning" && (');
+  assert.ok(plannerStart > -1, "seção de planejamento não encontrada");
+  const plannerEnd = app.indexOf("\n      )}", plannerStart);
+  const plannerSlice = app.slice(plannerStart, plannerEnd);
+
+  assert.match(plannerSlice, /data-planner-date=\{dateStr\}/);
+  assert.match(plannerSlice, /onTouchStart=\{\(event\) => \{/);
+  assert.match(plannerSlice, /onTouchMove=\{\(event\) => \{/);
+  assert.match(plannerSlice, /onTouchEnd=\{\(event\) => \{/);
+  assert.match(plannerSlice, /document\.elementFromPoint\(touch\.clientX, touch\.clientY\)/);
+  assert.match(plannerSlice, /scheduleTask\(draggedTask, dropDate, false\)/);
+});
