@@ -1946,7 +1946,7 @@ function countInRange(habitId, completions, startInclusive, endExclusive) {
   return completions.filter((c) => c.habitId === habitId && c.date >= startInclusive && c.date < endExclusive).length;
 }
 function habitValidOnDate(habit, dateStr, completions = []) {
-  if (!habit.active) return false;
+  if (habit.active === false) return false;
   if (habit.createdAt && habit.createdAt > dateStr) return false;
   if (habit.pausedAt && habit.pausedAt <= dateStr && (!habit.resumedAt || habit.resumedAt > dateStr)) return false;
   const freq = habit.frequency;
@@ -3252,8 +3252,8 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                                 </span>
                               </div>
                               <div className="habit-grid-row-actions flex items-center gap-0.5 shrink-0">
-                                <button className="btn-ghost rounded-lg p-1.5" title={habit.active ? "Pausar" : "Reativar"} onClick={() => toggleActive(habit.id)}>
-                                  {habit.active ? <Pause size={12} /> : <Play size={12} />}
+                                <button className="btn-ghost rounded-lg p-1.5" title={habit.active !== false ? "Pausar" : "Reativar"} onClick={() => toggleActive(habit.id)}>
+                                  {habit.active !== false ? <Pause size={12} /> : <Play size={12} />}
                                 </button>
                                 <button className="btn-ghost rounded-lg p-1.5" title="Editar" onClick={() => { setEditing(habit); setShowForm(true); }}>
                                   <Pencil size={12} />
@@ -3264,8 +3264,8 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                               </div>
                             </div>
                             <div className="hidden sm:flex habit-grid-row-actions items-center gap-0.5 shrink-0">
-                              <button className="btn-ghost rounded-lg p-1.5" title={habit.active ? "Pausar" : "Reativar"} onClick={() => toggleActive(habit.id)}>
-                                {habit.active ? <Pause size={12} /> : <Play size={12} />}
+                              <button className="btn-ghost rounded-lg p-1.5" title={habit.active !== false ? "Pausar" : "Reativar"} onClick={() => toggleActive(habit.id)}>
+                                {habit.active !== false ? <Pause size={12} /> : <Play size={12} />}
                               </button>
                               <button className="btn-ghost rounded-lg p-1.5" title="Editar" onClick={() => { setEditing(habit); setShowForm(true); }}>
                                 <Pencil size={12} />
@@ -18604,7 +18604,7 @@ function ConstancceApp() {
     return true;
   };
   const deleteHabit = async (id) => { if (!(await confirm("Tem certeza que deseja excluir este hábito?"))) return; const nextChecklistLog = habitChecklistLog.filter((x) => x.habitId !== id); setHabitChecklistLog(nextChecklistLog); setHabits((prev) => { const next = prev.filter((h) => h.id !== id); persist({ habits: next, habitChecklistLog: nextChecklistLog }); return next; }); };
-  const toggleActive = (id) => setHabits((prev) => { const next = prev.map((h) => h.id === id ? { ...h, active: !h.active, pausedAt: h.active ? today() : h.pausedAt, resumedAt: !h.active ? today() : h.resumedAt } : h); persist({ habits: next }); return next; });
+  const toggleActive = (id) => setHabits((prev) => { const next = prev.map((h) => h.id === id ? { ...h, active: h.active === false, pausedAt: h.active !== false ? today() : h.pausedAt, resumedAt: h.active === false ? today() : h.resumedAt } : h); persist({ habits: next }); return next; });
 
   const commitTaskMutation = (nextTasks, op) => {
     persistTaskLocalState(nextTasks);

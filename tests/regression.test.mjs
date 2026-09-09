@@ -636,3 +636,19 @@ test("foguinho de hábitos conta hábitos criados antes de countsForStreak exist
   assert.match(app, /const streakHabits = habits\.filter\(\(habit\) => habit\.countsForStreak !== false\);/);
   assert.doesNotMatch(app, /habits\.filter\(\(h(?:abit)?\) => h(?:abit)?\.countsForStreak\)/);
 });
+
+test("foguinho de hábitos: habitValidOnDate e toggleActive tratam active indefinido como ativo", () => {
+  // Mesma lacuna de migração do countsForStreak, mas no campo active: hábitos antigos nunca
+  // tiveram esse campo definido (active: undefined). habitValidOnDate usava uma checagem de
+  // verdade (!habit.active) que trata undefined como pausado — travando o streak em 0 pra
+  // sempre, já que nenhum hábito antigo nunca é considerado "válido" em nenhum dia. Todo o
+  // resto do app (ex.: activeHabits, App.jsx:3068/6617) já usa active !== false.
+  assert.match(app, /function habitValidOnDate\(habit, dateStr, completions = \[\]\) \{\s*if \(habit\.active === false\) return false;/);
+  assert.doesNotMatch(app, /if \(!habit\.active\) return false;/);
+
+  // toggleActive também tratava undefined incorretamente: !undefined é true, então pausar um
+  // hábito antigo (active: undefined) resultava em active:true — ou seja, o botão "Pausar" não
+  // pausava. Corrigido para active: h.active === false (só reativa se já estava explicitamente
+  // pausado; qualquer outro valor, incluindo undefined, pausa).
+  assert.match(app, /const toggleActive = \(id\) => setHabits\(\(prev\) => \{ const next = prev\.map\(\(h\) => h\.id === id \? \{ \.\.\.h, active: h\.active === false, pausedAt: h\.active !== false \? today\(\) : h\.pausedAt, resumedAt: h\.active === false \? today\(\) : h\.resumedAt \} : h\); persist\(\{ habits: next \}\); return next; \}\);/);
+});
