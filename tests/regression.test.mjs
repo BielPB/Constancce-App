@@ -626,3 +626,13 @@ test("pull pós-flush de hábitos/tarefas preserva alteração feita durante o p
   assert.match(taskFlushSlice, /clearTaskOutbox\(session\.user\.id\);\s*(?:\/\/[^\n]*\n\s*)*const pulled = await pullTaskState\(\{ preservePending: true \}\);/);
   assert.doesNotMatch(taskFlushSlice, /const pulled = await pullTaskState\(\{ preservePending: false \}\);/);
 });
+
+test("foguinho de hábitos conta hábitos criados antes de countsForStreak existir", () => {
+  // Hábitos antigos nunca tiveram esse campo migrado (countsForStreak: undefined).
+  // O formulário de criação já trata "não definido" como "conta" (initial?.countsForStreak ?? true,
+  // App.jsx:2969) — o cálculo do streak precisa tratar do mesmo jeito, senão hábitos antigos ficam
+  // de fora do streakHabits e o streak trava em 0 pra sempre, mesmo com hábitos sendo concluídos.
+  assert.match(app, /const required = habits\.filter\(\(h\) => h\.countsForStreak !== false && habitValidOnDate\(h, dateStr, completions\)\);/);
+  assert.match(app, /const streakHabits = habits\.filter\(\(habit\) => habit\.countsForStreak !== false\);/);
+  assert.doesNotMatch(app, /habits\.filter\(\(h(?:abit)?\) => h(?:abit)?\.countsForStreak\)/);
+});

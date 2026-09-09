@@ -1965,14 +1965,14 @@ function freqLabel(h) {
 }
 
 function isDayComplete(habits, completions, dateStr) {
-  const required = habits.filter((h) => h.countsForStreak && habitValidOnDate(h, dateStr, completions));
+  const required = habits.filter((h) => h.countsForStreak !== false && habitValidOnDate(h, dateStr, completions));
   if (required.length === 0) return null;
   const doneIds = new Set(completions.filter((c) => c.date === dateStr).map((c) => c.habitId));
   return required.every((h) => doneIds.has(h.id));
 }
 
 function computeStreaks(habits, completions, refDate) {
-  const streakHabits = habits.filter((habit) => habit.countsForStreak);
+  const streakHabits = habits.filter((habit) => habit.countsForStreak !== false);
   if (streakHabits.length === 0) return { current: 0, best: 0, totalPerfectDays: 0 };
 
   const earliestCreated = streakHabits.reduce((min, habit) => {
@@ -3237,7 +3237,7 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                                   {habit.name}
                                 </p>
                                 <div className="hidden sm:flex items-center gap-1 mt-0.5">
-                                  {habit.countsForStreak && <Flame size={10} className="text-ember shrink-0" />}
+                                  {habit.countsForStreak !== false && <Flame size={10} className="text-ember shrink-0" />}
                                   <span className={`text-[9px] font-mono ${monthRate >= 80 ? "text-moss" : monthRate >= 50 ? "text-brass" : "text-faint"}`}>
                                     {monthRate}%
                                   </span>
@@ -3246,7 +3246,7 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                             </div>
                             <div className="flex sm:hidden items-center justify-between gap-2">
                               <div className="flex items-center gap-1">
-                                {habit.countsForStreak && <Flame size={10} className="text-ember shrink-0" />}
+                                {habit.countsForStreak !== false && <Flame size={10} className="text-ember shrink-0" />}
                                 <span className={`text-[9px] font-mono ${monthRate >= 80 ? "text-moss" : monthRate >= 50 ? "text-brass" : "text-faint"}`}>
                                   {monthRate}%
                                 </span>
