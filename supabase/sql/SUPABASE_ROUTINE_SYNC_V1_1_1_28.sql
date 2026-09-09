@@ -213,7 +213,14 @@ begin
   end if;
 
   if found then
-    if v_current_deleted is not null then
+    -- habit_completion e habit_checklist usam chave composta determinística
+    -- (habitId:date / habitId:itemId:date) que é legitimamente reaproveitada
+    -- toda vez que o usuário marca/desmarca a mesma caixinha no mesmo dia —
+    -- não é uma edição sobre algo apagado por outro dispositivo. Tratar isso
+    -- como conflito "deleted_remotely" fazia o cliente descartar a marcação
+    -- silenciosamente sempre que o dia já tinha sido desmarcado antes, dando
+    -- a impressão de que o hábito "desmarca sozinho" ao marcar de novo.
+    if v_current_deleted is not null and v_collection not in ('habit_completion', 'habit_checklist') then
       return jsonb_build_object(
         'applied', false,
         'duplicate', false,

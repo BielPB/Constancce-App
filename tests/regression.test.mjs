@@ -753,3 +753,25 @@ test("Conquistas: galeria de marcos usa a prop unlocked (30 ACHIEVEMENT_DEFS fic
   assert.match(achievementsSlice, /ACHIEVEMENT_DEFS\.reduce\(/);
   assert.match(achievementsSlice, /unlockedBadgeIds\.includes\(item\.id\)/);
 });
+
+test("SQL: remarcar hábito/checklist no mesmo dia não é tratado como conflito 'deleted_remotely'", async () => {
+  const sql = await readFile(new URL("../supabase/sql/SUPABASE_ROUTINE_SYNC_V1_1_1_28.sql", import.meta.url), "utf8");
+  const rootSql = await readFile(new URL("../SUPABASE_ROUTINE_SYNC_V1_1_1_28.sql", import.meta.url), "utf8");
+
+  // habit_completion e habit_checklist usam chave composta determinística
+  // (habitId:date / habitId:itemId:date), reaproveitada toda vez que o usuário
+  // marca/desmarca a mesma caixinha no mesmo dia. Antes, upsert sobre uma linha
+  // soft-deleted (desmarcada antes) sempre voltava conflito "deleted_remotely",
+  // e o cliente descartava a marcação silenciosamente — o hábito "desmarcava
+  // sozinho" segundos depois de marcado, porque a marcação nunca era salva.
+  for (const content of [sql, rootSql]) {
+    assert.match(content, /if v_current_deleted is not null and v_collection not in \('habit_completion', 'habit_checklist'\) then/);
+    // A resurreição precisa continuar caindo no update normal (deleted_at = null),
+    // não pode ganhar um branch próprio que esqueça de zerar deleted_at.
+    const foundBlockStart = content.indexOf("if found then\n    -- habit_completion");
+    const foundBlockEnd = content.indexOf("\n  else", foundBlockStart);
+    assert.ok(foundBlockStart > -1 && foundBlockEnd > foundBlockStart, "bloco 'if found' do upsert não encontrado");
+    const foundBlock = content.slice(foundBlockStart, foundBlockEnd);
+    assert.match(foundBlock, /deleted_at = null,/);
+  }
+});
