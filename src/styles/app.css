@@ -3052,13 +3052,12 @@
   color:var(--brass) !important;
 }
 td.habit-grid-today .habit-grid-cell{
-  box-shadow:0 0 0 1px color-mix(in srgb, var(--brass) 35%, transparent);
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--brass) 45%, transparent);
 }
 td.habit-grid-today .habit-grid-cell.habit-grid-cell-done{
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--brass) 35%, transparent),
-    0 3px 10px color-mix(in srgb, var(--moss) 45%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 30%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--brass) 45%, transparent),
+    0 0 9px color-mix(in srgb, var(--moss) 32%, transparent);
 }
 .habit-grid-cell-wrap{
   padding:0;
@@ -3067,17 +3066,21 @@ td.habit-grid-today .habit-grid-cell.habit-grid-cell-done{
 .habit-grid-cell{
   width:30px;
   height:30px;
-  border-radius:9px;
+  border-radius:7px;
   display:flex;
   align-items:center;
   justify-content:center;
-  transition:transform .12s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease, opacity .16s ease;
+  transition:transform .1s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease, opacity .16s ease;
 }
 .habit-grid-cell-done{
-  box-shadow:0 3px 10px color-mix(in srgb, var(--moss) 45%, transparent), inset 0 1px 0 color-mix(in srgb, white 30%, transparent);
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--moss) 50%, transparent), 0 0 9px color-mix(in srgb, var(--moss) 26%, transparent);
 }
 .habit-grid-cell:not(:disabled):hover{
   transform:translateY(-1px) scale(1.04);
+  border-color:color-mix(in srgb, var(--brass) 45%, var(--border)) !important;
+}
+.habit-grid-cell:not(:disabled):active{
+  transform:scale(.9);
 }
 .habit-grid-cell:disabled{
   cursor:default;

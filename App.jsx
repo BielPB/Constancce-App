@@ -3319,14 +3319,14 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                                   background: showAsEmpty
                                     ? "transparent"
                                     : hasChecklist
-                                      ? `color-mix(in srgb, var(--moss) ${Math.round((checklistPct || 0) * 100)}%, var(--surface-2))`
+                                      ? `color-mix(in srgb, var(--moss) ${Math.round((checklistPct || 0) * 42)}%, var(--surface-2))`
                                       : done
-                                        ? "linear-gradient(145deg, color-mix(in srgb, var(--moss) 85%, white 15%), var(--moss))"
+                                        ? "color-mix(in srgb, var(--moss) 20%, var(--surface-2))"
                                         : "var(--surface-2)",
                                   border: showAsEmpty
                                     ? "1px dashed var(--border-soft)"
                                     : done || (hasChecklist && checklistPct > 0)
-                                      ? "1px solid color-mix(in srgb, var(--moss) 70%, transparent)"
+                                      ? "1px solid color-mix(in srgb, var(--moss) 65%, transparent)"
                                       : "1px solid var(--border)",
                                   cursor: editable ? "pointer" : "default",
                                   opacity: !showAsEmpty && !editable ? 0.68 : 1,
@@ -3335,8 +3335,8 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                                 {hasChecklist && checklistPct != null && checklistPct > 0 && checklistPct < 1 && (
                                   <span className="habit-grid-cell-frac font-mono">{Math.round(checklistPct * 100)}</span>
                                 )}
-                                {!hasChecklist && done && <Check size={14} strokeWidth={3} color="#0A0D08" />}
-                                {hasChecklist && checklistPct === 1 && <Check size={12} strokeWidth={3} color="#0A0D08" />}
+                                {!hasChecklist && done && <Check size={14} strokeWidth={2.5} color="var(--moss)" />}
+                                {hasChecklist && checklistPct === 1 && <Check size={12} strokeWidth={2.5} color="var(--moss)" />}
                               </button>
                             </td>
                           );
