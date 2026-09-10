@@ -775,3 +775,31 @@ test("SQL: remarcar hábito/checklist no mesmo dia não é tratado como conflito
     assert.match(foundBlock, /deleted_at = null,/);
   }
 });
+
+test("Treinos: trocar exercício busca carga anterior pelo nome, não pelo slot antigo", () => {
+  const helperStart = app.indexOf("const workoutLoadHistoryByName = ");
+  const helperEnd = app.indexOf("\nconst workoutHistoricalMaxLoad = ", helperStart);
+  assert.ok(helperStart > -1 && helperEnd > helperStart, "workoutLoadHistoryByName não encontrada");
+  const helperSlice = app.slice(helperStart, helperEnd);
+
+  // Precisa varrer sessão × slot de CADA template (não só o template atual),
+  // resolver o nome efetivo do slot (override ou nome original) e comparar
+  // normalizado — só assim uma troca anterior pro mesmo exercício é encontrada.
+  assert.match(helperSlice, /const target = normalizeWorkoutExerciseName\(exerciseName\);/);
+  assert.match(helperSlice, /if \(!target\) return null;/);
+  assert.match(helperSlice, /const effectiveName = session\.exerciseOverrides\?\.\[exercise\.id\] \|\| exercise\.name;/);
+  assert.match(helperSlice, /normalizeWorkoutExerciseName\(effectiveName\) !== target/);
+
+  const focusStart = app.indexOf("{activeTemplate.exercises.map((exercise, exerciseIndex) => {");
+  const focusEnd = app.indexOf("\n            })}", focusStart);
+  assert.ok(focusStart > -1 && focusEnd > focusStart, "loop de exercícios da sessão ativa não encontrado");
+  const focusSlice = app.slice(focusStart, focusEnd);
+
+  // Trocado (isSwapped): busca por nome, e SEM fallback pro exercise.load do
+  // slot antigo — é exatamente esse fallback que fazia a carga/"Treino
+  // anterior" mostrar o exercício errado depois de uma troca.
+  assert.match(focusSlice, /const isSwapped = Boolean\(activeSession\.exerciseOverrides\?\.\[exercise\.id\]\);/);
+  assert.match(focusSlice, /const previousLoad = isSwapped\s*\?\s*workoutLoadHistoryByName\(sessions, templates, displayName, activeSession\.date\)/);
+  assert.match(focusSlice, /value=\{activeSession\.loads\?\.\[exercise\.id\] \?\? \(isSwapped \? \(previousLoad \?\? ""\) : \(exercise\.load \?\? ""\)\)\}/);
+  assert.match(focusSlice, /\(!isSwapped && exercise\.load\)/);
+});

@@ -8137,6 +8137,44 @@ const workoutPreviousExerciseLoad = (sessions, templateId, exerciseId, beforeDat
   return previous ? Number(previous.loads?.[exerciseId]) : null;
 };
 
+// Quando o exercício é trocado só nesse treino (exerciseOverrides), o slot
+// (exercise.id) continua o mesmo, mas o exercício de fato mudou — mostrar a
+// carga anterior do slot antigo mostraria a carga de um exercício diferente
+// com o nome novo. Busca por NOME em toda sessão/slot (considerando trocas
+// anteriores), não pelo id do slot, pra achar a última carga já registrada
+// para este exercício específico, não importa em qual treino/slot ele foi
+// feito. Sem correspondência (nunca feito), retorna null — "deixa em branco".
+const workoutLoadHistoryByName = (sessions, templates, exerciseName, beforeDate = null) => {
+  const target = normalizeWorkoutExerciseName(exerciseName);
+  if (!target) return null;
+  const templateById = new Map((templates || []).map((tpl) => [tpl.id, tpl]));
+
+  const matches = [];
+  for (const session of sessions || []) {
+    if (beforeDate && !(String(session.date || "") < beforeDate)) continue;
+    const template = templateById.get(session.templateId);
+    if (!template) continue;
+    for (const exercise of template.exercises || []) {
+      const effectiveName = session.exerciseOverrides?.[exercise.id] || exercise.name;
+      if (normalizeWorkoutExerciseName(effectiveName) !== target) continue;
+      const rawLoad = session.loads?.[exercise.id];
+      if (rawLoad === "" || rawLoad == null || !Number.isFinite(Number(rawLoad))) continue;
+      matches.push({
+        date: session.date || "",
+        stamp: session.completedAt || session.startedAt || "",
+        load: Number(rawLoad),
+      });
+    }
+  }
+  if (!matches.length) return null;
+  matches.sort((a, b) => {
+    const byDate = String(b.date).localeCompare(String(a.date));
+    if (byDate !== 0) return byDate;
+    return String(b.stamp).localeCompare(String(a.stamp));
+  });
+  return matches[0].load;
+};
+
 const workoutHistoricalMaxLoad = (sessions, templateId, exerciseId, beforeDate = null) => {
   const values = (sessions || [])
     .filter((session) =>
@@ -10192,19 +10230,20 @@ function WorkoutsView({
             )}
 
             {activeTemplate.exercises.map((exercise, exerciseIndex) => {
-              const displayName =
-                activeSession.exerciseOverrides?.[exercise.id] ||
-                exercise.name;
+              const isSwapped = Boolean(activeSession.exerciseOverrides?.[exercise.id]);
+              const displayName = activeSession.exerciseOverrides?.[exercise.id] || exercise.name;
 
-              const previousLoad = workoutPreviousExerciseLoad(
-                sessions,
-                activeTemplate.id,
-                exercise.id,
-                activeSession.date
-              );
+              // Exercício trocado só neste treino: o slot (exercise.id) continua o
+              // mesmo, mas passou a representar outro exercício. Buscar a carga
+              // anterior pelo NOME (em qualquer sessão/slot) em vez de pelo slot
+              // evita mostrar a carga do exercício antigo com o nome novo. Sem
+              // registro anterior para este nome, fica em branco (null).
+              const previousLoad = isSwapped
+                ? workoutLoadHistoryByName(sessions, templates, displayName, activeSession.date)
+                : workoutPreviousExerciseLoad(sessions, activeTemplate.id, exercise.id, activeSession.date);
               const currentLoad = Number(
                 activeSession.loads?.[exercise.id] ??
-                exercise.load ??
+                (isSwapped ? previousLoad : exercise.load) ??
                 0
               );
 
@@ -10212,7 +10251,10 @@ function WorkoutsView({
               // workoutHistoricalMaxLoad de novo para cada exercício no render).
               const isPr = sessionPrExerciseIds.has(exercise.id);
 
-              const lastTwo = [...sessions]
+              // Sugestão de progressão compara as 2 últimas sessões deste SLOT —
+              // depois de uma troca, essas sessões são de um exercício diferente,
+              // então não faz sentido sugerir progressão com base nelas.
+              const lastTwo = isSwapped ? [] : [...sessions]
                 .filter((session) =>
                   session.completed &&
                   session.templateId === activeTemplate.id &&
@@ -10307,7 +10349,7 @@ function WorkoutsView({
                     <div>
                       <label className="text-[9px] text-faint uppercase tracking-widest">Carga atual</label>
                       <WorkoutLoadInput
-                        value={activeSession.loads?.[exercise.id] ?? exercise.load ?? ""}
+                        value={activeSession.loads?.[exercise.id] ?? (isSwapped ? (previousLoad ?? "") : (exercise.load ?? ""))}
                         disabled={activeSession.completed}
                         onCommit={(value) =>
                           updateLoad(activeSession.id, exercise.id, value)
@@ -10320,7 +10362,7 @@ function WorkoutsView({
                       <p className="font-mono text-sm mt-1">
                         {previousLoad != null
                           ? `${previousLoad} kg`
-                          : exercise.load
+                          : (!isSwapped && exercise.load)
                             ? `${exercise.load} kg`
                             : "—"}
                       </p>
