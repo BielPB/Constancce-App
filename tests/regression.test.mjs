@@ -8,6 +8,10 @@ const foodSearch = await readFile(new URL("../supabase/functions/food-search/ind
 const notifications = await readFile(new URL("../supabase/functions/send-due-notifications/index.ts", import.meta.url), "utf8");
 const restTimerHook = await readFile(new URL("../src/hooks/useWorkoutRestTimer.js", import.meta.url), "utf8");
 const reportsView = await readFile(new URL("../src/features/reports/ReportsView.jsx", import.meta.url), "utf8");
+const workoutsView = await readFile(new URL("../src/features/workouts/WorkoutsView.jsx", import.meta.url), "utf8");
+const workoutTemplateForm = await readFile(new URL("../src/features/workouts/WorkoutTemplateForm.jsx", import.meta.url), "utf8");
+const financeView = await readFile(new URL("../src/features/finance/FinanceView.jsx", import.meta.url), "utf8");
+const financeBillForm = await readFile(new URL("../src/features/finance/FinanceBillForm.jsx", import.meta.url), "utf8");
 
 test("regressões críticas permanecem protegidas", () => {
   assert.match(app, /const renderCurrentView = \(\) =>/);
@@ -72,10 +76,9 @@ test("cronômetro de descanso é global e persistente", async () => {
 });
 
 test("campo de carga não sincroniza a cada tecla e modal preserva foco", async () => {
-  const ui = await readFile(new URL("../src/components/ui.jsx", import.meta.url), "utf8");
-  assert.match(app, /function WorkoutLoadInput/);
-  assert.match(app, /onBlur=\{\(\) =>/);
-  assert.doesNotMatch(app, /className="workout-load-input[^"]*"[\s\S]{0,350}onChange=\{\(event\) =>\s*updateLoad/);
+  assert.match(workoutsView, /function WorkoutLoadInput/);
+  assert.match(workoutsView, /onBlur=\{\(\) =>/);
+  assert.doesNotMatch(workoutsView, /className="workout-load-input[^"]*"[\s\S]{0,350}onChange=\{\(event\) =>\s*updateLoad/);
   assert.match(ui, /onCloseRef/);
   assert.match(ui, /\}, \[\]\);/);
 });
@@ -139,8 +142,8 @@ test("Basic limita tarefas ativas a 5 no app e no backend", async () => {
 
 test("treino mostra última carga registrada e UI fixa não usa botão global de mais", async () => {
   const styles = await readFile(new URL("../src/styles/app.css", import.meta.url), "utf8");
-  assert.match(app, /workoutPreviousExerciseLoad/);
-  assert.match(app, /session\.date < beforeDate/);
+  assert.match(workoutsView, /workoutPreviousExerciseLoad/);
+  assert.match(workoutsView, /session\.date < beforeDate/);
   assert.doesNotMatch(app, /<QuickAdd/);
   assert.doesNotMatch(app, /function QuickAdd/);
   assert.match(app, /app-authenticated-root/);
@@ -159,21 +162,21 @@ test("tarefas exibem descrição completa sem truncamento", async () => {
 });
 
 test("Treinos Hoje abre mini histórico ao tocar em dias passados", () => {
-  assert.match(app, /selectedHistoryDate/);
-  assert.match(app, /if \(isPast\) setSelectedHistoryDate\(date\)/);
-  assert.match(app, /Mini histórico/);
-  assert.match(app, /Nenhum treino registrado neste dia/);
-  assert.match(app, /selectedHistorySessions/);
+  assert.match(workoutsView, /selectedHistoryDate/);
+  assert.match(workoutsView, /if \(isPast\) setSelectedHistoryDate\(date\)/);
+  assert.match(workoutsView, /Mini histórico/);
+  assert.match(workoutsView, /Nenhum treino registrado neste dia/);
+  assert.match(workoutsView, /selectedHistorySessions/);
 });
 
 test("nome do exercício abre vídeo explicativo sob demanda", () => {
-  assert.match(app, /workoutVideoSource/);
-  assert.match(app, /Vídeo explicativo \(YouTube, Vimeo ou MP4\)/);
-  assert.match(app, /workout-exercise-guide-trigger/);
-  assert.match(app, /setExerciseGuide\(/);
-  assert.match(app, /youtube-nocookie\.com\/embed/);
-  assert.match(app, /<video[\s\S]*controls[\s\S]*playsInline/);
-  assert.match(app, /O vídeo só é carregado quando você toca no nome do exercício/);
+  assert.match(workoutsView, /workoutVideoSource/);
+  assert.match(workoutTemplateForm, /Vídeo explicativo \(YouTube, Vimeo ou MP4\)/);
+  assert.match(workoutsView, /workout-exercise-guide-trigger/);
+  assert.match(workoutsView, /setExerciseGuide\(/);
+  assert.match(workoutsView, /youtube-nocookie\.com\/embed/);
+  assert.match(workoutsView, /<video[\s\S]*controls[\s\S]*playsInline/);
+  assert.match(workoutsView, /O vídeo só é carregado quando você toca no nome do exercício/);
 });
 
 
@@ -213,16 +216,16 @@ test("primeiros 7 dias têm checklist guiado e não criam dados artificiais", ()
 });
 
 test("módulos ensinam na primeira visita e oferecem exemplos prontos", () => {
-  assert.match(app, /function FirstVisitTip/);
+  assert.match(ui, /export function FirstVisitTip/);
   assert.match(app, /FirstVisitTip id="habits"/);
   assert.match(app, /FirstVisitTip id="tasks"/);
-  assert.match(app, /FirstVisitTip id="workouts"/);
+  assert.match(workoutsView, /FirstVisitTip id="workouts"/);
   assert.match(app, /FirstVisitTip id="diet"/);
-  assert.match(app, /FirstVisitTip id="finance"/);
+  assert.match(financeView, /FirstVisitTip id="finance"/);
   assert.match(app, /FirstVisitTip id="goals"/);
   assert.match(app, /Beber 2L de água/);
   assert.match(app, /Planejar meu dia/);
-  assert.match(app, /Usar treino básico/);
+  assert.match(workoutsView, /Usar treino básico/);
   assert.match(app, /Reserva de emergência/);
 });
 
@@ -340,10 +343,10 @@ test("1.1.17 mantém toggles de módulos compactos no mobile e corrige checklist
 });
 
 test("1.1.17 mostra todas as próximas contas automaticamente", () => {
-  assert.match(app, /const upcomingBills = pendingFinanceBills[\s\S]*dueDate >= today\(\)\);/);
-  assert.match(app, /\[\.\.\.overdueBills, \.\.\.upcomingBills\]\.map/);
-  assert.doesNotMatch(app, /showAllBills/);
-  assert.doesNotMatch(app, /\{showAllBills \? "Ocultar" : "Gerenciar"\}/);
+  assert.match(financeView, /const upcomingBills = pendingFinanceBills[\s\S]*dueDate >= today\(\)\);/);
+  assert.match(financeView, /\[\.\.\.overdueBills, \.\.\.upcomingBills\]\.map/);
+  assert.doesNotMatch(financeView, /showAllBills/);
+  assert.doesNotMatch(financeView, /\{showAllBills \? "Ocultar" : "Gerenciar"\}/);
 });
 
 test("1.1.17 aplica limites Free de finanças, metas e dieta no app e backend", async () => {
@@ -352,7 +355,7 @@ test("1.1.17 aplica limites Free de finanças, metas e dieta no app e backend", 
   assert.match(plans, /activeGoals:\s*1/);
   assert.match(plans, /financeTransactions:\s*8/);
   assert.match(plans, /dietItemsPerMeal:\s*2/);
-  assert.match(app, /\{transactions\.length\}\/\{PRO_LIMITS\.financeTransactions\} lançamentos Free/);
+  assert.match(financeView, /\{transactions\.length\}\/\{PRO_LIMITS\.financeTransactions\} lançamentos Free/);
   assert.match(app, /\{group\.items\.length\}\/\{PRO_LIMITS\.dietItemsPerMeal\} alimentos Free/);
   assert.match(domainSync, /activeGoals:\s*1/);
   assert.match(domainSync, /financeTransactions:\s*8/);
@@ -593,32 +596,31 @@ test("Relatórios: progresso de metas não gera NaN/Infinity com meta zerada ou 
 });
 
 test("PR de treino não é recalculado no render, usa o Set já derivado de sessionPrs", () => {
-  const exerciseMapStart = app.indexOf("{activeTemplate.exercises.map((exercise, exerciseIndex) => {");
-  const exerciseMapEnd = app.indexOf("\n            })}", exerciseMapStart);
+  const exerciseMapStart = workoutsView.indexOf("{activeTemplate.exercises.map((exercise, exerciseIndex) => {");
+  const exerciseMapEnd = workoutsView.indexOf("\n            })}", exerciseMapStart);
   assert.ok(exerciseMapStart > -1 && exerciseMapEnd > exerciseMapStart);
-  const exerciseMapSlice = app.slice(exerciseMapStart, exerciseMapEnd);
+  const exerciseMapSlice = workoutsView.slice(exerciseMapStart, exerciseMapEnd);
 
   assert.match(exerciseMapSlice, /const isPr = sessionPrExerciseIds\.has\(exercise\.id\);/);
   assert.doesNotMatch(exerciseMapSlice, /workoutHistoricalMaxLoad\(/);
 
-  assert.match(app, /const sessionPrs = activeSession && activeTemplate[\s\S]{0,200}workoutHistoricalMaxLoad\(/);
-  assert.match(app, /const sessionPrExerciseIds = useMemo\(\s*\(\) => new Set\(sessionPrs\.map\(\(exercise\) => exercise\.id\)\),\s*\[sessionPrs\]\s*\);/);
+  assert.match(workoutsView, /const sessionPrs = activeSession && activeTemplate[\s\S]{0,200}workoutHistoricalMaxLoad\(/);
+  assert.match(workoutsView, /const sessionPrExerciseIds = useMemo\(\s*\(\) => new Set\(sessionPrs\.map\(\(exercise\) => exercise\.id\)\),\s*\[sessionPrs\]\s*\);/);
 });
 
 test("puxar treino de ontem desliza a rotação de treinos (workoutScheduleOffsetDays)", () => {
+  // workoutEffectiveWeekday é usado em Hoje/Calendário (que ficam em App.jsx) e em
+  // Treinos (extraído pra arquivo próprio) — precisa existir idêntico nos dois,
+  // já que WorkoutsView.jsx mantém uma cópia local pra não criar import circular.
   assert.match(app, /function workoutEffectiveWeekday\(dateStr, offsetDays\) \{/);
-  assert.match(app, /const pullYesterdayWorkout = \(template\) => \{\s*(?:\/\/[^\n]*\n\s*)*if \(pullingWorkoutRef\.current\) return;/);
-  assert.match(app, /workoutScheduleOffsetDays: Number\(current\?\.workoutScheduleOffsetDays \|\| 0\) \+ 1,/);
+  assert.match(workoutsView, /function workoutEffectiveWeekday\(dateStr, offsetDays\) \{/);
+  assert.match(workoutsView, /const pullYesterdayWorkout = \(template\) => \{\s*(?:\/\/[^\n]*\n\s*)*if \(pullingWorkoutRef\.current\) return;/);
+  assert.match(workoutsView, /workoutScheduleOffsetDays: Number\(current\?\.workoutScheduleOffsetDays \|\| 0\) \+ 1,/);
   // Duplo toque acidental não deve incrementar o offset duas vezes.
-  assert.match(app, /pullingWorkoutRef\.current = true;\s*window\.setTimeout\(\(\) => \{ pullingWorkoutRef\.current = false; \}, 1000\);/);
+  assert.match(workoutsView, /pullingWorkoutRef\.current = true;\s*window\.setTimeout\(\(\) => \{ pullingWorkoutRef\.current = false; \}, 1000\);/);
 
-  const workoutsViewStart = app.indexOf("function WorkoutsView({");
-  const workoutsViewEnd = app.indexOf("\nfunction ", workoutsViewStart + 1);
-  assert.ok(workoutsViewStart > -1 && workoutsViewEnd > workoutsViewStart);
-  const workoutsViewSlice = app.slice(workoutsViewStart, workoutsViewEnd);
-
-  assert.match(workoutsViewSlice, /scheduledToday = templates\.filter\(\(template\) =>\s*\(template\.scheduleDays \|\| \[\]\)\.includes\(workoutEffectiveWeekday\(t, workoutScheduleOffsetDays\)\)/);
-  assert.match(workoutsViewSlice, /yesterdayMissed = templates\.filter\(\(template\) =>\s*\(template\.scheduleDays \|\| \[\]\)\.includes\(workoutEffectiveWeekday\(yesterday, workoutScheduleOffsetDays\)\)/);
+  assert.match(workoutsView, /scheduledToday = templates\.filter\(\(template\) =>\s*\(template\.scheduleDays \|\| \[\]\)\.includes\(workoutEffectiveWeekday\(t, workoutScheduleOffsetDays\)\)/);
+  assert.match(workoutsView, /yesterdayMissed = templates\.filter\(\(template\) =>\s*\(template\.scheduleDays \|\| \[\]\)\.includes\(workoutEffectiveWeekday\(yesterday, workoutScheduleOffsetDays\)\)/);
 });
 
 test("pull pós-flush de hábitos/tarefas preserva alteração feita durante o próprio round-trip", () => {
@@ -777,10 +779,10 @@ test("SQL: remarcar hábito/checklist no mesmo dia não é tratado como conflito
 });
 
 test("Treinos: trocar exercício busca carga anterior pelo nome, não pelo slot antigo", () => {
-  const helperStart = app.indexOf("const workoutLoadHistoryByName = ");
-  const helperEnd = app.indexOf("\nconst workoutHistoricalMaxLoad = ", helperStart);
+  const helperStart = workoutsView.indexOf("const workoutLoadHistoryByName = ");
+  const helperEnd = workoutsView.indexOf("\nconst workoutHistoricalMaxLoad = ", helperStart);
   assert.ok(helperStart > -1 && helperEnd > helperStart, "workoutLoadHistoryByName não encontrada");
-  const helperSlice = app.slice(helperStart, helperEnd);
+  const helperSlice = workoutsView.slice(helperStart, helperEnd);
 
   // Precisa varrer sessão × slot de CADA template (não só o template atual),
   // resolver o nome efetivo do slot (override ou nome original) e comparar
@@ -790,10 +792,10 @@ test("Treinos: trocar exercício busca carga anterior pelo nome, não pelo slot 
   assert.match(helperSlice, /const effectiveName = session\.exerciseOverrides\?\.\[exercise\.id\] \|\| exercise\.name;/);
   assert.match(helperSlice, /normalizeWorkoutExerciseName\(effectiveName\) !== target/);
 
-  const focusStart = app.indexOf("{activeTemplate.exercises.map((exercise, exerciseIndex) => {");
-  const focusEnd = app.indexOf("\n            })}", focusStart);
+  const focusStart = workoutsView.indexOf("{activeTemplate.exercises.map((exercise, exerciseIndex) => {");
+  const focusEnd = workoutsView.indexOf("\n            })}", focusStart);
   assert.ok(focusStart > -1 && focusEnd > focusStart, "loop de exercícios da sessão ativa não encontrado");
-  const focusSlice = app.slice(focusStart, focusEnd);
+  const focusSlice = workoutsView.slice(focusStart, focusEnd);
 
   // Trocado (isSwapped): busca por nome, e SEM fallback pro exercise.load do
   // slot antigo — é exatamente esse fallback que fazia a carga/"Treino
@@ -805,18 +807,13 @@ test("Treinos: trocar exercício busca carga anterior pelo nome, não pelo slot 
 });
 
 test("Treinos: selecionar um treino da lista vira o treino de hoje, e 'Iniciar' só pré-visualiza (sem cronômetro)", () => {
-  const workoutsViewStart = app.indexOf("function WorkoutsView({");
-  const workoutsViewEnd = app.indexOf("\nfunction BarcodeScannerModal(");
-  assert.ok(workoutsViewStart > -1 && workoutsViewEnd > workoutsViewStart, "WorkoutsView não encontrado");
-  const workoutsViewSlice = app.slice(workoutsViewStart, workoutsViewEnd);
-
   // openTodaySession não inicia mais a sessão de verdade (startOrGetSession) — só
   // agenda uma pré-visualização (plannedOnly, sem startedAt) via scheduleWorkoutSession
   // e troca pra aba "Hoje", substituindo o que estava lá.
-  const openTodayStart = workoutsViewSlice.indexOf("const openTodaySession = (template) => {");
-  const openTodayEnd = workoutsViewSlice.indexOf("\n  };", openTodayStart);
+  const openTodayStart = workoutsView.indexOf("const openTodaySession = (template) => {");
+  const openTodayEnd = workoutsView.indexOf("\n  };", openTodayStart);
   assert.ok(openTodayStart > -1 && openTodayEnd > openTodayStart, "openTodaySession não encontrado");
-  const openTodaySlice = workoutsViewSlice.slice(openTodayStart, openTodayEnd);
+  const openTodaySlice = workoutsView.slice(openTodayStart, openTodayEnd);
   assert.match(openTodaySlice, /setSection\("today"\);/);
   assert.match(openTodaySlice, /scheduleWorkoutSession\(template\.id, t, template\);/);
   assert.doesNotMatch(openTodaySlice, /startOrGetSession\(/);
@@ -824,25 +821,53 @@ test("Treinos: selecionar um treino da lista vira o treino de hoje, e 'Iniciar' 
   // workoutInProgress (cronômetro) e sessionNotStarted (pré-visualização) são
   // mutuamente exclusivos e dependem de activeSession.startedAt, não só de existir
   // uma sessão — uma sessão plannedOnly nunca tem startedAt.
-  assert.match(workoutsViewSlice, /const workoutInProgress = Boolean\(activeSession && !activeSession\.completed && activeSession\.startedAt\);/);
-  assert.match(workoutsViewSlice, /const sessionNotStarted = Boolean\(activeSession && !activeSession\.completed && !activeSession\.startedAt\);/);
+  assert.match(workoutsView, /const workoutInProgress = Boolean\(activeSession && !activeSession\.completed && activeSession\.startedAt\);/);
+  assert.match(workoutsView, /const sessionNotStarted = Boolean\(activeSession && !activeSession\.completed && !activeSession\.startedAt\);/);
 
   // O treino de hoje mostrado prioriza um treino já em andamento/concluído, depois
   // o selecionado manualmente na lista, e só por último cai no agendado automático.
-  assert.match(workoutsViewSlice, /const activeOrDoneTodayTemplate = templates\.find\(\(template\) => \{/);
-  assert.match(workoutsViewSlice, /const manuallySelectedTodayTemplate = !activeOrDoneTodayTemplate && activeTemplateId/);
-  assert.match(workoutsViewSlice, /const primaryToday = activeOrDoneTodayTemplate \|\| manuallySelectedTodayTemplate \|\| scheduledToday\[0\] \|\| null;/);
+  assert.match(workoutsView, /const activeOrDoneTodayTemplate = templates\.find\(\(template\) => \{/);
+  assert.match(workoutsView, /const manuallySelectedTodayTemplate = !activeOrDoneTodayTemplate && activeTemplateId/);
+  assert.match(workoutsView, /const primaryToday = activeOrDoneTodayTemplate \|\| manuallySelectedTodayTemplate \|\| scheduledToday\[0\] \|\| null;/);
 
   // Botão "Iniciar agora" chama startOrGetSession (o start de verdade, que marca
   // startedAt) só quando a sessão ainda é uma pré-visualização — precisa aparecer
   // tanto no resumo do topo quanto substituindo "Concluir treino" no rodapé.
-  const iniciarAgoraMatches = workoutsViewSlice.match(/Iniciar agora/g) || [];
+  const iniciarAgoraMatches = workoutsView.match(/Iniciar agora/g) || [];
   assert.ok(iniciarAgoraMatches.length >= 2, "botão 'Iniciar agora' deveria aparecer pelo menos 2x (topo e rodapé)");
-  assert.match(workoutsViewSlice, /\{sessionNotStarted && \(/);
-  assert.match(workoutsViewSlice, /\) : sessionNotStarted \? \(/);
-  assert.match(workoutsViewSlice, /onClick=\{\(\) => startOrGetSession\(activeTemplate\.id\)\}/);
+  assert.match(workoutsView, /\{sessionNotStarted && \(/);
+  assert.match(workoutsView, /\) : sessionNotStarted \? \(/);
+  assert.match(workoutsView, /onClick=\{\(\) => startOrGetSession\(activeTemplate\.id\)\}/);
 
   // Interações que só fazem sentido depois de confirmado (marcar série, marcar
   // exercício, avaliar esforço) ficam travadas enquanto for só pré-visualização.
-  assert.match(workoutsViewSlice, /disabled=\{activeSession\.completed \|\| sessionNotStarted\}/);
+  assert.match(workoutsView, /disabled=\{activeSession\.completed \|\| sessionNotStarted\}/);
+});
+
+test("Treinos/Finanças: extração pra arquivo próprio não deixou dependência sem import", () => {
+  // Achados reais de um teste funcional em navegador (não só build/análise estática)
+  // depois da extração de WorkoutsView/FinanceView pra arquivos próprios: várias
+  // funções pequenas (definidas longe do bloco original em App.jsx) e dois
+  // componentes usados também fora da tela (CalendarView) ficaram de fora da
+  // primeira extração e só quebravam em runtime, nunca no build.
+  assert.match(workoutsView, /function proCutoffDate\(days = PRO_LIMITS\.historyDays\) \{/);
+  assert.match(workoutsView, /const startOfWeek = /);
+  assert.match(workoutsView, /import \{ fetchProfessionalLinks, sendPrescription \} from "\.\.\/\.\.\/lib\/professionalLinks\.js";/);
+
+  assert.match(financeView, /function smoothChartPath\(points\) \{/);
+  assert.match(financeView, /const monthsUntilGoal = /);
+  assert.match(financeView, /const monthlyGoalEstimate = /);
+
+  // WorkoutTemplateForm e FinanceBillForm são usados tanto pela tela extraída
+  // quanto por CalendarView (atalho "Criar novo treino"/"Nova conta" ao agendar
+  // um dia), que continua em App.jsx — precisam viver em arquivo próprio
+  // importado dos dois lados, não só dentro do arquivo lazy.
+  assert.match(app, /import WorkoutTemplateForm from "\.\/src\/features\/workouts\/WorkoutTemplateForm\.jsx";/);
+  assert.match(app, /import FinanceBillForm from "\.\/src\/features\/finance\/FinanceBillForm\.jsx";/);
+  assert.match(app, /<WorkoutTemplateForm/);
+  assert.match(app, /<FinanceBillForm/);
+  assert.doesNotMatch(workoutsView, /^function WorkoutTemplateForm/m);
+  assert.doesNotMatch(financeView, /^function FinanceBillForm/m);
+  assert.match(workoutsView, /import WorkoutTemplateForm from "\.\/WorkoutTemplateForm\.jsx";/);
+  assert.match(financeView, /import FinanceBillForm from "\.\/FinanceBillForm\.jsx";/);
 });
