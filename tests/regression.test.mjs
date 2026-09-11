@@ -803,3 +803,46 @@ test("Treinos: trocar exercício busca carga anterior pelo nome, não pelo slot 
   assert.match(focusSlice, /value=\{activeSession\.loads\?\.\[exercise\.id\] \?\? \(isSwapped \? \(previousLoad \?\? ""\) : \(exercise\.load \?\? ""\)\)\}/);
   assert.match(focusSlice, /\(!isSwapped && exercise\.load\)/);
 });
+
+test("Treinos: selecionar um treino da lista vira o treino de hoje, e 'Iniciar' só pré-visualiza (sem cronômetro)", () => {
+  const workoutsViewStart = app.indexOf("function WorkoutsView({");
+  const workoutsViewEnd = app.indexOf("\nfunction BarcodeScannerModal(");
+  assert.ok(workoutsViewStart > -1 && workoutsViewEnd > workoutsViewStart, "WorkoutsView não encontrado");
+  const workoutsViewSlice = app.slice(workoutsViewStart, workoutsViewEnd);
+
+  // openTodaySession não inicia mais a sessão de verdade (startOrGetSession) — só
+  // agenda uma pré-visualização (plannedOnly, sem startedAt) via scheduleWorkoutSession
+  // e troca pra aba "Hoje", substituindo o que estava lá.
+  const openTodayStart = workoutsViewSlice.indexOf("const openTodaySession = (template) => {");
+  const openTodayEnd = workoutsViewSlice.indexOf("\n  };", openTodayStart);
+  assert.ok(openTodayStart > -1 && openTodayEnd > openTodayStart, "openTodaySession não encontrado");
+  const openTodaySlice = workoutsViewSlice.slice(openTodayStart, openTodayEnd);
+  assert.match(openTodaySlice, /setSection\("today"\);/);
+  assert.match(openTodaySlice, /scheduleWorkoutSession\(template\.id, t, template\);/);
+  assert.doesNotMatch(openTodaySlice, /startOrGetSession\(/);
+
+  // workoutInProgress (cronômetro) e sessionNotStarted (pré-visualização) são
+  // mutuamente exclusivos e dependem de activeSession.startedAt, não só de existir
+  // uma sessão — uma sessão plannedOnly nunca tem startedAt.
+  assert.match(workoutsViewSlice, /const workoutInProgress = Boolean\(activeSession && !activeSession\.completed && activeSession\.startedAt\);/);
+  assert.match(workoutsViewSlice, /const sessionNotStarted = Boolean\(activeSession && !activeSession\.completed && !activeSession\.startedAt\);/);
+
+  // O treino de hoje mostrado prioriza um treino já em andamento/concluído, depois
+  // o selecionado manualmente na lista, e só por último cai no agendado automático.
+  assert.match(workoutsViewSlice, /const activeOrDoneTodayTemplate = templates\.find\(\(template\) => \{/);
+  assert.match(workoutsViewSlice, /const manuallySelectedTodayTemplate = !activeOrDoneTodayTemplate && activeTemplateId/);
+  assert.match(workoutsViewSlice, /const primaryToday = activeOrDoneTodayTemplate \|\| manuallySelectedTodayTemplate \|\| scheduledToday\[0\] \|\| null;/);
+
+  // Botão "Iniciar agora" chama startOrGetSession (o start de verdade, que marca
+  // startedAt) só quando a sessão ainda é uma pré-visualização — precisa aparecer
+  // tanto no resumo do topo quanto substituindo "Concluir treino" no rodapé.
+  const iniciarAgoraMatches = workoutsViewSlice.match(/Iniciar agora/g) || [];
+  assert.ok(iniciarAgoraMatches.length >= 2, "botão 'Iniciar agora' deveria aparecer pelo menos 2x (topo e rodapé)");
+  assert.match(workoutsViewSlice, /\{sessionNotStarted && \(/);
+  assert.match(workoutsViewSlice, /\) : sessionNotStarted \? \(/);
+  assert.match(workoutsViewSlice, /onClick=\{\(\) => startOrGetSession\(activeTemplate\.id\)\}/);
+
+  // Interações que só fazem sentido depois de confirmado (marcar série, marcar
+  // exercício, avaliar esforço) ficam travadas enquanto for só pré-visualização.
+  assert.match(workoutsViewSlice, /disabled=\{activeSession\.completed \|\| sessionNotStarted\}/);
+});

@@ -8826,7 +8826,10 @@ function WorkoutsView({
     : templates.find((template) => template.id === activeTemplateId);
 
   const [workoutClockTick, setWorkoutClockTick] = useState(() => Date.now());
-  const workoutInProgress = Boolean(activeSession && !activeSession.completed);
+  // Uma sessão plannedOnly (pré-visualização, sem startedAt) não conta como "em
+  // andamento" — o cronômetro só roda depois que o usuário confirma em "Iniciar agora".
+  const workoutInProgress = Boolean(activeSession && !activeSession.completed && activeSession.startedAt);
+  const sessionNotStarted = Boolean(activeSession && !activeSession.completed && !activeSession.startedAt);
   useEffect(() => {
     if (!workoutInProgress) return;
     setWorkoutClockTick(Date.now());
@@ -9007,7 +9010,21 @@ function WorkoutsView({
     ? workoutVideoSource(exerciseGuide.videoUrl)
     : null;
 
-  const primaryToday = scheduledToday[0] || null;
+  // Um treino de verdade em andamento (ou já concluído hoje) sempre tem prioridade
+  // sobre o que estava agendado — se o usuário trocou de treino, é esse que importa
+  // mostrar como "treino de hoje", mesmo que a agenda automática apontasse outro.
+  const activeOrDoneTodayTemplate = templates.find((template) => {
+    const session = sessions.find((row) => row.templateId === template.id && row.date === t);
+    return session && (session.startedAt || session.completed);
+  }) || null;
+  // Sem um treino já em andamento/concluído, um treino selecionado manualmente na
+  // lista (activeTemplateId) substitui o agendado enquanto essa seleção durar —
+  // fechar a pré-visualização sem confirmar "Iniciar agora" volta a mostrar o
+  // agendado, já que nada foi de fato assumido como o treino do dia.
+  const manuallySelectedTodayTemplate = !activeOrDoneTodayTemplate && activeTemplateId
+    ? templates.find((template) => template.id === activeTemplateId) || null
+    : null;
+  const primaryToday = activeOrDoneTodayTemplate || manuallySelectedTodayTemplate || scheduledToday[0] || null;
   const primaryTodaySession = primaryToday
     ? sessions.find((session) => session.templateId === primaryToday.id && session.date === t)
     : null;
@@ -9053,10 +9070,16 @@ function WorkoutsView({
 
   const sharedWorkoutPreview = decodeWorkoutShare(importWorkoutValue);
 
+  // Selecionar um treino (da lista, do card "Hoje" ou de "Puxar pra hoje") abre a
+  // pré-visualização e substitui o que aparece como "treino de hoje" — mas NÃO
+  // inicia o cronômetro nem cria uma sessão de verdade ainda. scheduleWorkoutSession
+  // cria (ou reaproveita, se já existir) uma sessão plannedOnly — sem startedAt —
+  // pra só então o usuário confirmar em "Iniciar agora" que vai fazer esse treino.
   const openTodaySession = (template) => {
     setActiveSessionId(null);
-    startOrGetSession(template.id);
     setActiveTemplateId(template.id);
+    setSection("today");
+    scheduleWorkoutSession(template.id, t, template);
   };
 
   // Puxa o treino perdido de ontem pra hoje e desliza a sequência inteira um dia pra
@@ -9400,7 +9423,8 @@ function WorkoutsView({
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-[10px] text-faint uppercase tracking-widest">Treino de hoje</p>
                     {primaryTodaySession?.completed && <span className="chip text-moss">Concluído</span>}
-                    {primaryTodaySession && !primaryTodaySession.completed && <span className="chip text-brass">Em andamento</span>}
+                    {primaryTodaySession && !primaryTodaySession.completed && primaryTodaySession.startedAt && <span className="chip text-brass">Em andamento</span>}
+                    {primaryTodaySession && !primaryTodaySession.completed && !primaryTodaySession.startedAt && <span className="chip">Pré-visualização</span>}
                   </div>
 
                   <p className="font-display text-2xl mt-1 break-words">{primaryToday.name}</p>
@@ -9446,9 +9470,11 @@ function WorkoutsView({
                 >
                   {primaryTodaySession?.completed
                     ? "Visualizar treino feito"
-                    : primaryTodaySession
+                    : primaryTodaySession?.startedAt
                       ? "Continuar treino"
-                      : "Iniciar treino"}
+                      : primaryTodaySession
+                        ? "Ver treino"
+                        : "Iniciar treino"}
                 </button>
               </div>
             </div>
@@ -10141,6 +10167,22 @@ function WorkoutsView({
                 </div>
               )}
 
+              {sessionNotStarted && (
+                <div className="workout-preview-cta flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 pb-3 mb-3">
+                  <div>
+                    <p className="text-[9px] text-faint uppercase tracking-widest">Pré-visualização</p>
+                    <p className="text-dim text-[11px] mt-0.5">Veja os exercícios e as cargas antes de começar. O cronômetro só conta a partir daqui.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-primary rounded-xl px-4 py-2.5 text-sm whitespace-nowrap shrink-0 flex items-center justify-center gap-1.5"
+                    onClick={() => startOrGetSession(activeTemplate.id)}
+                  >
+                    <Timer size={14} /> Iniciar agora
+                  </button>
+                </div>
+              )}
+
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <p className="text-[9px] text-faint uppercase tracking-widest">Séries</p>
@@ -10276,7 +10318,7 @@ function WorkoutsView({
                       <button
                         type="button"
                         className="shrink-0 mt-0.5 disabled:cursor-default"
-                        disabled={activeSession.completed}
+                        disabled={activeSession.completed || sessionNotStarted}
                         onClick={() => toggleExercise(activeSession.id, exercise.id, exercise.sets)}
                         aria-label={`Marcar ${displayName} como concluído`}
                       >
@@ -10397,7 +10439,7 @@ function WorkoutsView({
                       return (
                         <div key={setIndex} className="flex flex-col items-center gap-1">
                           <button
-                            disabled={activeSession.completed}
+                            disabled={activeSession.completed || sessionNotStarted}
                             onClick={() => {
                               toggleSet(activeSession.id, exercise.id, setIndex, exercise.sets);
                               if (!on) {
@@ -10421,7 +10463,7 @@ function WorkoutsView({
                           {on && (
                             <WorkoutRepsInput
                               value={repsValue}
-                              disabled={activeSession.completed}
+                              disabled={activeSession.completed || sessionNotStarted}
                               onCommit={(value) =>
                                 updateReps(activeSession.id, exercise.id, setIndex, value)
                               }
@@ -10461,7 +10503,7 @@ function WorkoutsView({
                 <select
                   className="p-2 text-xs ring-focus sm:w-[180px]"
                   value={activeSession.effortRating || ""}
-                  disabled={activeSession.completed}
+                  disabled={activeSession.completed || sessionNotStarted}
                   onChange={(event) =>
                     updateSession(activeSession.id, {
                       effortRating: event.target.value ? Number(event.target.value) : null,
@@ -10498,6 +10540,14 @@ function WorkoutsView({
                   <RotateCcw size={14} /> Desfazer conclusão
                 </button>
               </div>
+            ) : sessionNotStarted ? (
+              <button
+                type="button"
+                className="btn-primary w-full rounded-xl py-3 flex items-center justify-center gap-2"
+                onClick={() => startOrGetSession(activeTemplate.id)}
+              >
+                <Timer size={14} /> Iniciar agora
+              </button>
             ) : (
               <button
                 className="btn-primary w-full rounded-xl py-3"
