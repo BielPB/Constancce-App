@@ -2320,9 +2320,9 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
             <p className="font-display text-xl md:text-2xl mt-1">{completedToday}/{totalToday}</p>
           </div>
           <div className="surface-2 rounded-xl p-3">
-            <Dumbbell size={13} className={`mb-1.5 ${workoutToday ? "text-moss" : "text-brass"}`} />
+            <Dumbbell size={13} className="mb-1.5 text-brass" />
             <p className="text-[9px] text-faint uppercase tracking-widest">Treino</p>
-            <p className={`font-display text-sm md:text-base mt-1 leading-snug break-words ${workoutToday ? "text-moss" : "text-dim"}`}>{workoutToday ? "Concluído" : scheduledWorkout ? scheduledWorkout.name : "Sem programação"}</p>
+            <p className={`font-display text-sm md:text-base mt-1 leading-snug break-words ${workoutToday ? "text-brass" : "text-dim"}`}>{workoutToday ? "Concluído" : scheduledWorkout ? scheduledWorkout.name : "Sem programação"}</p>
           </div>
           <div className="surface-2 rounded-xl p-3">
             <Wallet size={13} className="text-brass mb-1.5" />
@@ -2368,7 +2368,7 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
                 }}
                 className="surface-2 rounded-xl p-3 flex items-center gap-3 text-left disabled:opacity-80"
               >
-                {item.done ? <CheckCircle2 size={17} className="text-moss shrink-0" /> : <Circle size={17} className="text-faint shrink-0" />}
+                {item.done ? <CheckCircle2 size={17} className="text-brass shrink-0" /> : <Circle size={17} className="text-faint shrink-0" />}
                 <span className={`text-sm flex-1 ${item.done ? "text-dim" : ""}`}>{item.label}</span>
                 {!item.done && <ChevronRight size={15} className="text-brass shrink-0" />}
               </button>
@@ -2413,7 +2413,7 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
               return (
                 <div key={task.id} className="surface-2 rounded-xl p-3.5 md:p-3 flex items-center gap-3.5 md:gap-3">
                   <span className="font-mono text-[13px] md:text-xs text-brass w-11 shrink-0">{task.taskTime || "—"}</span>
-                  {done ? <CheckCircle2 size={16} className="text-moss shrink-0" /> : <Circle size={16} className="text-faint shrink-0" />}
+                  {done ? <CheckCircle2 size={16} className="text-brass shrink-0" /> : <Circle size={16} className="text-faint shrink-0" />}
                   <div className="flex-1 min-w-0">
                     <span className="text-[15px] md:text-sm break-words block" style={{ textDecoration: done ? "line-through" : "none", color: done ? "var(--text-dim)" : "var(--text)" }}>{task.title}</span>
                     {(task.description || (task.subtasks || []).length > 0) && (
@@ -2436,7 +2436,7 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
             <button className="text-xs text-brass" onClick={() => setView("habits")}>Abrir hábitos</button>
           </div>
           <div className="flex flex-col gap-2.5 md:gap-2">
-            {pendingHabits.length === 0 && <p className="text-moss text-sm py-3">Hábitos de hoje concluídos.</p>}
+            {pendingHabits.length === 0 && <p className="text-brass text-sm py-3">Hábitos de hoje concluídos.</p>}
             {pendingHabits.slice(0, 7).map((habit) => {
               const hasChecklist = Array.isArray(habit.checklist) && habit.checklist.length > 0;
               return (
@@ -2508,7 +2508,7 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
       {(hour >= 18 || pct === 100) && (
         <div className="surface rounded-2xl p-4 md:p-5">
           <div className="flex items-start gap-3">
-            <CheckCircle2 size={18} className={pct === 100 ? "text-moss" : "text-brass"} />
+            <CheckCircle2 size={18} className="text-brass" />
             <div>
               <p className="text-[10px] text-faint uppercase tracking-widest">Resumo do dia</p>
               <p className="text-sm leading-relaxed mt-1">{dailyHumanSummary}</p>
@@ -2567,7 +2567,7 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
       <div>
         <div className="flex items-end justify-between mb-2"><div><p className="text-xs text-faint uppercase tracking-widest">Missões</p><p className="text-dim text-xs">Objetivos de hoje e desta semana</p></div><span className="chip">+ XP bônus</span></div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {game.missions.map((m) => <div key={m.id} className="surface rounded-2xl p-4"><div className="flex items-center justify-between gap-3"><div><p className="font-medium text-sm">{m.title}</p><p className="text-faint text-xs">{m.scope} · +{m.xp} XP</p></div>{m.done ? <CheckCircle2 size={20} className="text-moss" /> : <span className="font-mono text-xs text-dim">{m.current}/{m.target}</span>}</div><div className="mt-3"><Progress value={Math.min(100,(m.current/m.target)*100)} height={6} tone={m.done ? "moss" : "fill"} /></div></div>)}
+          {game.missions.map((m) => <div key={m.id} className="surface rounded-2xl p-4"><div className="flex items-center justify-between gap-3"><div><p className="font-medium text-sm">{m.title}</p><p className="text-faint text-xs">{m.scope} · +{m.xp} XP</p></div>{m.done ? <CheckCircle2 size={20} className="text-brass" /> : <span className="font-mono text-xs text-dim">{m.current}/{m.target}</span>}</div><div className="mt-3"><Progress value={Math.min(100,(m.current/m.target)*100)} height={6} tone={m.done ? "brass" : "fill"} /></div></div>)}
         </div>
       </div>
 
@@ -2604,11 +2604,11 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
                         style={{
                           background: cell.na
                             ? "transparent"
-                            : `color-mix(in srgb, var(--moss) ${Math.round(cell.ratio * 100)}%, var(--surface-2))`,
+                            : `color-mix(in srgb, var(--brass) ${Math.round(cell.ratio * 100)}%, var(--surface-2))`,
                           border: cell.na
                             ? "1px dashed var(--border-soft)"
                             : cell.ratio > 0
-                              ? "1px solid var(--moss)"
+                              ? "1px solid var(--brass)"
                               : "1px solid var(--border)",
                         }}
                       />
@@ -2678,7 +2678,7 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
                 </p>
               </div>
               {usedToday
-                ? <CheckCircle2 size={22} className="text-moss shrink-0" />
+                ? <CheckCircle2 size={22} className="text-brass shrink-0" />
                 : <Flame size={22} className="text-ember shrink-0" />}
             </div>
           </div>
@@ -3057,14 +3057,14 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                                   background: showAsEmpty
                                     ? "transparent"
                                     : hasChecklist
-                                      ? `color-mix(in srgb, var(--moss) ${Math.round((checklistPct || 0) * 42)}%, var(--surface-2))`
+                                      ? `color-mix(in srgb, var(--brass) ${Math.round((checklistPct || 0) * 42)}%, var(--surface-2))`
                                       : done
-                                        ? "color-mix(in srgb, var(--moss) 20%, var(--surface-2))"
+                                        ? "color-mix(in srgb, var(--brass) 20%, var(--surface-2))"
                                         : "var(--surface-2)",
                                   border: showAsEmpty
                                     ? "1px dashed var(--border-soft)"
                                     : done || (hasChecklist && checklistPct > 0)
-                                      ? "1px solid color-mix(in srgb, var(--moss) 65%, transparent)"
+                                      ? "1px solid color-mix(in srgb, var(--brass) 65%, transparent)"
                                       : "1px solid var(--border)",
                                   cursor: editable ? "pointer" : "default",
                                   opacity: !showAsEmpty && !editable ? 0.68 : 1,
@@ -3073,8 +3073,8 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                                 {hasChecklist && checklistPct != null && checklistPct > 0 && checklistPct < 1 && (
                                   <span className="habit-grid-cell-frac font-mono">{Math.round(checklistPct * 100)}</span>
                                 )}
-                                {!hasChecklist && done && <Check size={14} strokeWidth={2.5} color="var(--moss)" />}
-                                {hasChecklist && checklistPct === 1 && <Check size={12} strokeWidth={2.5} color="var(--moss)" />}
+                                {!hasChecklist && done && <Check size={14} strokeWidth={2.5} color="var(--brass)" />}
+                                {hasChecklist && checklistPct === 1 && <Check size={12} strokeWidth={2.5} color="var(--brass)" />}
                               </button>
                             </td>
                           );
@@ -3123,7 +3123,7 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                   onClick={() => toggleHabitChecklist(activeChecklistHabit.id, item.id, checklistCell.dateStr)}
                 >
                   {checked
-                    ? <CheckCircle2 size={17} className="text-moss shrink-0 mt-0.5" />
+                    ? <CheckCircle2 size={17} className="text-brass shrink-0 mt-0.5" />
                     : <Circle size={17} className="text-faint shrink-0 mt-0.5" />}
                   <span
                     className="break-words"
@@ -3637,7 +3637,7 @@ function TaskFocusModal({ task, onClose, onSave, onComplete }) {
                 onClick={() => toggleSubtask(item.id)}
               >
                 {item.done
-                  ? <CheckCircle2 size={17} className="text-moss shrink-0 mt-0.5" />
+                  ? <CheckCircle2 size={17} className="text-brass shrink-0 mt-0.5" />
                   : <Circle size={17} className="text-faint shrink-0 mt-0.5" />}
                 <span
                   className="break-words"
@@ -3848,7 +3848,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                 }}
               >
                 {item.done
-                  ? <CheckCircle2 size={13} className="text-moss shrink-0 mt-0.5" />
+                  ? <CheckCircle2 size={13} className="text-brass shrink-0 mt-0.5" />
                   : <Circle size={13} className="text-faint shrink-0 mt-0.5" />}
                 <span
                   className="break-words flex-1"
@@ -3961,7 +3961,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
             aria-label={done ? "Desmarcar tarefa" : "Concluir tarefa"}
           >
             {done
-              ? <CheckCircle2 size={20} className="text-moss" />
+              ? <CheckCircle2 size={20} className="text-brass" />
               : <Circle size={20} className="text-faint" />}
           </button>
 
@@ -4308,7 +4308,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
 
           {todayPending.length === 0 && todayTasks.length > 0 && (
             <div className="surface rounded-2xl p-5 text-center">
-              <CheckCircle2 size={24} className="text-moss mx-auto" />
+              <CheckCircle2 size={24} className="text-brass mx-auto" />
               <p className="font-display text-lg mt-2">Dia concluído</p>
               <p className="text-dim text-xs mt-1">Todas as tarefas programadas para hoje foram concluídas.</p>
             </div>
@@ -4339,7 +4339,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                   <p className="text-[10px] text-faint uppercase tracking-widest">Concluídas hoje</p>
                   <p className="text-dim text-xs mt-1">{todayCompleted.length} tarefa{todayCompleted.length === 1 ? "" : "s"}</p>
                 </div>
-                <CheckCircle2 size={17} className="text-moss" />
+                <CheckCircle2 size={17} className="text-brass" />
               </div>
 
               <div className="flex flex-col gap-1.5 mt-3">
@@ -4349,7 +4349,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                     className="surface-2 rounded-xl px-3 py-2 flex items-center gap-2 text-left"
                     onClick={() => setStatus(task.id, "pendente", t)}
                   >
-                    <CheckCircle2 size={14} className="text-moss shrink-0" />
+                    <CheckCircle2 size={14} className="text-brass shrink-0" />
                     <span className="text-xs text-dim line-through break-words">{task.title}</span>
                   </button>
                 ))}
@@ -4511,7 +4511,7 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                             }
                           >
                             {done
-                              ? <CheckCircle2 size={18} className="text-moss" />
+                              ? <CheckCircle2 size={18} className="text-brass" />
                               : <Circle size={18} className="text-faint" />}
                           </button>
 
@@ -5549,7 +5549,7 @@ function CalendarView({
                     }
                   >
                     {done
-                      ? <CheckCircle2 size={17} className="text-moss" />
+                      ? <CheckCircle2 size={17} className="text-brass" />
                       : <Circle size={17} className="text-brass" />}
                   </button>
 
@@ -5610,7 +5610,7 @@ function CalendarView({
           {showType("workouts") && selectedData.workouts.map((row) => (
             <div key={row.id} className="calendar-agenda-item surface-2 rounded-xl p-3 flex items-start gap-3">
               {row.completed
-                ? <CheckCircle2 size={17} className="text-moss shrink-0 mt-0.5" />
+                ? <CheckCircle2 size={17} className="text-brass shrink-0 mt-0.5" />
                 : <Dumbbell size={17} className="text-brass shrink-0 mt-0.5" />}
               <div className="min-w-0">
                 <p className="text-[9px] text-faint uppercase">Treino</p>
@@ -5624,7 +5624,7 @@ function CalendarView({
 
           {showType("finance") && selectedData.bills.map((bill) => (
             <div key={`bill-${bill.id}`} className="calendar-agenda-item surface-2 rounded-xl p-3 flex items-start gap-3">
-              <CreditCard size={17} className={`shrink-0 mt-0.5 ${bill.status === "pago" ? "text-moss" : bill.dueDate < today() ? "text-ember" : "text-brass"}`} />
+              <CreditCard size={17} className={`shrink-0 mt-0.5 ${bill.status !== "pago" && bill.dueDate < today() ? "text-ember" : "text-brass"}`} />
               <div className="min-w-0 flex-1">
                 <p className="text-[9px] text-faint uppercase">Finanças</p>
                 <div className="flex flex-wrap items-start justify-between gap-2 mt-1">
@@ -5643,7 +5643,7 @@ function CalendarView({
             return (
               <div key={`habit-${habit.id}`} className="calendar-agenda-item surface-2 rounded-xl p-3 flex items-start gap-3">
                 {done
-                  ? <CheckCircle2 size={17} className="text-moss shrink-0 mt-0.5" />
+                  ? <CheckCircle2 size={17} className="text-brass shrink-0 mt-0.5" />
                   : <ListChecks size={17} className="text-faint shrink-0 mt-0.5" />}
                 <div className="min-w-0">
                   <p className="text-[9px] text-faint uppercase">Hábito</p>
@@ -6364,7 +6364,7 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
           <div className="flex flex-col gap-2">
             {checklist.map((item, index) => (
               <div key={item.id} className="flex items-center gap-2">
-                {item.done ? <CheckCircle2 size={16} className="text-moss shrink-0" /> : <Circle size={16} className="text-faint shrink-0" />}
+                {item.done ? <CheckCircle2 size={16} className="text-brass shrink-0" /> : <Circle size={16} className="text-faint shrink-0" />}
                 <input
                   className="flex-1 min-w-0 p-2.5 text-sm ring-focus"
                   placeholder={`Etapa ${index + 1}`}
@@ -6411,7 +6411,7 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
                       onClick={() => toggleLinkedTask(task.id)}
                     >
                       {linkedTaskIds.includes(task.id)
-                        ? <CheckCircle2 size={14} className="text-moss shrink-0" />
+                        ? <CheckCircle2 size={14} className="text-brass shrink-0" />
                         : <Circle size={14} className="text-faint shrink-0" />}
                       <span className="text-xs break-words flex-1">{task.title}</span>
                     </button>
@@ -6435,7 +6435,7 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
                       onClick={() => toggleLinkedHabit(habit.id)}
                     >
                       {linkedHabitIds.includes(habit.id)
-                        ? <CheckCircle2 size={14} className="text-moss shrink-0" />
+                        ? <CheckCircle2 size={14} className="text-brass shrink-0" />
                         : <Circle size={14} className="text-faint shrink-0" />}
                       <span className="text-xs break-words flex-1">{habit.name}</span>
                     </button>
@@ -7007,7 +7007,7 @@ function GoalsView({
               <div className={`goal-milestone-dot ${reached ? "reached" : isNext ? "next" : ""}`}>
                 {reached ? <Check size={10} /> : <span />}
               </div>
-              <p className={`text-[8px] md:text-[9px] mt-1 ${reached ? "text-moss" : isNext ? "text-brass" : "text-faint"}`}>
+              <p className={`text-[8px] md:text-[9px] mt-1 ${reached ? "text-brass" : isNext ? "text-brass" : "text-faint"}`}>
                 {milestone}%
               </p>
               {index < milestones.length - 1 && (
@@ -7177,7 +7177,7 @@ function GoalsView({
                   onClick={() => toggleGoalChecklist(goal.id, item.id)}
                 >
                   {item.done
-                    ? <CheckCircle2 size={17} className="text-moss shrink-0" />
+                    ? <CheckCircle2 size={17} className="text-brass shrink-0" />
                     : <Circle size={17} className="text-faint shrink-0" />}
                   <span className="break-words" style={{ textDecoration: item.done ? "line-through" : "none" }}>
                     {item.text}
@@ -7339,7 +7339,7 @@ function GoalsView({
                           {linkedTasks.slice(0, 6).map((task) => (
                             <div key={task.id} className="goal-related-row rounded-xl p-2.5 flex items-center gap-2">
                               {task.status === "concluida"
-                                ? <CheckCircle2 size={13} className="text-moss shrink-0" />
+                                ? <CheckCircle2 size={13} className="text-brass shrink-0" />
                                 : <Circle size={13} className="text-faint shrink-0" />}
                               <span className="text-[10px] break-words">{task.title}</span>
                             </div>
@@ -7371,7 +7371,7 @@ function GoalsView({
                     <p className="text-[9px] text-faint uppercase tracking-widest">Check-in semanal</p>
                     <p className="text-[10px] text-dim mt-1">Como foi sua semana nessa meta?</p>
                   </div>
-                  {thisWeekCheckin && <span className="chip text-moss">Registrado</span>}
+                  {thisWeekCheckin && <span className="chip text-brass">Registrado</span>}
                 </div>
 
                 <div className="grid grid-cols-3 gap-1.5 mt-3">
@@ -7568,7 +7568,7 @@ function GoalsView({
             <div className="grid grid-cols-2 gap-2">
               <div className="surface-2 rounded-xl p-3">
                 <p className="text-[9px] text-faint uppercase tracking-widest">Concluídas</p>
-                <p className="font-display text-2xl text-moss mt-1">{done.length}</p>
+                <p className="font-display text-2xl text-brass mt-1">{done.length}</p>
               </div>
               <div className="surface-2 rounded-xl p-3">
                 <p className="text-[9px] text-faint uppercase tracking-widest">Arquivadas</p>
@@ -7606,7 +7606,7 @@ function GoalsView({
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <p className="text-sm font-medium break-words">{goal.name}</p>
-                      <span className="chip text-moss">Concluída</span>
+                      <span className="chip text-brass">Concluída</span>
                     </div>
                     <p className="text-[9px] text-faint mt-1">
                       {completedDate ? `Concluída em ${dateLabel(completedDate, { day: "2-digit", month: "2-digit", year: "numeric" })}` : "Meta concluída"}
@@ -8790,7 +8790,7 @@ function FoodView({
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-display text-base md:text-lg">{group.mealType}</p>
                         {group.items.length > 0 && (
-                          <span className={`chip ${completionPct === 100 ? "text-moss" : ""}`}>
+                          <span className={`chip ${completionPct === 100 ? "text-brass" : ""}`}>
                             {consumedItems.length}/{group.items.length} consumidos
                           </span>
                         )}
@@ -8824,7 +8824,7 @@ function FoodView({
 
                   {group.items.length > 0 && (
                     <div className="mt-3 mb-3">
-                      <Progress value={completionPct} height={4} tone={completionPct === 100 ? "moss" : "fill"} />
+                      <Progress value={completionPct} height={4} tone={completionPct === 100 ? "brass" : "fill"} />
                     </div>
                   )}
 
@@ -8861,7 +8861,7 @@ function FoodView({
                                 <p className={`diet-plan-item-name text-xs md:text-sm font-medium break-words ${consumed ? "text-dim" : ""}`}>
                                   {meal.name}
                                 </p>
-                                {consumed && <span className="chip text-moss">Consumido</span>}
+                                {consumed && <span className="chip text-brass">Consumido</span>}
                               </div>
                               <p className="text-[9px] md:text-[10px] text-faint mt-1 break-words">
                                 {meal.quantity ? `${meal.quantity} × ${meal.unit || "porção"}` : meal.unit || "porção"}
@@ -8875,7 +8875,7 @@ function FoodView({
                             </div>
 
                             <div className="diet-plan-item-side shrink-0 flex flex-col items-end gap-1.5">
-                              <span className={`font-mono text-xs whitespace-nowrap ${consumed ? "text-moss" : "text-brass"}`}>
+                              <span className="font-mono text-xs whitespace-nowrap text-brass">
                                 {Math.round(Number(meal.calories || 0))} kcal
                               </span>
                               <div className="flex items-center gap-1">
@@ -9762,7 +9762,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
                           <div className="mt-1.5"><Progress value={progressPct} height={4} /></div>
                         )}
                       </div>
-                      {isUnlocked && <CheckCircle2 size={15} className="text-moss shrink-0" />}
+                      {isUnlocked && <CheckCircle2 size={15} className="text-brass shrink-0" />}
                     </button>
                   );
                 })}
@@ -9785,7 +9785,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
                 : selectedBadge.desc}
             </p>
             {unlockedBadgeIds.includes(selectedBadge.id) ? (
-              <div className="flex items-center gap-2 text-moss text-xs mt-3"><CheckCircle2 size={14} /> Desbloqueada</div>
+              <div className="flex items-center gap-2 text-brass text-xs mt-3"><CheckCircle2 size={14} /> Desbloqueada</div>
             ) : !selectedBadge.secret && (
               <div className="mt-3">
                 <div className="flex items-center justify-between text-[10px] text-faint mb-1.5">
@@ -9834,7 +9834,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
               </p>
             </>
           ) : (
-            <p className="text-sm text-moss">Você já alcançou o nível Lendário: 365 dias consecutivos.</p>
+            <p className="text-sm text-brass">Você já alcançou o nível Lendário: 365 dias consecutivos.</p>
           )}
         </div>
 
@@ -9877,7 +9877,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="font-display text-lg">{level.label}</p>
-                    <span className={`chip ${unlockedLevel ? "text-moss" : ""}`}>
+                    <span className={`chip ${unlockedLevel ? "text-brass" : ""}`}>
                       {unlockedLevel ? "Liberado" : `${progress}%`}
                     </span>
                   </div>
@@ -9894,7 +9894,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
                   <div className="mt-3">
                     <div className="flex items-center justify-between gap-3 text-[10px] mb-1.5">
                       <span className="text-faint">Seu recorde: {bestStreak} dias</span>
-                      <span className={unlockedLevel ? "text-moss" : "text-dim"}>
+                      <span className={unlockedLevel ? "text-brass" : "text-dim"}>
                         {unlockedLevel ? "Conquistado" : `Faltam ${remaining}`}
                       </span>
                     </div>
@@ -9925,7 +9925,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
             <div className="mt-4">
               <div className="flex items-center justify-between gap-3 text-xs mb-1.5">
                 <span className="text-faint">Seu recorde: {bestStreak} dias</span>
-                <span className={selectedReward.unlockedLevel ? "text-moss" : "text-brass"}>
+                <span className="text-brass">
                   {selectedReward.unlockedLevel ? "Prêmio desbloqueado" : `Faltam ${selectedReward.remaining} dias`}
                 </span>
               </div>
@@ -9940,7 +9940,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
                   const claim = (profile?.rewardClaims || []).find((item) => item.levelId === selectedReward.id);
                   return claim ? (
                     <div className="surface-2 rounded-xl p-3 text-sm">
-                      <div className="flex items-center gap-2 text-moss"><CheckCircle2 size={15} /> Solicitação registrada</div>
+                      <div className="flex items-center gap-2 text-brass"><CheckCircle2 size={15} /> Solicitação registrada</div>
                       <p className="text-[10px] text-faint mt-1">Status: {claim.status || "solicitado"} · {claim.requestedAt ? new Date(claim.requestedAt).toLocaleDateString("pt-BR") : ""}</p>
                     </div>
                   ) : (
@@ -10376,7 +10376,7 @@ function PlanComparisonSection({ isPro, accessInfo, onUpgrade }) {
           <p className="font-display text-xl mt-1">Seu nível no Constancce</p>
           <p className="text-xs text-dim mt-1">O Free organiza. O PRO analisa, automatiza e amplia.</p>
         </div>
-        <span className={`plan-current-chip chip self-start ${isPro ? "text-moss" : "text-brass"}`}>
+        <span className="plan-current-chip chip self-start text-brass">
           {isPro ? "PRO ativo" : "Free ativo"}
         </span>
       </div>
@@ -10426,7 +10426,7 @@ function PlanComparisonSection({ isPro, accessInfo, onUpgrade }) {
               <p className="font-display text-2xl mt-1">PRO</p>
             </div>
             {isPro ? (
-              <span className="chip text-moss">Seu plano</span>
+              <span className="chip text-brass">Seu plano</span>
             ) : (
               <Sparkles size={18} className="text-brass" />
             )}
@@ -10460,7 +10460,7 @@ function PlanComparisonSection({ isPro, accessInfo, onUpgrade }) {
 
           {isPro && accessInfo?.isLifetime && (
             <div className="flex justify-center mt-4">
-              <div className="surface-2 rounded-xl px-4 py-2 inline-flex items-center justify-center gap-2 text-xs text-moss">
+              <div className="surface-2 rounded-xl px-4 py-2 inline-flex items-center justify-center gap-2 text-xs text-brass">
                 <Trophy size={13} />
                 <span>Founder vitalício ativo</span>
               </div>

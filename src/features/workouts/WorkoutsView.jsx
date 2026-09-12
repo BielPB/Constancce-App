@@ -1150,7 +1150,7 @@ function WorkoutsView({
                 <p className="text-[10px] text-faint uppercase tracking-widest">Sua semana</p>
                 <p className="text-dim text-xs mt-0.5 flex items-center gap-2.5 flex-wrap">
                   <span className="flex items-center gap-1">
-                    <CheckCircle2 size={11} className="text-moss" /> feito
+                    <CheckCircle2 size={11} className="text-brass" /> feito
                   </span>
                   <span className="flex items-center gap-1">
                     <Circle size={11} className="text-brass" /> programado
@@ -1196,7 +1196,7 @@ function WorkoutsView({
                     <p className="font-mono text-[11px] mt-0.5">
                       {new Date(`${date}T12:00:00`).getDate()}
                     </p>
-                    <p className={`text-[10px] mt-1 ${done ? "text-moss" : scheduled ? "text-brass" : "text-faint"}`}>
+                    <p className={`text-[10px] mt-1 ${done || scheduled ? "text-brass" : "text-faint"}`}>
                       {done ? "✓" : scheduled ? "●" : "—"}
                     </p>
                   </button>
@@ -1267,7 +1267,7 @@ function WorkoutsView({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-[10px] text-faint uppercase tracking-widest">Treino de hoje</p>
-                    {primaryTodaySession?.completed && <span className="chip text-moss">Concluído</span>}
+                    {primaryTodaySession?.completed && <span className="chip text-brass">Concluído</span>}
                     {primaryTodaySession && !primaryTodaySession.completed && primaryTodaySession.startedAt && <span className="chip text-brass">Em andamento</span>}
                     {primaryTodaySession && !primaryTodaySession.completed && !primaryTodaySession.startedAt && <span className="chip">Pré-visualização</span>}
                   </div>
@@ -1503,7 +1503,7 @@ function WorkoutsView({
                     </div>
 
                     <div className="workout-template-actions flex flex-wrap items-center justify-end gap-1 shrink-0">
-                      {doneToday && <span className="chip text-moss whitespace-nowrap">feito hoje</span>}
+                      {doneToday && <span className="chip text-brass whitespace-nowrap">feito hoje</span>}
 
                       <button
                         className="btn-ghost rounded-lg p-2 md:hidden"
@@ -1650,8 +1650,8 @@ function WorkoutsView({
                                 className="habit-grid-cell"
                                 title={done ? `${row.label} treinado` : "Não treinado"}
                                 style={{
-                                  background: done ? "var(--moss)" : "var(--surface-2)",
-                                  border: done ? "1px solid var(--moss)" : "1px solid var(--border)",
+                                  background: done ? "var(--brass)" : "var(--surface-2)",
+                                  border: done ? "1px solid var(--brass)" : "1px solid var(--border)",
                                 }}
                               />
                             </td>
@@ -1933,20 +1933,20 @@ function WorkoutsView({
                         className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
                         style={{
                           background: session.completed
-                            ? "color-mix(in srgb, var(--moss) 16%, var(--surface-2))"
+                            ? "color-mix(in srgb, var(--brass) 16%, var(--surface-2))"
                             : "var(--surface-2)",
                           border: "1px solid var(--border)",
                         }}
                       >
                         {session.completed
-                          ? <CheckCircle2 size={18} className="text-moss" />
+                          ? <CheckCircle2 size={18} className="text-brass" />
                           : <Dumbbell size={17} className="text-faint" />}
                       </div>
 
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <p className="font-display text-base break-words">{template?.name || "Treino"}</p>
-                          <span className={`chip whitespace-nowrap ${session.completed ? "text-moss" : "text-brass"}`}>
+                          <span className="chip whitespace-nowrap text-brass">
                             {session.completed ? "Concluído" : "Em andamento"}
                           </span>
                         </div>
@@ -1967,7 +1967,7 @@ function WorkoutsView({
                           {volume > 0 && <span className="chip">Volume {Math.round(volume).toLocaleString("pt-BR")} kg</span>}
                           {duration > 0 && <span className="chip">{duration} min</span>}
                           {session.effortRating && <span className="chip">Esforço {session.effortRating}/10</span>}
-                          {session.completed && <span className="chip text-moss">Visualizar treino feito</span>}
+                          {session.completed && <span className="chip text-brass">Visualizar treino feito</span>}
                         </div>
                       </div>
                     </div>
@@ -2079,7 +2079,7 @@ function WorkoutsView({
               <div className="workout-complete-summary surface rounded-2xl p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="flex items-center gap-2 text-moss">
+                    <div className="flex items-center gap-2 text-brass">
                       <CheckCircle2 size={17} />
                       <p className="text-sm font-medium">Treino concluído</p>
                     </div>
@@ -2169,7 +2169,7 @@ function WorkoutsView({
                       >
                         {(activeSession.sets?.[exercise.id] || []).length === exercise.sets &&
                         (activeSession.sets?.[exercise.id] || []).every(Boolean)
-                          ? <CheckCircle2 size={18} className="text-moss" />
+                          ? <CheckCircle2 size={18} className="text-brass" />
                           : <Circle size={18} className="text-faint" />}
                       </button>
 
@@ -2298,7 +2298,7 @@ function WorkoutsView({
                             }}
                             className="workout-set-button w-10 h-10 rounded-lg text-xs font-mono disabled:cursor-default"
                             style={{
-                              background: on ? "var(--moss)" : "transparent",
+                              background: on ? "var(--brass)" : "transparent",
                               border: "1px solid var(--border)",
                               color: on ? "#0A0D08" : "var(--text-dim)",
                             }}
@@ -2534,7 +2534,7 @@ function WorkoutsView({
                           {doneSets}/{totalSets} séries · {Math.round(workoutSessionVolume(session, template)).toLocaleString("pt-BR")} kg de volume
                         </p>
                       </div>
-                      <span className={`chip ${session.completed ? "text-moss" : "text-brass"}`}>
+                      <span className="chip text-brass">
                         {session.completed ? "Concluído" : "Parcial"}
                       </span>
                     </div>

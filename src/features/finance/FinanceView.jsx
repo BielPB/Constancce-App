@@ -2442,7 +2442,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
                             <span className="text-faint text-[9px] md:text-[10px]">
                               {tx.category} · {tx.type === "entrada" ? "Entrada" : "Saída"}
                             </span>
-                            {tx.billId && <span className="chip text-moss">Pago</span>}
+                            {tx.billId && <span className="chip text-brass">Pago</span>}
                             {tx.recurringId && <span className="chip">Recorrente</span>}
                           </div>
                         </div>

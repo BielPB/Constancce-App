@@ -130,7 +130,7 @@ export function Progress({ value, height = 8, tone = "fill" }) {
   return (
     <div className="track w-full" style={{ height }}>
       <div
-        className={tone === "moss" ? "fill-moss h-full" : "fill h-full"}
+        className={tone === "brass" ? "fill-brass h-full" : "fill h-full"}
         style={{
           width: `${Math.max(0, Math.min(100, value))}%`,
           transition: "width 320ms ease",

@@ -69,7 +69,7 @@ export default function NotificationsView({
             </div>
           </div>
 
-          {pushEnabled && <span className="chip text-[10px] text-moss shrink-0">Ativas</span>}
+          {pushEnabled && <span className="chip text-[10px] text-brass shrink-0">Ativas</span>}
         </div>
 
         {!pushSupported ? (

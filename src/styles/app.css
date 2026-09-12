@@ -97,12 +97,6 @@
   .hairline{ border-color:var(--border); }
   .text-dim{ color:var(--text-dim); }
   .text-faint{ color:var(--text-faint); }
-  .text-brass{ color:var(--brass); }
-  .text-ember{ color:var(--ember); }
-  .text-moss{ color:var(--moss); }
-  .bg-brass{ background:var(--brass); }
-  .bg-ember{ background:var(--ember); }
-  .bg-moss{ background:var(--moss); }
   .btn-primary{
     background:linear-gradient(135deg, color-mix(in srgb, var(--brass) 90%, white 10%), var(--brass));
     color:#141208;
@@ -141,6 +135,12 @@
   .btn-ghost:focus-visible{ outline:2px solid color-mix(in srgb, var(--brass) 70%, transparent); outline-offset:2px; }
   .chip{ border:1px solid var(--border); background:color-mix(in srgb, var(--surface-2) 86%, transparent); border-radius:999px; padding:4px 10px; font-size:10px; font-weight:600; color:var(--text-dim); letter-spacing:.01em; transition:border-color 160ms ease, color 160ms ease, background 160ms ease; }
   button.chip:hover, a.chip:hover{ border-color:color-mix(in srgb, var(--brass) 45%, var(--border)); color:var(--text); }
+  .text-brass{ color:var(--brass); }
+  .text-ember{ color:var(--ember); }
+  .text-moss{ color:var(--moss); }
+  .bg-brass{ background:var(--brass); }
+  .bg-ember{ background:var(--ember); }
+  .bg-moss{ background:var(--moss); }
   .pro-badge{
     display:inline-flex;
     align-items:center;
@@ -407,8 +407,8 @@
     transition:border-color .14s ease, background .14s ease, transform .12s ease, opacity .12s ease;
   }
   .diet-plan-item.is-consumed{
-    border-color:color-mix(in srgb, var(--moss) 25%, var(--border));
-    background:linear-gradient(145deg, color-mix(in srgb, var(--moss) 5%, var(--surface-2)), var(--surface-2));
+    border-color:color-mix(in srgb, var(--brass) 25%, var(--border));
+    background:linear-gradient(145deg, color-mix(in srgb, var(--brass) 5%, var(--surface-2)), var(--surface-2));
   }
   .diet-plan-item.is-pending{
     border-color:color-mix(in srgb, var(--brass) 14%, var(--border));
@@ -426,10 +426,10 @@
     transition:all .14s ease;
   }
   .diet-consume-check.checked{
-    color:var(--moss);
-    border-color:color-mix(in srgb, var(--moss) 48%, var(--border));
-    background:color-mix(in srgb, var(--moss) 10%, var(--surface));
-    box-shadow:0 0 0 3px color-mix(in srgb, var(--moss) 5%, transparent);
+    color:var(--brass);
+    border-color:color-mix(in srgb, var(--brass) 48%, var(--border));
+    background:color-mix(in srgb, var(--brass) 10%, var(--surface));
+    box-shadow:0 0 0 3px color-mix(in srgb, var(--brass) 5%, transparent);
   }
   .diet-plan-macros .chip{
     min-height:20px;
@@ -701,7 +701,7 @@
   .nav-item.active{ color:var(--brass); font-weight:600; }
   .track{ background:var(--border-soft); border-radius:999px; overflow:hidden; }
   .fill{ background:linear-gradient(90deg, var(--brass), var(--ember)); }
-  .fill-moss{ background:var(--moss); }
+  .fill-brass{ background:var(--brass); }
   .scrollbar-none::-webkit-scrollbar{ display:none; }
   *{ scrollbar-width:thin; scrollbar-color:var(--brass-dim) var(--surface-2); }
   *::-webkit-scrollbar{ width:8px; height:8px; }
@@ -2051,9 +2051,9 @@
   }
   .workout-complete-summary{
     background:
-      radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--moss) 9%, transparent), transparent 36%),
+      radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--brass) 9%, transparent), transparent 36%),
       var(--surface);
-    border-color:color-mix(in srgb, var(--moss) 28%, var(--border));
+    border-color:color-mix(in srgb, var(--brass) 28%, var(--border));
   }
   .workout-previous-load{
     background:color-mix(in srgb, var(--surface) 84%, var(--bg));
@@ -2327,9 +2327,9 @@
     background:var(--text-faint);
   }
   .goal-milestone-dot.reached{
-    background:color-mix(in srgb, var(--moss) 14%, var(--surface-2));
-    border-color:color-mix(in srgb, var(--moss) 55%, var(--border));
-    color:var(--moss);
+    background:color-mix(in srgb, var(--brass) 14%, var(--surface-2));
+    border-color:color-mix(in srgb, var(--brass) 55%, var(--border));
+    color:var(--brass);
   }
   .goal-milestone-dot.next{
     border-color:var(--brass);
@@ -2348,7 +2348,7 @@
     background:var(--border);
   }
   .goal-milestone-line.reached{
-    background:color-mix(in srgb, var(--moss) 58%, var(--border));
+    background:color-mix(in srgb, var(--brass) 58%, var(--border));
   }
   .goal-next-action{
     border-left:2px solid color-mix(in srgb, var(--brass) 55%, var(--border));
@@ -2406,7 +2406,7 @@
     border-color:color-mix(in srgb, var(--brass) 28%, var(--border));
   }
   .goal-completed-card{
-    border-color:color-mix(in srgb, var(--moss) 16%, var(--border));
+    border-color:color-mix(in srgb, var(--brass) 16%, var(--border));
   }
   .dashboard-primary-goal{
     border-color:color-mix(in srgb, var(--brass) 18%, var(--border));
@@ -3057,7 +3057,7 @@ td.habit-grid-today .habit-grid-cell{
 td.habit-grid-today .habit-grid-cell.habit-grid-cell-done{
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--brass) 45%, transparent),
-    0 0 9px color-mix(in srgb, var(--moss) 32%, transparent);
+    0 0 9px color-mix(in srgb, var(--brass) 32%, transparent);
 }
 .habit-grid-cell-wrap{
   padding:0;
@@ -3073,7 +3073,7 @@ td.habit-grid-today .habit-grid-cell.habit-grid-cell-done{
   transition:transform .1s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease, opacity .16s ease;
 }
 .habit-grid-cell-done{
-  box-shadow:0 0 0 1px color-mix(in srgb, var(--moss) 50%, transparent), 0 0 9px color-mix(in srgb, var(--moss) 26%, transparent);
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--brass) 50%, transparent), 0 0 9px color-mix(in srgb, var(--brass) 26%, transparent);
 }
 .habit-grid-cell:not(:disabled):hover{
   transform:translateY(-1px) scale(1.04);
