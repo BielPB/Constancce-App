@@ -10,6 +10,7 @@ import { ErrorBoundary } from "./src/components/ErrorBoundary.jsx";
 import { useConstancceData } from "./src/hooks/useConstancceData.js";
 import { useWorkoutRestTimer } from "./src/hooks/useWorkoutRestTimer.js";
 import { computeUsageStreaks, normalizeUsageDays } from "./src/lib/usageStreak.js";
+import { accentInkColor } from "./src/lib/theme.js";
 import { PRO_LIMITS, PRO_FEATURE_COPY, accessSummary } from "./src/lib/plans.js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, authHeaders, rpcRequest } from "./src/lib/supabaseRpc.js";
 import { fetchProfessionalLinks, sendPrescription, fetchPrescriptions } from "./src/lib/professionalLinks.js";
@@ -1146,15 +1147,6 @@ const taskRepeatLabel = (task) => {
   return "Não repetir";
 };
 const money = (v) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const accentInkColor = (hex) => {
-  const m = /^#([0-9a-fA-F]{6})$/.exec(hex || "");
-  if (!m) return "#141208";
-  const r = parseInt(m[1].slice(0, 2), 16);
-  const g = parseInt(m[1].slice(2, 4), 16);
-  const b = parseInt(m[1].slice(4, 6), 16);
-  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-  return brightness > 140 ? "#141208" : "#F5F5F0";
-};
 const goalValueLabel = (goal, value) =>
   goal?.type === "financeira"
     ? money(value)

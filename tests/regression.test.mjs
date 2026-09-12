@@ -13,6 +13,8 @@ const workoutTemplateForm = await readFile(new URL("../src/features/workouts/Wor
 const financeView = await readFile(new URL("../src/features/finance/FinanceView.jsx", import.meta.url), "utf8");
 const financeBillForm = await readFile(new URL("../src/features/finance/FinanceBillForm.jsx", import.meta.url), "utf8");
 const appCss = await readFile(new URL("../src/styles/app.css", import.meta.url), "utf8");
+const themeLib = await readFile(new URL("../src/lib/theme.js", import.meta.url), "utf8");
+const errorBoundary = await readFile(new URL("../src/components/ErrorBoundary.jsx", import.meta.url), "utf8");
 
 test("regressões críticas permanecem protegidas", () => {
   assert.match(app, /const renderCurrentView = \(\) =>/);
@@ -901,11 +903,13 @@ test("Cor do app: texto sobre botões brass vira claro quando a cor escolhida é
   // Os 4 temas prontos (verde/rosa/azul/roxo) são todos claros o bastante pra manter
   // texto escuro fixo (#141208) legível, mas uma cor personalizada pode ser escura
   // (ex.: azul-marinho) — nesse caso o texto/ícone sobre fundo --brass precisa virar
-  // claro, senão fica ilegível. accentInkColor calcula isso por brilho percebido
-  // (fórmula 299R+587G+114B, comum pra decidir texto claro/escuro sobre uma cor).
-  assert.match(app, /const accentInkColor = \(hex\) => \{/);
-  assert.match(app, /const brightness = \(r \* 299 \+ g \* 587 \+ b \* 114\) \/ 1000;/);
-  assert.match(app, /return brightness > 140 \? "#141208" : "#F5F5F0";/);
+  // claro, senão fica ilegível. accentInkColor (compartilhada em src/lib/theme.js,
+  // usada também pelo ErrorBoundary) calcula isso por brilho percebido (fórmula
+  // 299R+587G+114B, comum pra decidir texto claro/escuro sobre uma cor).
+  assert.match(themeLib, /export function accentInkColor\(hex\) \{/);
+  assert.match(themeLib, /const brightness = \(r \* 299 \+ g \* 587 \+ b \* 114\) \/ 1000;/);
+  assert.match(themeLib, /return brightness > 140 \? "#141208" : "#F5F5F0";/);
+  assert.match(app, /import \{ accentInkColor \} from "\.\/src\/lib\/theme\.js";/);
   assert.match(app, /"--brass-ink": accentInkColor\(profile\.customAccentColor\)/);
 
   // --brass-ink tem um default no :root (presets continuam usando texto escuro,
@@ -914,4 +918,21 @@ test("Cor do app: texto sobre botões brass vira claro quando a cor escolhida é
   assert.match(appCss, /--brass-ink: #141208;/);
   assert.doesNotMatch(app, /color="#141208"/);
   assert.doesNotMatch(workoutsView, /"#0A0D08"/);
+});
+
+test("Tela de erro (recarregar o app) usa a cor de tema salva, não o dourado original fixo", () => {
+  // O ErrorBoundary troca o app inteiro pela tela de fallback quando algo quebra
+  // (inclusive no primeiro uso), então ele perde acesso ao profile/estado do React
+  // — precisa ler o accentTheme/customAccentColor direto do localStorage (mesma
+  // chave que o app usa pra persistir) pra mostrar a cor que o usuário escolheu,
+  // em vez do dourado #C9A24A fixo da primeira versão do app.
+  assert.match(themeLib, /export function resolveStoredAccent\(\) \{/);
+  assert.match(themeLib, /localStorage\.getItem\(AUTH_SESSION_KEY\)/);
+  assert.match(themeLib, /localStorage\.getItem\(`constancia_user_data_\$\{userId\}`\)/);
+  assert.match(themeLib, /ACCENT_PRESETS = \{/);
+
+  assert.match(errorBoundary, /import \{ resolveStoredAccent \} from "\.\.\/lib\/theme\.js";/);
+  assert.match(errorBoundary, /const accent = resolveStoredAccent\(\) \|\| \{ brass: "#C9A24A", dim: "#7A6530", ink: "#141208" \};/);
+  assert.match(errorBoundary, /background: accent\.brass,/);
+  assert.match(errorBoundary, /color: accent\.ink,/);
 });

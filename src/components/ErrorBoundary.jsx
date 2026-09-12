@@ -1,5 +1,6 @@
 import React from "react";
 import { captureClientError } from "../lib/observability.js";
+import { resolveStoredAccent } from "../lib/theme.js";
 
 export class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -21,6 +22,8 @@ export class ErrorBoundary extends React.Component {
   render() {
     if (!this.state.error) return this.props.children;
 
+    const accent = resolveStoredAccent() || { brass: "#C9A24A", dim: "#7A6530", ink: "#141208" };
+
     return (
       <div style={{
         minHeight: "100vh",
@@ -39,7 +42,7 @@ export class ErrorBoundary extends React.Component {
           borderRadius: 18,
           padding: 24,
         }}>
-          <div style={{ fontSize: 12, color: "#C9A24A", textTransform: "uppercase", letterSpacing: ".12em" }}>
+          <div style={{ fontSize: 12, color: accent.brass, textTransform: "uppercase", letterSpacing: ".12em" }}>
             Constancce
           </div>
           <h1 style={{ fontSize: 24, margin: "10px 0 8px" }}>Algo saiu do esperado.</h1>
@@ -54,8 +57,8 @@ export class ErrorBoundary extends React.Component {
               border: 0,
               borderRadius: 12,
               padding: "12px 16px",
-              background: "#C9A24A",
-              color: "#141208",
+              background: accent.brass,
+              color: accent.ink,
               fontWeight: 700,
               cursor: "pointer",
             }}
