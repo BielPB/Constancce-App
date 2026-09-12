@@ -10680,7 +10680,7 @@ function ProfileView({ profile, setProfile, theme, setTheme, streaks, stats, gam
             const selected = isPro && (profile?.accentTheme || "green") === "custom" && hasCustomColor;
             return (
               <label
-                className="rounded-xl p-2.5 text-xs flex flex-col items-center gap-2 cursor-pointer"
+                className="rounded-xl p-2.5 text-xs flex flex-col items-center gap-2 cursor-pointer relative"
                 style={{
                   border: `1px solid ${selected ? customColor : "var(--border)"}`,
                   background: selected ? "var(--surface-2)" : "transparent",
@@ -10702,7 +10702,16 @@ function ProfileView({ profile, setProfile, theme, setTheme, streaks, stats, gam
                 <input
                   type="color"
                   value={customColor}
-                  className="sr-only"
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    opacity: 0,
+                    border: 0,
+                    padding: 0,
+                    cursor: "pointer",
+                  }}
                   onClick={(e) => {
                     if (!isPro) {
                       e.preventDefault();

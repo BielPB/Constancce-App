@@ -936,3 +936,17 @@ test("Tela de erro (recarregar o app) usa a cor de tema salva, não o dourado or
   assert.match(errorBoundary, /background: accent\.brass,/);
   assert.match(errorBoundary, /color: accent\.ink,/);
 });
+
+test("Cor do app: input type=color não usa sr-only (quebrava o painel nativo no mobile)", () => {
+  // sr-only deixa o <input type="color"> com 1x1px + clip — em navegadores mobile
+  // (Chrome/WebView Android) o painel nativo de cor é posicionado/dimensionado a
+  // partir do próprio input, e com ele quase zerado o painel abria como um bloco
+  // branco enorme cobrindo a tela, empurrando a navbar inferior pra baixo. Trocado
+  // por position:absolute + inset:0 + opacity:0 no tamanho real do swatch/label,
+  // que é a forma padrão de esconder um input[type=color] sem quebrar o picker.
+  assert.doesNotMatch(app, /type="color"[\s\S]{0,40}className="sr-only"/);
+  const colorInputBlock = app.slice(app.indexOf('type="color"') - 20, app.indexOf('type="color"') + 400);
+  assert.match(colorInputBlock, /position: "absolute"/);
+  assert.match(colorInputBlock, /inset: 0,/);
+  assert.match(colorInputBlock, /opacity: 0,/);
+});
