@@ -871,3 +871,27 @@ test("Treinos/Finanças: extração pra arquivo próprio não deixou dependênci
   assert.match(workoutsView, /import WorkoutTemplateForm from "\.\/WorkoutTemplateForm\.jsx";/);
   assert.match(financeView, /import FinanceBillForm from "\.\/FinanceBillForm\.jsx";/);
 });
+
+test("Cor do app: usuário PRO pode escolher uma cor personalizada além dos 4 temas prontos", () => {
+  // A cor customizada precisa ser validada (regex hex) antes de virar --brass, e o
+  // --brass-dim é derivado via color-mix em vez de exigir uma segunda cor escolhida
+  // manualmente pelo usuário — assim a UI fica com um único seletor de cor.
+  assert.match(app, /const hasCustomAccentColor = \/\^#\[0-9a-fA-F\]\{6\}\$\/\.test\(profile\?\.customAccentColor \|\| ""\);/);
+  assert.match(app, /const useCustomAccent = isPro && profile\?\.accentTheme === "custom" && hasCustomAccentColor;/);
+  assert.match(app, /"--brass-dim": `color-mix\(in srgb, \$\{profile\.customAccentColor\} 60%, black\)`/);
+
+  // Se accentTheme ficou "custom" mas a cor salva é inválida/ausente (perfil corrompido,
+  // ou downgrade de plano), o app tem que cair pro preset "green" em vez de aplicar uma
+  // classe CSS inexistente (accent-custom) que deixaria --brass sem override nenhum.
+  assert.match(app, /const presetAccentTheme = isPro && profile\?\.accentTheme && profile\.accentTheme !== "custom" \? profile\.accentTheme : "green";/);
+  assert.match(app, /const accentClass = useCustomAccent \? "" : `accent-\$\{presetAccentTheme\}`;/);
+
+  // O estilo inline só é aplicado quando useCustomAccent é true, senão o app volta a
+  // depender só da classe accent-* (mesmo mecanismo de antes, sem custom).
+  assert.match(app, /style=\{accentStyle\}/);
+
+  // Seletor de cor: um 5º swatch "Personalizada" com <input type="color"> nativo,
+  // trancado por Pro do mesmo jeito que os outros 4 temas prontos.
+  assert.match(app, /type="color"/);
+  assert.match(app, /accentTheme: "custom", customAccentColor: e\.target\.value/);
+});

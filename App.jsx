@@ -24,7 +24,7 @@ import {
   Dumbbell, Apple, Wallet, Bell, FileBarChart, MoreHorizontal, ArrowUpRight,
   ArrowDownRight, Minus, Download, Upload, ShieldCheck, LogOut, Mail, Lock, Eye, EyeOff, Camera, Users, UserPlus, Swords, RefreshCw, Check,
   Search, Clock3, Timer, Sparkles, History, Zap, SlidersHorizontal, RotateCcw, CreditCard, Repeat2,
-  Palette, Share2, Archive, Image as ImageIcon,
+  Palette, Share2, Archive, Image as ImageIcon, Pipette,
   Activity, Layers3, Grid3X3, BrainCircuit, Star, ArrowRightLeft, Gauge, Stethoscope,
   Car, PartyPopper, Receipt, ShoppingBag, GraduationCap, Briefcase, Home,
 } from "lucide-react";
@@ -10640,8 +10640,8 @@ function ProfileView({ profile, setProfile, theme, setTheme, streaks, stats, gam
           <Palette size={16} className="text-brass" />
           <p className="text-xs text-faint uppercase tracking-widest">Cor do aplicativo</p>
         </div>
-        <p className="text-dim text-xs mb-4">Personalize a cor principal da sua interface.</p>
-        <div className="grid grid-cols-4 gap-2">
+        <p className="text-dim text-xs mb-4">Personalize a cor principal da sua interface, ou escolha a sua própria cor.</p>
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
           {[
             ["green", "Verde", "#69D36F"],
             ["pink", "Rosa", "#F06DA8"],
@@ -10673,6 +10673,46 @@ function ProfileView({ profile, setProfile, theme, setTheme, streaks, stats, gam
               </button>
             );
           })}
+          {(() => {
+            const customColor = /^#[0-9a-fA-F]{6}$/.test(profile?.customAccentColor || "") ? profile.customAccentColor : "#C9A24A";
+            const hasCustomColor = /^#[0-9a-fA-F]{6}$/.test(profile?.customAccentColor || "");
+            const selected = isPro && (profile?.accentTheme || "green") === "custom" && hasCustomColor;
+            return (
+              <label
+                className="rounded-xl p-2.5 text-xs flex flex-col items-center gap-2 cursor-pointer"
+                style={{
+                  border: `1px solid ${selected ? customColor : "var(--border)"}`,
+                  background: selected ? "var(--surface-2)" : "transparent",
+                  opacity: !isPro ? .68 : 1,
+                }}
+              >
+                <span
+                  className="w-7 h-7 rounded-full block relative"
+                  style={{
+                    background: hasCustomColor ? customColor : "conic-gradient(from 0deg, #69D36F, #F06DA8, #5B9CFF, #A77BFF, #69D36F)",
+                    boxShadow: selected ? `0 0 0 3px ${customColor}33` : "none",
+                  }}
+                >
+                  {!isPro
+                    ? <Lock size={11} className="absolute inset-0 m-auto text-white" />
+                    : <Pipette size={11} className="absolute inset-0 m-auto text-white" style={{ mixBlendMode: "difference" }} />}
+                </span>
+                <span className="flex items-center gap-1 text-center" style={{ color: selected ? "var(--text)" : "var(--text-dim)" }}>Personalizada{!isPro && <ProBadge compact />}</span>
+                <input
+                  type="color"
+                  value={customColor}
+                  className="sr-only"
+                  onClick={(e) => {
+                    if (!isPro) {
+                      e.preventDefault();
+                      onUpgrade("personalization");
+                    }
+                  }}
+                  onChange={(e) => setProfile((p) => ({ ...p, accentTheme: "custom", customAccentColor: e.target.value }))}
+                />
+              </label>
+            );
+          })()}
         </div>
       </div>
       <div className="menu-order-section surface rounded-2xl p-3 md:p-5">
@@ -14577,7 +14617,13 @@ function ConstancceApp() {
     .filter((group) => group.items.length > 0);
   const visibleMobileMain = visibleNav.slice(0, 5).map((item) => item.id);
   const visibleMobileMore = visibleNav.slice(5);
-  const accentClass = `accent-${isPro ? (profile?.accentTheme || "green") : "green"}`;
+  const hasCustomAccentColor = /^#[0-9a-fA-F]{6}$/.test(profile?.customAccentColor || "");
+  const useCustomAccent = isPro && profile?.accentTheme === "custom" && hasCustomAccentColor;
+  const presetAccentTheme = isPro && profile?.accentTheme && profile.accentTheme !== "custom" ? profile.accentTheme : "green";
+  const accentClass = useCustomAccent ? "" : `accent-${presetAccentTheme}`;
+  const accentStyle = useCustomAccent
+    ? { "--brass": profile.customAccentColor, "--brass-dim": `color-mix(in srgb, ${profile.customAccentColor} 60%, black)` }
+    : undefined;
 
   const renderCurrentView = () => {
     switch (view) {
@@ -14601,7 +14647,7 @@ function ConstancceApp() {
   };
 
   return (
-    <div className={`app-root app-authenticated-root ${theme === "light" ? "light-mode" : "dark-mode"} ${accentClass}`}>
+    <div className={`app-root app-authenticated-root ${theme === "light" ? "light-mode" : "dark-mode"} ${accentClass}`} style={accentStyle}>
       <div className="flex app-shell min-h-screen md:h-screen md:overflow-hidden">
         <aside className="sidebar hidden md:flex fixed left-0 top-0 bottom-0 z-30 flex-col w-64 h-screen p-5 gap-1.5 hairline overflow-y-auto scrollbar-none" style={{ borderRight: "1px solid var(--border)" }}>
           <div className="sidebar-brand flex items-center justify-center gap-2 px-2 mb-1 w-full text-center">
