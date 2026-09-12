@@ -12,6 +12,7 @@ const workoutsView = await readFile(new URL("../src/features/workouts/WorkoutsVi
 const workoutTemplateForm = await readFile(new URL("../src/features/workouts/WorkoutTemplateForm.jsx", import.meta.url), "utf8");
 const financeView = await readFile(new URL("../src/features/finance/FinanceView.jsx", import.meta.url), "utf8");
 const financeBillForm = await readFile(new URL("../src/features/finance/FinanceBillForm.jsx", import.meta.url), "utf8");
+const appCss = await readFile(new URL("../src/styles/app.css", import.meta.url), "utf8");
 
 test("regressões críticas permanecem protegidas", () => {
   assert.match(app, /const renderCurrentView = \(\) =>/);
@@ -894,4 +895,23 @@ test("Cor do app: usuário PRO pode escolher uma cor personalizada além dos 4 t
   // trancado por Pro do mesmo jeito que os outros 4 temas prontos.
   assert.match(app, /type="color"/);
   assert.match(app, /accentTheme: "custom", customAccentColor: e\.target\.value/);
+});
+
+test("Cor do app: texto sobre botões brass vira claro quando a cor escolhida é escura", () => {
+  // Os 4 temas prontos (verde/rosa/azul/roxo) são todos claros o bastante pra manter
+  // texto escuro fixo (#141208) legível, mas uma cor personalizada pode ser escura
+  // (ex.: azul-marinho) — nesse caso o texto/ícone sobre fundo --brass precisa virar
+  // claro, senão fica ilegível. accentInkColor calcula isso por brilho percebido
+  // (fórmula 299R+587G+114B, comum pra decidir texto claro/escuro sobre uma cor).
+  assert.match(app, /const accentInkColor = \(hex\) => \{/);
+  assert.match(app, /const brightness = \(r \* 299 \+ g \* 587 \+ b \* 114\) \/ 1000;/);
+  assert.match(app, /return brightness > 140 \? "#141208" : "#F5F5F0";/);
+  assert.match(app, /"--brass-ink": accentInkColor\(profile\.customAccentColor\)/);
+
+  // --brass-ink tem um default no :root (presets continuam usando texto escuro,
+  // sem precisar declarar a variável em cada .accent-*) e os lugares que antes
+  // tinham #141208/#0A0D08 fixo (assumindo brass sempre claro) agora usam a variável.
+  assert.match(appCss, /--brass-ink: #141208;/);
+  assert.doesNotMatch(app, /color="#141208"/);
+  assert.doesNotMatch(workoutsView, /"#0A0D08"/);
 });

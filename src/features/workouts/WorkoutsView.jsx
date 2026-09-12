@@ -2300,7 +2300,7 @@ function WorkoutsView({
                             style={{
                               background: on ? "var(--brass)" : "transparent",
                               border: "1px solid var(--border)",
-                              color: on ? "#0A0D08" : "var(--text-dim)",
+                              color: on ? "var(--brass-ink)" : "var(--text-dim)",
                             }}
                           >
                             {setIndex + 1}

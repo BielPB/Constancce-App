@@ -1146,6 +1146,15 @@ const taskRepeatLabel = (task) => {
   return "Não repetir";
 };
 const money = (v) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const accentInkColor = (hex) => {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex || "");
+  if (!m) return "#141208";
+  const r = parseInt(m[1].slice(0, 2), 16);
+  const g = parseInt(m[1].slice(2, 4), 16);
+  const b = parseInt(m[1].slice(4, 6), 16);
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness > 140 ? "#141208" : "#F5F5F0";
+};
 const goalValueLabel = (goal, value) =>
   goal?.type === "financeira"
     ? money(value)
@@ -2735,7 +2744,7 @@ function HabitForm({ initial, onSave, onClose }) {
           <div className="flex gap-1.5">
             {WEEKDAYS.map((w, i) => (
               <button key={i} onClick={() => toggleDay(i)} className="w-9 h-9 rounded-full text-xs font-mono"
-                style={{ border: `1px solid ${days.includes(i) ? "var(--brass)" : "var(--border)"}`, background: days.includes(i) ? "var(--brass)" : "transparent", color: days.includes(i) ? "#141208" : "var(--text-dim)" }}>
+                style={{ border: `1px solid ${days.includes(i) ? "var(--brass)" : "var(--border)"}`, background: days.includes(i) ? "var(--brass)" : "transparent", color: days.includes(i) ? "var(--brass-ink)" : "var(--text-dim)" }}>
                 {w[0]}
               </button>
             ))}
@@ -9751,7 +9760,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
                         className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
                         style={{ background: isUnlocked ? "var(--brass)" : "var(--surface)", border: "1px solid var(--border)" }}
                       >
-                        {isUnlocked ? <CategoryIcon size={16} color="#141208" /> : <Lock size={14} className="text-faint" />}
+                        {isUnlocked ? <CategoryIcon size={16} color="var(--brass-ink)" /> : <Lock size={14} className="text-faint" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium break-words">{hideDetails ? "Conquista secreta" : item.label}</p>
@@ -9870,7 +9879,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
                   }}
                 >
                   {unlockedLevel
-                    ? <LevelIcon size={18} color="#141208" />
+                    ? <LevelIcon size={18} color="var(--brass-ink)" />
                     : <Lock size={16} className="text-faint" />}
                 </div>
 
@@ -14622,7 +14631,11 @@ function ConstancceApp() {
   const presetAccentTheme = isPro && profile?.accentTheme && profile.accentTheme !== "custom" ? profile.accentTheme : "green";
   const accentClass = useCustomAccent ? "" : `accent-${presetAccentTheme}`;
   const accentStyle = useCustomAccent
-    ? { "--brass": profile.customAccentColor, "--brass-dim": `color-mix(in srgb, ${profile.customAccentColor} 60%, black)` }
+    ? {
+        "--brass": profile.customAccentColor,
+        "--brass-dim": `color-mix(in srgb, ${profile.customAccentColor} 60%, black)`,
+        "--brass-ink": accentInkColor(profile.customAccentColor),
+      }
     : undefined;
 
   const renderCurrentView = () => {

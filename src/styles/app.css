@@ -11,6 +11,7 @@
     --text-faint: #5F5F58;
     --brass: #C9A24A;
     --brass-dim: #7A6530;
+    --brass-ink: #141208;
     --ember: #E2652F;
     --moss: #7FA06B;
     --danger: #C15C4A;
@@ -99,7 +100,7 @@
   .text-faint{ color:var(--text-faint); }
   .btn-primary{
     background:linear-gradient(135deg, color-mix(in srgb, var(--brass) 90%, white 10%), var(--brass));
-    color:#141208;
+    color:var(--brass-ink);
     font-weight:700;
     border:1px solid color-mix(in srgb, var(--brass) 55%, transparent);
     box-shadow:
@@ -880,7 +881,7 @@
   .task-tab-active{
     background:linear-gradient(135deg, color-mix(in srgb, var(--brass) 90%, white 10%), var(--brass)) !important;
     border-color:color-mix(in srgb, var(--brass) 55%, transparent) !important;
-    color:#141208 !important;
+    color:var(--brass-ink) !important;
     font-weight:700;
     box-shadow:0 8px 20px color-mix(in srgb, var(--brass) 32%, transparent);
   }
@@ -1114,7 +1115,7 @@
   .save-status.error .save-status-dot{ background:var(--ember); box-shadow:0 0 0 3px color-mix(in srgb, var(--ember) 10%, transparent); }
   @keyframes statusPulse{ 0%,100%{opacity:.45;} 50%{opacity:1;} }
   .profile-avatar{ width:72px; height:72px; border-radius:999px; object-fit:cover; display:block; }
-  .avatar-action{ position:absolute; right:-2px; bottom:-2px; width:28px; height:28px; border-radius:999px; display:flex; align-items:center; justify-content:center; background:var(--brass); color:#141208; border:3px solid var(--surface); box-shadow:0 5px 14px rgba(0,0,0,.24); }
+  .avatar-action{ position:absolute; right:-2px; bottom:-2px; width:28px; height:28px; border-radius:999px; display:flex; align-items:center; justify-content:center; background:var(--brass); color:var(--brass-ink); border:3px solid var(--surface); box-shadow:0 5px 14px rgba(0,0,0,.24); }
   @media (hover:hover){ .surface.interactive:hover, .surface-2.interactive:hover{ transform:translateY(-2px); border-color:color-mix(in srgb, var(--brass) 26%, var(--border)); box-shadow:0 14px 34px rgba(0,0,0,.20); } }
   @media (max-width:767px){
     .app-root{ font-size:clamp(13.5px,3.65vw,16px); }
