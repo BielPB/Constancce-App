@@ -14,7 +14,7 @@ import {
   Trophy,
   Lock,
 } from "lucide-react";
-import { Progress, ProLockCard, ProBadge } from "../../components/ui.jsx";
+import { Progress, ProLockCard, ProBadge, pickChartLabelIndices } from "../../components/ui.jsx";
 
 /* -----------------------------------------------------------------------
    Mini gráficos — cópias enxutas e autocontidas de MiniLineChart /
@@ -99,7 +99,7 @@ function ReportMiniLineChart({ data, height = 120, color = "var(--brass)" }) {
       </svg>
 
       <div className="flex justify-between text-[9px] text-faint font-mono">
-        {data.map((item, index) => <span key={index}>{item.label}</span>)}
+        {pickChartLabelIndices(data.length).map((index) => <span key={index}>{data[index].label}</span>)}
       </div>
     </div>
   );

@@ -984,5 +984,22 @@ test("Relatórios: baixar PDF é restrito a usuários PRO", () => {
   // clique em free chamou onUpgrade("reports") sem abrir a janela de impressão.
   assert.match(reportsView, /if \(!isPro\) \{\s*\n\s*onUpgrade\("reports"\);\s*\n\s*return;\s*\n\s*\}\s*\n\s*window\.print\(\);/);
   assert.match(reportsView, /\{isPro \? <Download size=\{15\} \/> : <Lock size=\{15\} \/>\} Baixar PDF\{!isPro && <ProBadge compact \/>\}/);
-  assert.match(reportsView, /import \{ Progress, ProLockCard, ProBadge \} from "\.\.\/\.\.\/components\/ui\.jsx";/);
+  assert.match(reportsView, /import \{ Progress, ProLockCard, ProBadge, pickChartLabelIndices \} from "\.\.\/\.\.\/components\/ui\.jsx";/);
+});
+
+test("Gráfico de tendência: rótulos de data não colam uns nos outros quando há muitos pontos", () => {
+  // Mostrar um <span> por ponto (ex.: 9-10 datas no gráfico de 30 dias) numa
+  // fileira flex justify-between deixava as datas praticamente sem espaço
+  // entre si — "18/08" seguido de "21/08" lia-se como "1808/2108" na tela.
+  // pickChartLabelIndices escolhe no máximo N índices bem espaçados (sempre
+  // incluindo o primeiro e o último) em vez de um rótulo por ponto.
+  assert.match(ui, /export function pickChartLabelIndices\(length, max = 6\) \{/);
+  assert.match(ui, /if \(length <= max\) return Array\.from\(\{ length \}, \(_, i\) => i\);/);
+  assert.match(ui, /const step = \(length - 1\) \/ \(max - 1\);/);
+
+  // As duas fileiras de rótulo do app (MiniLineChart reutilizável em ui.jsx e
+  // a cópia autocontida ReportMiniLineChart em Relatórios) precisam usar o
+  // helper — não só um dos dois, senão o bug volta pra metade das telas.
+  assert.match(ui, /\{pickChartLabelIndices\(data\.length\)\.map\(\(index\) => <span key=\{index\}>\{data\[index\]\.label\}<\/span>\)\}/);
+  assert.match(reportsView, /\{pickChartLabelIndices\(data\.length\)\.map\(\(index\) => <span key=\{index\}>\{data\[index\]\.label\}<\/span>\)\}/);
 });

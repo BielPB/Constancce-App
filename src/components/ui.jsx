@@ -356,6 +356,16 @@ export function ProLockCard({ feature, title, description, onUpgrade, compact = 
   );
 }
 
+// Mostrar um rótulo de data pra cada ponto do gráfico lota a fileira e as
+// datas colam umas nas outras (ex.: "18/08" + "21/08" lido como "1808/2108").
+// Escolhe no máximo `max` índices bem espaçados, sempre incluindo o primeiro
+// e o último ponto, pra sobrar respiro entre as datas mostradas.
+export function pickChartLabelIndices(length, max = 6) {
+  if (length <= max) return Array.from({ length }, (_, i) => i);
+  const step = (length - 1) / (max - 1);
+  return Array.from({ length: max }, (_, i) => Math.round(i * step));
+}
+
 function smoothChartPath(points) {
   if (!points?.length) return "";
   if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
@@ -436,7 +446,7 @@ export function MiniLineChart({ data, height = 150, color = "var(--brass)" }) {
       </svg>
 
       <div className="flex justify-between text-[9px] text-faint font-mono">
-        {data.map((item, index) => <span key={index}>{item.label}</span>)}
+        {pickChartLabelIndices(data.length).map((index) => <span key={index}>{data[index].label}</span>)}
       </div>
     </div>
   );
