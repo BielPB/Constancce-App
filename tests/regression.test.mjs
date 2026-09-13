@@ -950,3 +950,29 @@ test("Cor do app: input type=color não usa sr-only (quebrava o painel nativo no
   assert.match(colorInputBlock, /inset: 0,/);
   assert.match(colorInputBlock, /opacity: 0,/);
 });
+
+test("Relatórios: cards do mês mostram comparação com o mês anterior", () => {
+  // As janelas de "mês anterior" usam os mesmos critérios de filtro do mês
+  // atual (dueDate/date dentro de [prevMonthStart, prevMonthEnd)), só deslocadas
+  // um mês pra trás — testado à mão via harness no navegador com dados reais
+  // (tarefas 4/5 vs 2/4 = +30pp, entradas +25%, gastos -43%, saldo +R$2.500,
+  // metas concluídas empatadas = "= mês passado"), confirmando os 4 modos
+  // (points/percent/money/count) e a inversão de cor pra gastos (subir é ruim).
+  assert.match(reportsView, /const prevMonthStartDate = new Date\(monthStartDate\.getFullYear\(\), monthStartDate\.getMonth\(\) - 1, 1\);/);
+  assert.match(reportsView, /const prevMonthEnd = monthStart;/);
+  assert.match(reportsView, /function MonthDelta\(\{ current, previous, mode = "percent", invert = false, formatMoney \}\)/);
+
+  // Tarefas comparam a TAXA de conclusão (pontos percentuais), não a contagem
+  // bruta — meses com números de tarefas diferentes tornariam a comparação de
+  // contagem enganosa.
+  assert.match(reportsView, /const tasksRateMonth = tasksTotalMonth \? Math\.round\(\(tasksDoneMonth \/ tasksTotalMonth\) \* 100\) : null;/);
+  assert.match(reportsView, /<MonthDelta current=\{tasksRateMonth\} previous=\{tasksRatePrevMonth\} mode="points" \/>/);
+
+  // Gastos e saldo precisam da inversão/formato certo: gastar mais é ruim
+  // (invert), e saldo compara diferença em R$ (não %, já que pode cruzar zero).
+  assert.match(reportsView, /<MonthDelta current=\{outMonth\} previous=\{outPrevMonth\} mode="percent" invert \/>/);
+  assert.match(reportsView, /<MonthDelta current=\{inMonth - outMonth\} previous=\{inPrevMonth - outPrevMonth\} mode="money" formatMoney=\{money\} \/>/);
+
+  // Metas concluídas no mês usa completedAt (não o total histórico, que só cresce).
+  assert.match(reportsView, /const goalsCompletedMonth = goals\.filter\(\(g\) => g\.completed && g\.completedAt >= monthStart && g\.completedAt < nextMonthStart\)\.length;/);
+});

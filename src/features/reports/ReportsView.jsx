@@ -157,6 +157,44 @@ function ReportConsistencyHeatmap({ days }) {
   );
 }
 
+// Comparação com o mês anterior, usada nos cards do resumo mensal. `mode`
+// define como a diferença é lida: "points" (pontos percentuais, ex.: taxa de
+// conclusão de tarefas), "percent" (variação relativa, ex.: entradas/gastos),
+// "count" (diferença absoluta, ex.: nº de treinos/metas) ou "money" (diferença
+// absoluta formatada em R$). `invert` marca métricas onde subir é ruim (gastos).
+function MonthDelta({ current, previous, mode = "percent", invert = false, formatMoney }) {
+  if (current == null || previous == null) return null;
+
+  if (mode === "percent" && previous === 0) {
+    if (current === 0) return null;
+    return (
+      <span className={`text-[10px] mt-0.5 inline-flex items-center gap-1 ${invert ? "text-ember" : "text-moss"}`}>
+        <TrendingUp size={10} /> novo vs. mês passado
+      </span>
+    );
+  }
+
+  const diff = mode === "percent" ? Math.round(((current - previous) / previous) * 100) : current - previous;
+  if (diff === 0) return <span className="text-[10px] text-faint mt-0.5 block">= mês passado</span>;
+
+  const good = invert ? diff < 0 : diff > 0;
+  const sign = diff > 0 ? "+" : "-";
+  const label = mode === "percent"
+    ? `${sign}${Math.abs(diff)}%`
+    : mode === "points"
+      ? `${sign}${Math.abs(diff)}pp`
+      : mode === "money"
+        ? `${sign}${formatMoney(Math.abs(diff))}`
+        : `${sign}${Math.abs(diff)}`;
+
+  return (
+    <span className={`text-[10px] mt-0.5 inline-flex items-center gap-1 ${good ? "text-moss" : "text-ember"}`}>
+      {diff > 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+      {label} vs. mês passado
+    </span>
+  );
+}
+
 export default function ReportsView({ habits, completions, tasks, workoutSessions, transactions, goals, isPro, onUpgrade, today, startOfMonth, habitValidOnDate, addDays, money, months, stats }) {
   const t = today();
   const monthStart = startOfMonth(t);
@@ -194,8 +232,28 @@ export default function ReportsView({ habits, completions, tasks, workoutSession
     }, {});
   const topCategory = Object.entries(categoryTotalsMonth).sort((a, b) => b[1] - a[1])[0] || null;
 
+  // Mês anterior ao selecionado — mesmos critérios de filtro acima, só com a
+  // janela de datas deslocada um mês pra trás. Usado só pra comparação
+  // ("vs. mês passado"), não substitui os valores do mês atual em nenhum card.
+  const prevMonthStartDate = new Date(monthStartDate.getFullYear(), monthStartDate.getMonth() - 1, 1);
+  const prevMonthStart = `${prevMonthStartDate.getFullYear()}-${String(prevMonthStartDate.getMonth() + 1).padStart(2, "0")}-01`;
+  const prevMonthEnd = monthStart;
+
+  const tasksInPrevMonth = tasks.filter((tk) => tk.dueDate && tk.dueDate >= prevMonthStart && tk.dueDate < prevMonthEnd);
+  const tasksTotalPrevMonth = tasksInPrevMonth.length;
+  const tasksDonePrevMonth = tasksInPrevMonth.filter((tk) => tk.status === "concluida" || !!tk.completedAt).length;
+  const tasksRateMonth = tasksTotalMonth ? Math.round((tasksDoneMonth / tasksTotalMonth) * 100) : null;
+  const tasksRatePrevMonth = tasksTotalPrevMonth ? Math.round((tasksDonePrevMonth / tasksTotalPrevMonth) * 100) : null;
+
+  const workoutsPrevMonth = workoutSessions.filter((s) => s.date >= prevMonthStart && s.date < prevMonthEnd && s.completed).length;
+
+  const inPrevMonth = transactions.filter((tx) => tx.type === "entrada" && tx.date >= prevMonthStart && tx.date < prevMonthEnd).reduce((s, tx) => s + tx.value, 0);
+  const outPrevMonth = transactions.filter((tx) => tx.type === "saida" && tx.date >= prevMonthStart && tx.date < prevMonthEnd).reduce((s, tx) => s + tx.value, 0);
+
   const goalsProgress = goals.filter((g) => !g.completed);
   const goalsDoneTotal = stats?.goalsDone ?? goals.filter((g) => g.completed).length;
+  const goalsCompletedMonth = goals.filter((g) => g.completed && g.completedAt >= monthStart && g.completedAt < nextMonthStart).length;
+  const goalsCompletedPrevMonth = goals.filter((g) => g.completed && g.completedAt >= prevMonthStart && g.completedAt < prevMonthEnd).length;
 
   const overallScore = stats?.avg30 ?? 0;
   const monthDelta = stats?.monthDelta ?? 0;
@@ -264,19 +322,35 @@ export default function ReportsView({ habits, completions, tasks, workoutSession
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div className="flex items-start gap-2">
             <ListChecks size={15} className="text-brass shrink-0 mt-0.5" />
-            <div><p className="text-faint text-xs">Tarefas concluídas</p><p className="font-mono">{tasksDoneMonth}/{tasksTotalMonth}</p></div>
+            <div>
+              <p className="text-faint text-xs">Tarefas concluídas</p>
+              <p className="font-mono">{tasksDoneMonth}/{tasksTotalMonth}</p>
+              <MonthDelta current={tasksRateMonth} previous={tasksRatePrevMonth} mode="points" />
+            </div>
           </div>
           <div className="flex items-start gap-2">
             <Dumbbell size={15} className="text-brass shrink-0 mt-0.5" />
-            <div><p className="text-faint text-xs">Treinos realizados</p><p className="font-mono">{workoutsMonth}</p></div>
+            <div>
+              <p className="text-faint text-xs">Treinos realizados</p>
+              <p className="font-mono">{workoutsMonth}</p>
+              <MonthDelta current={workoutsMonth} previous={workoutsPrevMonth} mode="count" />
+            </div>
           </div>
           <div className="flex items-start gap-2">
             <Wallet size={15} className="text-moss shrink-0 mt-0.5" />
-            <div><p className="text-faint text-xs">Entradas no mês</p><p className="font-mono text-moss">{money(inMonth)}</p></div>
+            <div>
+              <p className="text-faint text-xs">Entradas no mês</p>
+              <p className="font-mono text-moss">{money(inMonth)}</p>
+              <MonthDelta current={inMonth} previous={inPrevMonth} mode="percent" />
+            </div>
           </div>
           <div className="flex items-start gap-2">
             <Wallet size={15} className="text-ember shrink-0 mt-0.5" />
-            <div><p className="text-faint text-xs">Gastos no mês</p><p className="font-mono text-ember">{money(outMonth)}</p></div>
+            <div>
+              <p className="text-faint text-xs">Gastos no mês</p>
+              <p className="font-mono text-ember">{money(outMonth)}</p>
+              <MonthDelta current={outMonth} previous={outPrevMonth} mode="percent" invert />
+            </div>
           </div>
         </div>
       </div>
@@ -317,7 +391,10 @@ export default function ReportsView({ habits, completions, tasks, workoutSession
               </p>
               <div className="flex items-center justify-between text-sm mb-2">
                 <span className="text-dim">Sessões concluídas neste mês</span>
-                <span className="font-mono">{workoutsMonth}</span>
+                <div className="text-right">
+                  <div className="font-mono">{workoutsMonth}</div>
+                  <MonthDelta current={workoutsMonth} previous={workoutsPrevMonth} mode="count" />
+                </div>
               </div>
               <div className="flex items-center justify-between text-xs text-dim mt-3 pt-3" style={{ borderTop: "1px solid var(--border-soft)" }}>
                 <span>Melhor sequência de treinos</span>
@@ -339,15 +416,24 @@ export default function ReportsView({ habits, completions, tasks, workoutSession
               </p>
               <div className="flex items-center justify-between text-sm mb-1.5">
                 <span className="text-dim">Entradas</span>
-                <span className="font-mono text-moss">{money(inMonth)}</span>
+                <div className="text-right">
+                  <div className="font-mono text-moss">{money(inMonth)}</div>
+                  <MonthDelta current={inMonth} previous={inPrevMonth} mode="percent" />
+                </div>
               </div>
               <div className="flex items-center justify-between text-sm mb-1.5">
                 <span className="text-dim">Gastos</span>
-                <span className="font-mono text-ember">{money(outMonth)}</span>
+                <div className="text-right">
+                  <div className="font-mono text-ember">{money(outMonth)}</div>
+                  <MonthDelta current={outMonth} previous={outPrevMonth} mode="percent" invert />
+                </div>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-dim">Saldo</span>
-                <span className={`font-mono ${inMonth - outMonth >= 0 ? "text-moss" : "text-ember"}`}>{money(inMonth - outMonth)}</span>
+                <div className="text-right">
+                  <div className={`font-mono ${inMonth - outMonth >= 0 ? "text-moss" : "text-ember"}`}>{money(inMonth - outMonth)}</div>
+                  <MonthDelta current={inMonth - outMonth} previous={inPrevMonth - outPrevMonth} mode="money" formatMoney={money} />
+                </div>
               </div>
               {topCategory && (
                 <div className="flex items-center justify-between text-xs text-dim mt-3 pt-3" style={{ borderTop: "1px solid var(--border-soft)" }}>
@@ -377,6 +463,13 @@ export default function ReportsView({ habits, completions, tasks, workoutSession
                 })}
               </div>
               <div className="flex items-center justify-between text-xs text-dim mt-3 pt-3" style={{ borderTop: "1px solid var(--border-soft)" }}>
+                <span>Concluídas neste mês</span>
+                <div className="text-right">
+                  <div className="font-mono">{goalsCompletedMonth}</div>
+                  <MonthDelta current={goalsCompletedMonth} previous={goalsCompletedPrevMonth} mode="count" />
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-xs text-dim mt-1.5">
                 <span>Metas concluídas (total)</span>
                 <span className="font-mono">{goalsDoneTotal}</span>
               </div>
