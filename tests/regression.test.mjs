@@ -976,3 +976,13 @@ test("Relatórios: cards do mês mostram comparação com o mês anterior", () =
   // Metas concluídas no mês usa completedAt (não o total histórico, que só cresce).
   assert.match(reportsView, /const goalsCompletedMonth = goals\.filter\(\(g\) => g\.completed && g\.completedAt >= monthStart && g\.completedAt < nextMonthStart\)\.length;/);
 });
+
+test("Relatórios: baixar PDF é restrito a usuários PRO", () => {
+  // O botão "Baixar PDF" ficava disponível pra qualquer usuário (só a análise
+  // detalhada abaixo dele era travada por isPro). Agora free só chama onUpgrade
+  // e nunca dispara window.print() — testado no navegador com harness real:
+  // clique em free chamou onUpgrade("reports") sem abrir a janela de impressão.
+  assert.match(reportsView, /if \(!isPro\) \{\s*\n\s*onUpgrade\("reports"\);\s*\n\s*return;\s*\n\s*\}\s*\n\s*window\.print\(\);/);
+  assert.match(reportsView, /\{isPro \? <Download size=\{15\} \/> : <Lock size=\{15\} \/>\} Baixar PDF\{!isPro && <ProBadge compact \/>\}/);
+  assert.match(reportsView, /import \{ Progress, ProLockCard, ProBadge \} from "\.\.\/\.\.\/components\/ui\.jsx";/);
+});

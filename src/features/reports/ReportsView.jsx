@@ -12,8 +12,9 @@ import {
   TrendingDown,
   Lightbulb,
   Trophy,
+  Lock,
 } from "lucide-react";
-import { Progress, ProLockCard } from "../../components/ui.jsx";
+import { Progress, ProLockCard, ProBadge } from "../../components/ui.jsx";
 
 /* -----------------------------------------------------------------------
    Mini gráficos — cópias enxutas e autocontidas de MiniLineChart /
@@ -283,12 +284,20 @@ export default function ReportsView({ habits, completions, tasks, workoutSession
           <button
             type="button"
             className="btn-primary rounded-xl px-4 py-2.5 text-sm inline-flex items-center gap-2"
-            onClick={() => window.print()}
+            onClick={() => {
+              if (!isPro) {
+                onUpgrade("reports");
+                return;
+              }
+              window.print();
+            }}
           >
-            <Download size={15} /> Baixar PDF
+            {isPro ? <Download size={15} /> : <Lock size={15} />} Baixar PDF{!isPro && <ProBadge compact />}
           </button>
           <p className="text-[10px] text-faint mt-1 max-w-[230px] text-right leading-relaxed">
-            Abre a janela de impressão do navegador — escolha "Salvar como PDF" no destino.
+            {isPro
+              ? 'Abre a janela de impressão do navegador — escolha "Salvar como PDF" no destino.'
+              : "Exportar o relatório em PDF é um recurso PRO."}
           </p>
         </div>
       </div>
