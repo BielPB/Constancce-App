@@ -1,4 +1,4 @@
-import React, { useId } from "react";
+import React, { useId, useState } from "react";
 import {
   FileBarChart,
   Download,
@@ -13,6 +13,8 @@ import {
   Lightbulb,
   Trophy,
   Lock,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Progress, ProLockCard, ProBadge, pickChartLabelIndices } from "../../components/ui.jsx";
 
@@ -198,18 +200,41 @@ function MonthDelta({ current, previous, mode = "percent", invert = false, forma
 
 export default function ReportsView({ habits, completions, tasks, workoutSessions, transactions, goals, isPro, onUpgrade, today, startOfMonth, habitValidOnDate, addDays, money, months, stats }) {
   const t = today();
-  const monthStart = startOfMonth(t);
+
+  // Mês exibido no relatório — 0 é o mês atual, negativo navega pro passado.
+  // Não deixa avançar além do mês atual (não existe relatório do futuro).
+  const [monthOffset, setMonthOffset] = useState(0);
+  const shiftMonth = (dateStr, offset) => {
+    const d = new Date(`${dateStr}T12:00:00`);
+    d.setMonth(d.getMonth() + offset);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  };
+  const monthStart = shiftMonth(startOfMonth(t), monthOffset);
   // Primeiro dia do mês seguinte ao selecionado — usado como limite superior
   // (exclusivo) de todos os filtros "deste mês", para não incluir lançamentos
-  // futuros de meses posteriores. new Date(ano, mês+1, 1) normaliza sozinho a
-  // virada dezembro (11) -> janeiro do ano seguinte.
+  // futuros de meses posteriores.
   const monthStartDate = new Date(`${monthStart}T00:00:00`);
-  const nextMonthDate = new Date(monthStartDate.getFullYear(), monthStartDate.getMonth() + 1, 1);
-  const nextMonthStart = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}-01`;
-  const monthLabel = months[new Date(`${t}T12:00:00`).getMonth()];
+  const nextMonthStart = shiftMonth(monthStart, 1);
+  const monthLabel = `${months[monthStartDate.getMonth()]} de ${monthStartDate.getFullYear()}`;
+  const isCurrentMonth = monthOffset === 0;
 
-  const best = stats?.bestHabit && stats.bestHabit !== "—" ? { name: stats.bestHabit, rate: stats.bestHabitRate || 0 } : null;
-  const worst = stats?.worstHabit && stats.worstHabit !== "—" ? { name: stats.worstHabit, rate: stats.worstHabitRate || 0 } : null;
+  // Melhor/pior hábito calculado no próprio mês exibido (não nos últimos 90
+  // dias como stats.bestHabit/worstHabit), pra bater com a janela de tempo do
+  // resto do card e continuar correto ao navegar pra um mês passado. No mês
+  // atual (ainda em andamento) a janela para no dia de hoje — contar os dias
+  // que ainda vão acontecer como "não cumpridos" derrubaria a taxa à toa.
+  const habitRateWindowEnd = isCurrentMonth ? addDays(t, 1) : nextMonthStart;
+  const habitMonthRates = habits.map((h) => {
+    const relevantDates = [];
+    for (let d = monthStart; d < habitRateWindowEnd; d = addDays(d, 1)) {
+      if (habitValidOnDate(h, d, completions)) relevantDates.push(d);
+    }
+    if (!relevantDates.length) return null;
+    const done = relevantDates.filter((d) => completions.some((c) => c.habitId === h.id && c.date === d)).length;
+    return { name: h.name, rate: Math.round((done / relevantDates.length) * 100) };
+  }).filter(Boolean).sort((a, b) => b.rate - a.rate);
+  const best = habitMonthRates[0] || null;
+  const worst = habitMonthRates.length > 1 ? habitMonthRates[habitMonthRates.length - 1] : null;
 
   // Coorte = tarefas com vencimento dentro do mês (carga de trabalho do mês).
   // Antes o numerador usava completedAt e o denominador usava createdAt —
@@ -236,8 +261,7 @@ export default function ReportsView({ habits, completions, tasks, workoutSession
   // Mês anterior ao selecionado — mesmos critérios de filtro acima, só com a
   // janela de datas deslocada um mês pra trás. Usado só pra comparação
   // ("vs. mês passado"), não substitui os valores do mês atual em nenhum card.
-  const prevMonthStartDate = new Date(monthStartDate.getFullYear(), monthStartDate.getMonth() - 1, 1);
-  const prevMonthStart = `${prevMonthStartDate.getFullYear()}-${String(prevMonthStartDate.getMonth() + 1).padStart(2, "0")}-01`;
+  const prevMonthStart = shiftMonth(monthStart, -1);
   const prevMonthEnd = monthStart;
 
   const tasksInPrevMonth = tasks.filter((tk) => tk.dueDate && tk.dueDate >= prevMonthStart && tk.dueDate < prevMonthEnd);
@@ -279,6 +303,30 @@ export default function ReportsView({ habits, completions, tasks, workoutSession
             <FileBarChart size={22} className="text-brass" /> Relatórios
           </h2>
           <p className="text-dim text-sm mt-1">Resumo consolidado de {monthLabel}.</p>
+          <div className="print-hidden flex items-center gap-1.5 mt-2">
+            <button
+              type="button"
+              className="btn-ghost rounded-lg p-1.5"
+              onClick={() => setMonthOffset((o) => o - 1)}
+              aria-label="Ver mês anterior"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <button
+              type="button"
+              className="btn-ghost rounded-lg p-1.5 disabled:opacity-30 disabled:cursor-default"
+              onClick={() => setMonthOffset((o) => Math.min(0, o + 1))}
+              disabled={isCurrentMonth}
+              aria-label="Ver próximo mês"
+            >
+              <ChevronRight size={14} />
+            </button>
+            {!isCurrentMonth && (
+              <button type="button" className="text-[10px] text-brass" onClick={() => setMonthOffset(0)}>
+                Voltar pro mês atual
+              </button>
+            )}
+          </div>
         </div>
         <div className="print-hidden flex flex-col items-end">
           <button
@@ -456,6 +504,11 @@ export default function ReportsView({ habits, completions, tasks, workoutSession
               <p className="text-[10px] text-faint uppercase tracking-widest mb-3 flex items-center gap-1.5">
                 <Target size={13} className="text-brass" /> Metas
               </p>
+              {!isCurrentMonth && (
+                <p className="text-[10px] text-faint mb-2 leading-relaxed">
+                  O progresso abaixo é o estado atual das metas — ainda não guardamos um histórico de progresso por mês.
+                </p>
+              )}
               {goalsProgress.length === 0 && <p className="text-dim text-sm">Nenhuma meta em aberto.</p>}
               <div className="flex flex-col gap-2">
                 {goalsProgress.map((g) => {

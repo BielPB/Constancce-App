@@ -958,7 +958,7 @@ test("Relatórios: cards do mês mostram comparação com o mês anterior", () =
   // (tarefas 4/5 vs 2/4 = +30pp, entradas +25%, gastos -43%, saldo +R$2.500,
   // metas concluídas empatadas = "= mês passado"), confirmando os 4 modos
   // (points/percent/money/count) e a inversão de cor pra gastos (subir é ruim).
-  assert.match(reportsView, /const prevMonthStartDate = new Date\(monthStartDate\.getFullYear\(\), monthStartDate\.getMonth\(\) - 1, 1\);/);
+  assert.match(reportsView, /const prevMonthStart = shiftMonth\(monthStart, -1\);/);
   assert.match(reportsView, /const prevMonthEnd = monthStart;/);
   assert.match(reportsView, /function MonthDelta\(\{ current, previous, mode = "percent", invert = false, formatMoney \}\)/);
 
@@ -1002,4 +1002,29 @@ test("Gráfico de tendência: rótulos de data não colam uns nos outros quando 
   // helper — não só um dos dois, senão o bug volta pra metade das telas.
   assert.match(ui, /\{pickChartLabelIndices\(data\.length\)\.map\(\(index\) => <span key=\{index\}>\{data\[index\]\.label\}<\/span>\)\}/);
   assert.match(reportsView, /\{pickChartLabelIndices\(data\.length\)\.map\(\(index\) => <span key=\{index\}>\{data\[index\]\.label\}<\/span>\)\}/);
+});
+
+test("Relatórios: navegação por mês (o PDF exporta o mês escolhido, não só o atual)", () => {
+  // monthOffset é estado local — 0 é o mês atual, negativo navega pro
+  // passado. Setas de navegação ficam fora de .print-hidden só na direção
+  // "próximo" quando já está no mês atual (não existe relatório do futuro).
+  assert.match(reportsView, /const \[monthOffset, setMonthOffset\] = useState\(0\);/);
+  assert.match(reportsView, /const monthStart = shiftMonth\(startOfMonth\(t\), monthOffset\);/);
+  assert.match(reportsView, /const isCurrentMonth = monthOffset === 0;/);
+  assert.match(reportsView, /onClick=\{\(\) => setMonthOffset\(\(o\) => o - 1\)\}/);
+  assert.match(reportsView, /onClick=\{\(\) => setMonthOffset\(\(o\) => Math\.min\(0, o \+ 1\)\)\}/);
+  assert.match(reportsView, /disabled=\{isCurrentMonth\}/);
+
+  // Achado real testando no navegador: contar o mês inteiro (30 dias) como
+  // base da taxa de hábito no mês AINDA EM ANDAMENTO derrubava a % à toa,
+  // já que os dias futuros do próprio mês nunca têm conclusão possível. A
+  // janela usada pro cálculo da taxa precisa parar em hoje nesse caso.
+  assert.match(reportsView, /const habitRateWindowEnd = isCurrentMonth \? addDays\(t, 1\) : nextMonthStart;/);
+  assert.match(reportsView, /for \(let d = monthStart; d < habitRateWindowEnd; d = addDays\(d, 1\)\)/);
+
+  // Metas: como não há histórico de progresso por mês, avisar quando o
+  // usuário está vendo um mês passado em vez de mostrar barras de progresso
+  // atuais como se fossem daquele mês.
+  assert.match(reportsView, /\{!isCurrentMonth && \(/);
+  assert.match(reportsView, /O progresso abaixo é o estado atual das metas/);
 });
