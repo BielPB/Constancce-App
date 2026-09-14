@@ -11,8 +11,11 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
-          if (id.includes("react") || id.includes("scheduler")) return "react-vendor";
+          // lucide-react precisa ser checado antes do bucket "react-vendor" —
+          // "react" é substring de "lucide-react", então a ordem antiga fazia
+          // os ícones caírem junto com react/react-dom em vez do chunk próprio.
           if (id.includes("lucide-react")) return "icons";
+          if (id.includes("react") || id.includes("scheduler")) return "react-vendor";
           return "vendor";
         },
       },

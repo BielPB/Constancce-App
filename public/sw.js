@@ -83,15 +83,24 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  // Abrir o app (navegação) usava network-first: esperava uma ida-e-volta de
+  // rede completa antes de mostrar qualquer coisa, mesmo já tendo o shell em
+  // cache. Agora usa a mesma estratégia stale-while-revalidate dos demais
+  // arquivos abaixo — mostra o cache na hora e atualiza em segundo plano.
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const clone = response.clone();
-          caches.open(CONSTANCCE_CACHE).then((cache) => cache.put("/index.html", clone)).catch(() => {});
-          return response;
-        })
-        .catch(() => caches.match("/index.html"))
+      caches.match("/index.html").then((cached) => {
+        const network = fetch(request)
+          .then((response) => {
+            if (response.ok) {
+              const clone = response.clone();
+              caches.open(CONSTANCCE_CACHE).then((cache) => cache.put("/index.html", clone)).catch(() => {});
+            }
+            return response;
+          })
+          .catch(() => cached);
+        return cached || network;
+      })
     );
     return;
   }

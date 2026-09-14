@@ -15,6 +15,9 @@ const financeBillForm = await readFile(new URL("../src/features/finance/FinanceB
 const appCss = await readFile(new URL("../src/styles/app.css", import.meta.url), "utf8");
 const themeLib = await readFile(new URL("../src/lib/theme.js", import.meta.url), "utf8");
 const errorBoundary = await readFile(new URL("../src/components/ErrorBoundary.jsx", import.meta.url), "utf8");
+const serviceWorker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
+const mainEntry = await readFile(new URL("../main.jsx", import.meta.url), "utf8");
+const viteConfig = await readFile(new URL("../vite.config.js", import.meta.url), "utf8");
 
 test("regressões críticas permanecem protegidas", () => {
   assert.match(app, /const renderCurrentView = \(\) =>/);
@@ -1054,4 +1057,32 @@ test("Relatórios: navegação por mês (o PDF exporta o mês escolhido, não s�
   // atuais como se fossem daquele mês.
   assert.match(reportsView, /\{!isCurrentMonth && \(/);
   assert.match(reportsView, /O progresso abaixo é o estado atual das metas/);
+});
+
+test("Velocidade de abertura: service worker registra cedo e usa stale-while-revalidate no shell", () => {
+  // Antes o único registro do SW ficava dentro do fluxo de permissão de push
+  // em App.jsx — sem PushManager (ex.: iOS fora do modo instalado), o SW
+  // nunca existia e a abertura do app nunca se beneficiava de cache nenhum.
+  // register() é idempotente, então registrar cedo aqui não conflita com o
+  // que App.jsx ainda faz para configurar push.
+  assert.match(mainEntry, /if \("serviceWorker" in navigator\) \{/);
+  assert.match(mainEntry, /navigator\.serviceWorker\.register\("\/sw\.js", \{ scope: "\/", updateViaCache: "none" \}\)\.catch/);
+
+  // A navegação (abrir o app) usava network-first — esperava uma ida-e-volta
+  // de rede completa antes de mostrar qualquer coisa, mesmo já tendo o shell
+  // em cache. Agora usa a mesma estratégia stale-while-revalidate já usada
+  // pros demais arquivos (cache na hora, atualiza em segundo plano).
+  assert.doesNotMatch(serviceWorker, /if \(request\.mode === "navigate"\) \{\s*\n\s*event\.respondWith\(\s*\n\s*fetch\(request\)/);
+  assert.match(serviceWorker, /if \(request\.mode === "navigate"\) \{\s*\n\s*event\.respondWith\(\s*\n\s*caches\.match\("\/index\.html"\)\.then\(\(cached\) => \{/);
+});
+
+test("Velocidade de abertura: lucide-react vira chunk próprio, não junto do react-vendor", () => {
+  // "react" é substring de "lucide-react" — checar o bucket "react-vendor"
+  // antes do de ícones fazia lucide-react cair ali junto (confirmado: o
+  // build passou a gerar um chunk icons-*.js separado, e react-vendor
+  // encolheu de ~176KB pra ~142KB depois da correção).
+  const lucideCheckIndex = viteConfig.indexOf('id.includes("lucide-react")');
+  const reactCheckIndex = viteConfig.indexOf('id.includes("react")');
+  assert.ok(lucideCheckIndex > -1 && reactCheckIndex > -1, "checagens não encontradas em vite.config.js");
+  assert.ok(lucideCheckIndex < reactCheckIndex, "lucide-react precisa ser checado antes do bucket react-vendor");
 });
