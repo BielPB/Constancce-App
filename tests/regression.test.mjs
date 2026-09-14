@@ -179,6 +179,26 @@ test("Treinos Hoje abre mini histórico ao tocar em qualquer dia de 'Sua semana'
   assert.match(workoutsView, /selectedHistorySessions/);
 });
 
+test("Treinos: ícone de calendário em 'Sua semana' abre o mês inteiro, clicar num dia abre o treino", () => {
+  // Botão ao lado do chip "N treinos" abre um modal de calendário mensal
+  // (reaproveita a classe .workout-week-day, mesmo visual da faixa semanal:
+  // ✓ feito, ● programado, — nada). Navegação de mês trava no futuro (não
+  // existe treino de mês que não aconteceu ainda) — mesmo padrão já usado
+  // em Relatórios (shiftMonth/monthOffset).
+  assert.match(workoutsView, /const \[showMonthCalendar, setShowMonthCalendar\] = useState\(false\);/);
+  assert.match(workoutsView, /const \[calendarMonthOffset, setCalendarMonthOffset\] = useState\(0\);/);
+  assert.match(workoutsView, /const shiftMonthStart = \(monthStartStr, offset\) => \{/);
+  assert.match(workoutsView, /const calendarIsCurrentMonth = calendarMonthOffset === 0;/);
+  assert.match(workoutsView, /onClick=\{\(\) => \{\s*\n\s*setCalendarMonthOffset\(0\);\s*\n\s*setShowMonthCalendar\(true\);\s*\n\s*\}\}/);
+  assert.match(workoutsView, /disabled=\{calendarIsCurrentMonth\}/);
+
+  // Clicar num dia do calendário mensal fecha o calendário e abre o mesmo
+  // modal de histórico do dia usado na faixa semanal (substituir, não
+  // empilhar — evita dois modais escutando Escape ao mesmo tempo).
+  assert.match(workoutsView, /onClick=\{\(\) => \{\s*\n\s*setShowMonthCalendar\(false\);\s*\n\s*setSelectedHistoryDate\(date\);\s*\n\s*\}\}/);
+  assert.match(workoutsView, /title="Calendário de treinos"/);
+});
+
 test("nome do exercício abre vídeo explicativo sob demanda", () => {
   assert.match(workoutsView, /workoutVideoSource/);
   assert.match(workoutTemplateForm, /Vídeo explicativo \(YouTube, Vimeo ou MP4\)/);

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   ArrowRightLeft, BrainCircuit, Calendar as CalendarIcon, CheckCircle2, ChevronDown, ChevronUp,
+  ChevronLeft, ChevronRight,
   Circle, Copy, Dumbbell, GripVertical, Lock, Pencil, Play, Plus, RefreshCw, Repeat2, RotateCcw,
   Share2, Sparkles, Star, Stethoscope, Timer, Trash2, Trophy, Upload, X,
 } from "lucide-react";
@@ -27,6 +28,11 @@ const addDays = (dateStr, n) => {
 };
 const weekdayIndex = (dateStr = today()) => new Date(dateStr + "T12:00:00").getDay();
 const startOfWeek = (dateStr) => { const d = new Date(dateStr + "T00:00:00"); d.setDate(d.getDate() - d.getDay()); return fmt(d); };
+const shiftMonthStart = (monthStartStr, offset) => {
+  const d = new Date(`${monthStartStr}T12:00:00`);
+  d.setMonth(d.getMonth() + offset);
+  return fmt(new Date(d.getFullYear(), d.getMonth(), 1));
+};
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const uid = () => Math.random().toString(36).slice(2, 10);
 const dateLabel = (dateStr, options = { weekday: "short", day: "2-digit", month: "2-digit" }) => {
@@ -598,6 +604,8 @@ function WorkoutsView({
   const [shareNotice, setShareNotice] = useState("");
   const pullingWorkoutRef = useRef(false);
   const [selectedHistoryDate, setSelectedHistoryDate] = useState(null);
+  const [showMonthCalendar, setShowMonthCalendar] = useState(false);
+  const [calendarMonthOffset, setCalendarMonthOffset] = useState(0);
   const [exerciseGuide, setExerciseGuide] = useState(null);
   const [prescribeTemplate, setPrescribeTemplate] = useState(null);
   const [prescribeClients, setPrescribeClients] = useState([]);
@@ -794,6 +802,18 @@ function WorkoutsView({
 
   const weekStart = startOfWeek(t);
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
+
+  // Calendário do mês inteiro (modal "Sua semana" > ícone de calendário) —
+  // mesma lógica de feito/programado da faixa semanal, só que pro mês
+  // selecionado. Não deixa avançar além do mês atual.
+  const calendarMonthStart = shiftMonthStart(`${t.slice(0, 7)}-01`, calendarMonthOffset);
+  const calendarMonthDate = new Date(`${calendarMonthStart}T12:00:00`);
+  const calendarIsCurrentMonth = calendarMonthOffset === 0;
+  const calendarDaysInMonth = new Date(calendarMonthDate.getFullYear(), calendarMonthDate.getMonth() + 1, 0).getDate();
+  const calendarLeadingBlanks = weekdayIndex(calendarMonthStart);
+  const calendarDays = Array.from({ length: calendarDaysInMonth }, (_, index) => addDays(calendarMonthStart, index));
+  const calendarMonthLabelRaw = calendarMonthDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const calendarMonthLabel = calendarMonthLabelRaw.charAt(0).toUpperCase() + calendarMonthLabelRaw.slice(1);
 
   const muscleWeekDays = Array.from({ length: 7 }, (_, i) => addDays(t, i - 6));
   const muscleWeekGrid = workoutMuscleWeekGrid(templates, sessions, muscleWeekDays);
@@ -1157,13 +1177,27 @@ function WorkoutsView({
                   </span>
                 </p>
               </div>
-              <span className="chip">
-                {sessions.filter((session) =>
-                  session.completed &&
-                  session.date >= weekStart &&
-                  session.date <= addDays(weekStart, 6)
-                ).length} treinos
-              </span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="chip">
+                  {sessions.filter((session) =>
+                    session.completed &&
+                    session.date >= weekStart &&
+                    session.date <= addDays(weekStart, 6)
+                  ).length} treinos
+                </span>
+                <button
+                  type="button"
+                  className="btn-ghost rounded-lg p-1.5"
+                  onClick={() => {
+                    setCalendarMonthOffset(0);
+                    setShowMonthCalendar(true);
+                  }}
+                  aria-label="Ver calendário do mês"
+                  title="Ver calendário do mês"
+                >
+                  <CalendarIcon size={14} />
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-7 gap-1.5">
@@ -2499,6 +2533,82 @@ function WorkoutsView({
           >
             Adicionar treino à minha conta
           </button>
+        </Modal>
+      )}
+
+      {showMonthCalendar && (
+        <Modal
+          title="Calendário de treinos"
+          onClose={() => setShowMonthCalendar(false)}
+          width={480}
+        >
+          <div className="workout-month-calendar flex flex-col gap-3">
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                className="btn-ghost rounded-lg p-1.5"
+                onClick={() => setCalendarMonthOffset((o) => o - 1)}
+                aria-label="Ver mês anterior"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <p className="text-sm font-medium min-w-[170px] text-center">{calendarMonthLabel}</p>
+              <button
+                type="button"
+                className="btn-ghost rounded-lg p-1.5 disabled:opacity-30 disabled:cursor-default"
+                onClick={() => setCalendarMonthOffset((o) => Math.min(0, o + 1))}
+                disabled={calendarIsCurrentMonth}
+                aria-label="Ver próximo mês"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-7 gap-1.5">
+              {WEEKDAYS.map((weekday) => (
+                <span key={weekday} className="text-[9px] text-faint uppercase tracking-wide text-center py-1">{weekday}</span>
+              ))}
+              {Array.from({ length: calendarLeadingBlanks }).map((_, index) => (
+                <div key={`blank-${index}`} />
+              ))}
+              {calendarDays.map((date) => {
+                const done = sessions.some((session) => session.completed && session.date === date);
+                const scheduled = templates.some((template) =>
+                  (template.scheduleDays || []).includes(workoutEffectiveWeekday(date, workoutScheduleOffsetDays))
+                );
+                const isToday = date === t;
+
+                return (
+                  <button
+                    type="button"
+                    key={date}
+                    className="workout-week-day rounded-lg py-2 text-center cursor-pointer"
+                    onClick={() => {
+                      setShowMonthCalendar(false);
+                      setSelectedHistoryDate(date);
+                    }}
+                    aria-label={`Ver treino de ${dateLabel(date)}`}
+                    title="Ver treino deste dia"
+                    style={{
+                      border: `1px solid ${isToday ? "var(--brass-dim)" : "var(--border-soft)"}`,
+                      background: isToday ? "color-mix(in srgb, var(--brass) 5%, var(--surface-2))" : "var(--surface-2)",
+                      opacity: date > t ? 0.68 : 1,
+                    }}
+                  >
+                    <p className="font-mono text-[11px]">{new Date(`${date}T12:00:00`).getDate()}</p>
+                    <p className={`text-[10px] mt-0.5 ${done || scheduled ? "text-brass" : "text-faint"}`}>
+                      {done ? "✓" : scheduled ? "●" : "—"}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="text-[10px] text-faint flex items-center gap-2.5 flex-wrap justify-center mt-1">
+              <span className="flex items-center gap-1"><CheckCircle2 size={11} className="text-brass" /> feito</span>
+              <span className="flex items-center gap-1"><Circle size={11} className="text-brass" /> programado</span>
+            </p>
+          </div>
         </Modal>
       )}
 
