@@ -1174,18 +1174,14 @@ function WorkoutsView({
                 );
                 const isToday = date === t;
 
-                const isPast = date < t;
-
                 return (
                   <button
                     type="button"
                     key={date}
-                    className={`workout-week-day rounded-xl py-2 px-1 text-center ${isPast ? "cursor-pointer" : "cursor-default"}`}
-                    onClick={() => {
-                      if (isPast) setSelectedHistoryDate(date);
-                    }}
-                    aria-label={isPast ? `Ver treino de ${dateLabel(date)}` : undefined}
-                    title={isPast ? "Ver treino deste dia" : undefined}
+                    className="workout-week-day rounded-xl py-2 px-1 text-center cursor-pointer"
+                    onClick={() => setSelectedHistoryDate(date)}
+                    aria-label={`Ver treino de ${dateLabel(date)}`}
+                    title="Ver treino deste dia"
                     style={{
                       border: `1px solid ${isToday ? "var(--brass-dim)" : "var(--border-soft)"}`,
                       background: isToday ? "color-mix(in srgb, var(--brass) 5%, var(--surface-2))" : "var(--surface-2)",

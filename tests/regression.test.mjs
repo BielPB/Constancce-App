@@ -164,11 +164,18 @@ test("tarefas exibem descrição completa sem truncamento", async () => {
   assert.match(styles, /-webkit-line-clamp:unset !important/);
 });
 
-test("Treinos Hoje abre mini histórico ao tocar em dias passados", () => {
+test("Treinos Hoje abre mini histórico ao tocar em qualquer dia de 'Sua semana'", () => {
+  // Antes só dias passados (isPast = date < t) abriam o modal — clicar em
+  // hoje, logo depois de treinar, não fazia nada. selectedHistorySessions/
+  // selectedHistoryPlannedTemplates já filtram só por igualdade de data (sem
+  // depender de passado/futuro), então liberar o clique pros 7 dias da
+  // semana não precisou de mudança nelas, só remover a trava do onClick.
   assert.match(workoutsView, /selectedHistoryDate/);
-  assert.match(workoutsView, /if \(isPast\) setSelectedHistoryDate\(date\)/);
+  assert.match(workoutsView, /onClick=\{\(\) => setSelectedHistoryDate\(date\)\}/);
+  assert.doesNotMatch(workoutsView, /if \(isPast\) setSelectedHistoryDate\(date\)/);
   assert.match(workoutsView, /Mini histórico/);
   assert.match(workoutsView, /Nenhum treino registrado neste dia/);
+  assert.match(workoutsView, /Treino programado, mas sem execução registrada/);
   assert.match(workoutsView, /selectedHistorySessions/);
 });
 
