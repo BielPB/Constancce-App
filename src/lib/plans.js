@@ -4,7 +4,6 @@ export const PRO_LIMITS = {
   workouts: 2,
   activeGoals: 1,
   friends: 3,
-  challenges: 1,
   historyDays: 30,
   dietFavorites: 5,
   dietSavedMeals: 2,

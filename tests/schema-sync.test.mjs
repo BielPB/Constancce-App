@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DATA_SCHEMA_VERSION, migrateUserData } from "../src/lib/schema.js";
-import { DOMAIN_FIELDS, domainsForPatch, buildDomainRows, mergeDomainRows, pickDataForKeys, mergePendingPayload, mergeRemoteWithPending } from "../src/lib/syncDomains.js";
+import { DOMAIN_FIELDS, domainsForPatch, mergeDomainRows, pickDataForKeys } from "../src/lib/syncDomains.js";
 
 test("migrateUserData normaliza dados legados sem apagar coleções", () => {
   const migrated = migrateUserData({
@@ -23,18 +23,6 @@ test("domainsForPatch retorna somente os domínios alterados", () => {
   assert.deepEqual(domainsForPatch({ profile: {}, transactions: [] }).sort(), ["account", "finance"]);
 });
 
-test("buildDomainRows separa payload por domínio", () => {
-  const rows = buildDomainRows(
-    "00000000-0000-0000-0000-000000000001",
-    { tasks: [{ id: "1" }], mealLog: [{ id: "2" }], foods: [], schemaVersion: 4 },
-    ["tasks", "diet"],
-    "2026-08-26T12:00:00.000Z"
-  );
-  assert.equal(rows.length, 2);
-  assert.deepEqual(rows.find((row) => row.domain === "tasks").data.tasks, [{ id: "1" }]);
-  assert.deepEqual(rows.find((row) => row.domain === "diet").data.mealLog, [{ id: "2" }]);
-});
-
 test("mergeDomainRows preserva o updated_at mais recente", () => {
   const merged = mergeDomainRows([
     { domain: "tasks", data: { tasks: [{ id: "a" }] }, updated_at: "2026-08-25T10:00:00.000Z" },
@@ -53,53 +41,6 @@ test("pickDataForKeys reduz o payload ao domínio alterado", () => {
   assert.equal(picked.schemaVersion, 4);
 });
 
-
-test("mergePendingPayload preserva uma alteração rápida anterior em outro campo do mesmo domínio", () => {
-  const first = mergePendingPayload(null, {
-    foods: [{ id: "f-old" }],
-    mealLog: [{ id: "meal-new" }],
-    tasks: [],
-    schemaVersion: 4,
-    __syncDomainUpdatedAt: { diet: "2026-08-31T10:00:00.000Z" },
-  }, ["mealLog"]);
-
-  const second = mergePendingPayload(first, {
-    foods: [{ id: "food-new" }],
-    mealLog: [], // snapshot do mesmo render ainda estava antigo
-    tasks: [],
-    schemaVersion: 4,
-    __syncDomainUpdatedAt: { diet: "2026-08-31T10:00:00.000Z" },
-  }, ["foods"]);
-
-  assert.deepEqual(second.changedKeys.sort(), ["foods", "mealLog"]);
-  assert.deepEqual(second.data.mealLog, [{ id: "meal-new" }]);
-  assert.deepEqual(second.data.foods, [{ id: "food-new" }]);
-});
-
-test("mergeRemoteWithPending reaplica somente campos locais ainda não sincronizados", () => {
-  const remote = {
-    tasks: [{ id: "remote-task" }],
-    workoutSessions: [{ id: "remote-session" }],
-    workoutTemplates: [{ id: "remote-template" }],
-    schemaVersion: 4,
-    __syncUpdatedAt: "2026-08-31T11:00:00.000Z",
-    __syncDomainUpdatedAt: { tasks: "2026-08-31T11:00:00.000Z", workouts: "2026-08-31T11:00:00.000Z" },
-  };
-  const pending = {
-    data: {
-      tasks: [{ id: "local-task" }],
-      workoutSessions: [{ id: "stale-local-session" }],
-      workoutTemplates: [{ id: "stale-local-template" }],
-      schemaVersion: 4,
-    },
-    changedKeys: ["tasks"],
-  };
-  const merged = mergeRemoteWithPending(remote, pending);
-  assert.deepEqual(merged.tasks, [{ id: "local-task" }]);
-  assert.deepEqual(merged.workoutSessions, [{ id: "remote-session" }]);
-  assert.deepEqual(merged.workoutTemplates, [{ id: "remote-template" }]);
-  assert.equal(merged.__syncUpdatedAt, "2026-08-31T11:00:00.000Z");
-});
 
 import { mergeEntityArray3Way, mergeRemoteWithPendingV3, mergePendingPayloadV3, rebasePendingV3 } from "../src/lib/syncV3.js";
 

@@ -1,7 +1,7 @@
 import { createClient as createSupabaseRealtimeClient } from "@supabase/supabase-js";
 import React, { useState, useEffect, useMemo, useCallback, useRef, useId, lazy, Suspense } from "react";
 import { DATA_SCHEMA_VERSION, migrateUserData } from "./src/lib/schema.js";
-import { DOMAIN_FIELDS, mergeDomainRows, pickDataForKeys, mergePendingPayload, mergeRemoteWithPending } from "./src/lib/syncDomains.js";
+import { DOMAIN_FIELDS, mergeDomainRows, pickDataForKeys } from "./src/lib/syncDomains.js";
 import { mergePendingPayloadV3, mergeRemoteWithPendingV3, rebasePendingV3, newMutationId, mergeEntityArray3Way } from "./src/lib/syncV3.js";
 import { compactTaskOutbox, applyTaskOutbox, makeTaskUpsert, makeTaskDelete } from "./src/lib/taskSyncV6.js";
 import { ROUTINE_COLLECTIONS, ROUTINE_FIELDS, compactRoutineOutbox, buildRoutineOps, routineFieldsFromRows, applyRoutineOutbox, mergeRoutineBootstrap } from "./src/lib/routineSyncV1.js";
@@ -1152,19 +1152,6 @@ const goalValueLabel = (goal, value) =>
     ? money(value)
     : (Number(value) || 0).toLocaleString("pt-BR");
 
-const monthsUntilGoal = (endDate) => {
-  if (!endDate) return 1;
-  const start = new Date(today() + "T12:00:00");
-  const end = new Date(endDate + "T12:00:00");
-  const diffDays = Math.max(0, Math.ceil((end.getTime() - start.getTime()) / 86400000));
-  return Math.max(1, Math.ceil(diffDays / 30.4375));
-};
-
-const monthlyGoalEstimate = (goal) => {
-  const remaining = Math.max(0, Number(goal?.target || 0) - Number(goal?.current || 0));
-  return remaining / monthsUntilGoal(goal?.endDate);
-};
-
 const goalProgressPercent = (goal) => {
   const target = Math.max(0, Number(goal?.target || 0));
   const current = Math.max(0, Number(goal?.current || 0));
@@ -1634,29 +1621,6 @@ function computeXp(completions, tasks, workoutSessions, goals, streaks) {
   }, 0);
   return completions.length * 10 + taskCompletions * 20 + workoutSessions.filter((w) => w.completed).length * 50 + goals.filter((g) => g.completed).length * 150 + streaks.totalPerfectDays * 30;
 }
-function MiniBarChart({ data, height = 130 }) {
-  const max = Math.max(...data.map((item) => Number(item.value) || 0), 1);
-
-  return (
-    <div className="tech-bar-chart flex items-end gap-2" style={{ height }}>
-      {data.map((item, index) => {
-        const pct = Math.max(3, (Number(item.value || 0) / max) * 100);
-        return (
-          <div key={index} className="flex-1 h-full flex flex-col items-center min-w-0">
-            <span className="text-[9px] text-faint font-mono mb-1">{item.value}%</span>
-            <div className="flex-1 w-full flex items-end justify-center">
-              <div className="tech-bar-track h-full relative">
-                <div className="tech-bar-fill absolute left-0 right-0 bottom-0" style={{ height: `${pct}%` }} />
-              </div>
-            </div>
-            <span className="text-[9px] text-faint truncate w-full text-center mt-1.5">{item.label}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 /* ---------------------------------------------------------------
    STREAK / VALIDITY LOGIC
 ----------------------------------------------------------------*/
@@ -1674,14 +1638,6 @@ function habitValidOnDate(habit, dateStr, completions = []) {
   if (freq.type === "permonth") { const ms = startOfMonth(dateStr); return countInRange(habit.id, completions, ms, dateStr) < (freq.target || 1); }
   return true;
 }
-function freqLabel(h) {
-  if (h.frequency.type === "daily") return "Todos os dias";
-  if (h.frequency.type === "weekdays") return (h.frequency.days || []).map((d) => WEEKDAYS[d]).join(", ");
-  if (h.frequency.type === "perweek") return `${h.frequency.target}x por semana`;
-  if (h.frequency.type === "permonth") return `${h.frequency.target}x por mês`;
-  return "";
-}
-
 function isDayComplete(habits, completions, dateStr) {
   const required = habits.filter((h) => h.countsForStreak !== false && habitValidOnDate(h, dateStr, completions));
   if (required.length === 0) return null;
@@ -1949,8 +1905,6 @@ function Onboarding({ onDone }) {
         progress: true,
         achievements: true,
         friends: true,
-        challenges: true,
-        timeline: true,
         reports: true,
       },
     });
@@ -7695,122 +7649,6 @@ function GoalsView({
 /* ---------------------------------------------------------------
    FOOD
 ----------------------------------------------------------------*/
-function BarcodeScannerModal({ onDetected, onClose }) {
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
-  const [status, setStatus] = useState("Abrindo câmera…");
-  const [supported, setSupported] = useState(true);
-  const [cameraFailed, setCameraFailed] = useState(false);
-  const [manualCode, setManualCode] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    let timer = null;
-
-    const stop = () => {
-      if (timer) clearInterval(timer);
-      streamRef.current?.getTracks?.().forEach((track) => track.stop());
-      streamRef.current = null;
-    };
-
-    const start = async () => {
-      try {
-        if (!("BarcodeDetector" in window) || !navigator.mediaDevices?.getUserMedia) {
-          setSupported(false);
-          setStatus("Leitura automática não disponível neste navegador.");
-          return;
-        }
-
-        const formats = typeof window.BarcodeDetector.getSupportedFormats === "function"
-          ? await window.BarcodeDetector.getSupportedFormats().catch(() => [])
-          : [];
-        const desired = ["ean_13", "ean_8", "upc_a", "upc_e"];
-        const usable = formats?.length ? desired.filter((item) => formats.includes(item)) : desired;
-        const detector = new window.BarcodeDetector({ formats: usable.length ? usable : desired });
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
-          audio: false,
-        });
-
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-
-        streamRef.current = stream;
-        const video = videoRef.current;
-        if (!video) return;
-        video.srcObject = stream;
-        await video.play();
-        setStatus("Aponte a câmera para o código de barras.");
-
-        timer = setInterval(async () => {
-          if (!videoRef.current || videoRef.current.readyState < 2) return;
-          try {
-            const codes = await detector.detect(videoRef.current);
-            const value = String(codes?.[0]?.rawValue || "").trim();
-            if (value) {
-              stop();
-              onDetected(value);
-            }
-          } catch (_) {}
-        }, 550);
-      } catch (_) {
-        setStatus("Não foi possível acessar a câmera. Digite o código manualmente.");
-        setCameraFailed(true);
-      }
-    };
-
-    start();
-    return () => {
-      cancelled = true;
-      stop();
-    };
-  }, [onDetected]);
-
-  // A mensagem de status já prometia "digite manualmente" quando a câmera
-  // falhava ou o navegador não tinha BarcodeDetector, mas o modal não tinha
-  // nenhum campo pra isso — o usuário ficava sem forma de prosseguir.
-  const showManualInput = !supported || cameraFailed;
-  const submitManualCode = () => {
-    const value = manualCode.trim();
-    if (!value) return;
-    onDetected(value);
-  };
-
-  return (
-    <Modal title="Escanear código de barras" onClose={onClose} width={460}>
-      <div className="diet-barcode-camera surface-2 rounded-2xl overflow-hidden">
-        {supported && !cameraFailed ? (
-          <video ref={videoRef} muted playsInline className="w-full block" style={{ minHeight: 220, objectFit: "cover" }} />
-        ) : (
-          <div className="min-h-[220px] flex items-center justify-center p-5 text-center text-dim text-sm">
-            {supported ? "Não foi possível acessar a câmera." : "Seu navegador não possui leitor de código de barras integrado."}
-          </div>
-        )}
-      </div>
-      <p className="text-xs text-dim mt-3 text-center">{status}</p>
-      {showManualInput && (
-        <div className="flex items-center gap-2 mt-3">
-          <input
-            type="text"
-            inputMode="numeric"
-            autoFocus
-            className="flex-1 p-3 ring-focus"
-            placeholder="Digite o código de barras"
-            value={manualCode}
-            onChange={(event) => setManualCode(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Enter") submitManualCode(); }}
-          />
-          <button type="button" className="btn-primary rounded-xl px-4 py-3 text-sm shrink-0" onClick={submitManualCode} disabled={!manualCode.trim()}>
-            Usar
-          </button>
-        </div>
-      )}
-    </Modal>
-  );
-}
-
 const DIET_MONTH_METRICS = [
   { id: "calories", label: "Calorias", unit: "kcal" },
   { id: "protein", label: "Proteína", unit: "g" },
@@ -9980,316 +9818,6 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
   );
 }
 
-function ChallengeForm({ onSave, onClose }) {
-  const [name, setName] = useState("");
-  const [target, setTarget] = useState(30);
-  const [unit, setUnit] = useState("dias");
-
-  return (
-    <Modal title="Novo desafio pessoal" onClose={onClose}>
-      <Field label="Nome">
-        <input className="w-full p-3 ring-focus" placeholder="Ex: 30 dias sem refrigerante" value={name} onChange={(e) => setName(e.target.value)} />
-      </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Meta">
-          <input type="number" min="1" className="w-full p-3 ring-focus" value={target} onChange={(e) => setTarget(Math.max(1, Number(e.target.value) || 1))} />
-        </Field>
-        <Field label="Unidade">
-          <input className="w-full p-3 ring-focus" placeholder="dias, treinos, páginas..." value={unit} onChange={(e) => setUnit(e.target.value)} />
-        </Field>
-      </div>
-      <button
-        disabled={!name.trim()}
-        className="btn-primary w-full rounded-xl py-3 disabled:opacity-40"
-        onClick={() => onSave({ id: uid(), name: name.trim(), target, current: 0, unit: unit.trim() || "vezes", createdAt: today(), completed: false })}
-      >
-        Criar desafio
-      </button>
-    </Modal>
-  );
-}
-
-function ChallengeProgressAdder({ challenge, onAdd }) {
-  const [amount, setAmount] = useState(1);
-  return (
-    <div className="flex gap-2 mt-3">
-      <input
-        type="number"
-        min="0.01"
-        step="0.01"
-        className="w-24 p-2 text-xs ring-focus"
-        value={amount}
-        onChange={(e) => setAmount(Math.max(0, Number(e.target.value) || 0))}
-      />
-      <button
-        disabled={amount <= 0}
-        className="btn-primary rounded-lg px-3 py-1.5 text-xs flex-1 disabled:opacity-40"
-        onClick={() => { onAdd(amount); setAmount(1); }}
-      >
-        Adicionar {challenge.unit}
-      </button>
-    </div>
-  );
-}
-
-function ChallengesView({ session, profile, setProfile, game, streaks, autoOpen, isPro, onUpgrade }) {
-  const [confirm, confirmDialog] = useConfirm();
-  const [showForm, setShowForm] = useState(false);
-  const [friends, setFriends] = useState([]);
-  const [loadingFriends, setLoadingFriends] = useState(true);
-  const personal = profile?.personalChallenges || [];
-  const socialMetric = profile?.socialChallengeMetric || "xp";
-
-  useEffect(() => {
-    if (!autoOpen) return;
-    const activeChallenges = (profile?.personalChallenges || []).filter((challenge) => !challenge.completed).length;
-    if (!isPro && activeChallenges >= PRO_LIMITS.challenges) {
-      onUpgrade("challenges");
-      return;
-    }
-    setShowForm(true);
-  }, [autoOpen]);
-
-  useEffect(() => {
-    let active = true;
-    if (!session?.user?.id) return;
-    setLoadingFriends(true);
-    fetchFriends(session)
-      .then((rows) => { if (active) setFriends((rows || []).filter((r) => r.status === "accepted")); })
-      .catch(() => { if (active) setFriends([]); })
-      .finally(() => { if (active) setLoadingFriends(false); });
-    return () => { active = false; };
-  }, [session]);
-
-  const saveChallenge = (challenge) => {
-    const activeChallenges = (profile?.personalChallenges || []).filter((item) => !item.completed).length;
-    if (!isPro && activeChallenges >= PRO_LIMITS.challenges) {
-      onUpgrade("challenges");
-      return false;
-    }
-    setProfile((p) => ({ ...p, personalChallenges: [...(p?.personalChallenges || []), challenge] }));
-    setShowForm(false);
-    return true;
-  };
-
-  const addChallengeProgress = (id, delta = 1) => {
-    setProfile((p) => ({
-      ...p,
-      personalChallenges: (p?.personalChallenges || []).map((challenge) => {
-        if (challenge.id !== id) return challenge;
-        const current = Math.min(Number(challenge.target || 0), Number(challenge.current || 0) + Number(delta || 0));
-        return { ...challenge, current, completed: current >= Number(challenge.target || 0), completedAt: current >= Number(challenge.target || 0) ? today() : challenge.completedAt };
-      }),
-    }));
-  };
-
-  const removeChallenge = async (id) => {
-    if (!(await confirm("Excluir este desafio?"))) return;
-    setProfile((p) => ({ ...p, personalChallenges: (p?.personalChallenges || []).filter((x) => x.id !== id) }));
-  };
-
-  const own = {
-    user_id: session?.user?.id,
-    display_name: profile?.name || "Você",
-    xp: game.xp,
-    score: game.score,
-    streak_current: streaks.current,
-    isMe: true,
-  };
-  const socialRows = [own, ...friends].sort((a, b) => {
-    const key = socialMetric === "streak" ? "streak_current" : socialMetric;
-    return Number(b[key] || 0) - Number(a[key] || 0);
-  });
-
-  const socialValue = (row) => {
-    if (socialMetric === "score") return `${Number(row.score || 0)}/100`;
-    if (socialMetric === "streak") return `${Number(row.streak_current || 0)}d`;
-    return `${Number(row.xp || 0).toLocaleString("pt-BR")} XP`;
-  };
-
-  return (
-    <div className="flex flex-col gap-4 md:gap-5">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="font-display text-2xl md:text-3xl">Desafios</h2>
-          <p className="text-dim text-sm mt-1">Crie compromissos pessoais e dispute evolução com seus amigos.</p>
-        </div>
-        <button
-          className="btn-primary rounded-xl px-3 py-2 text-sm flex items-center gap-1"
-          onClick={() => {
-            const activeChallenges = personal.filter((challenge) => !challenge.completed).length;
-            if (!isPro && activeChallenges >= PRO_LIMITS.challenges) {
-              onUpgrade("challenges");
-              return;
-            }
-            setShowForm(true);
-          }}
-        >
-          <Plus size={15} /> Novo
-          {!isPro && <span className="text-[9px] opacity-70">1 Free</span>}
-        </button>
-      </div>
-
-      <div className="surface rounded-2xl p-5">
-        <p className="text-xs text-faint uppercase tracking-widest mb-4">Desafios pessoais</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {personal.length === 0 && <p className="text-dim text-sm">Crie seu primeiro desafio: leitura, treino, economia, alimentação ou qualquer objetivo mensurável.</p>}
-          {personal.map((challenge) => {
-            const pct = Math.min(100, Math.round(Number(challenge.current || 0) / Math.max(1, Number(challenge.target || 1)) * 100));
-            return (
-              <div key={challenge.id} className="surface-2 rounded-xl p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-medium text-sm break-words">{challenge.name}</p>
-                    <p className="text-faint text-[10px] mt-1">{challenge.current}/{challenge.target} {challenge.unit}</p>
-                  </div>
-                  {challenge.completed ? <Trophy size={16} className="text-brass" /> : <Zap size={16} className="text-moss" />}
-                </div>
-                <Progress value={pct} height={6} />
-                {!challenge.completed && <ChallengeProgressAdder challenge={challenge} onAdd={(amount) => addChallengeProgress(challenge.id, amount)} />}
-                <div className="flex justify-end mt-2">
-                  <button className="btn-ghost rounded-lg p-2" onClick={() => removeChallenge(challenge.id)}><Trash2 size={13} /></button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="surface rounded-2xl p-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-          <div>
-            <p className="text-xs text-faint uppercase tracking-widest">Desafio entre amigos</p>
-            <p className="text-dim text-xs mt-1">Uma competição viva com os dados públicos do ranking.</p>
-          </div>
-          <select
-            className="p-2 rounded-xl text-sm ring-focus"
-            value={socialMetric}
-            onChange={(e) => setProfile((p) => ({ ...p, socialChallengeMetric: e.target.value }))}
-          >
-            <option value="xp">Mais XP</option>
-            <option value="score">Maior score</option>
-            <option value="streak">Maior sequência</option>
-          </select>
-        </div>
-
-        {loadingFriends ? <p className="text-dim text-sm">Carregando amigos…</p> : (
-          <div className="flex flex-col gap-2">
-            {socialRows.map((row, index) => (
-              <div key={row.user_id || index} className="surface-2 rounded-xl p-3 flex items-center gap-3">
-                <span className="font-mono text-brass text-xs w-6">#{index + 1}</span>
-                <span className="flex-1 min-w-0 truncate text-sm font-medium">{row.isMe ? "Você" : (row.display_name || "Amigo")}</span>
-                <span className="font-mono text-xs">{socialValue(row)}</span>
-              </div>
-            ))}
-            {friends.length === 0 && <p className="text-faint text-xs">Adicione amigos para transformar essa área em uma disputa real.</p>}
-          </div>
-        )}
-      </div>
-
-      {showForm && <ChallengeForm onClose={() => setShowForm(false)} onSave={saveChallenge} />}
-      {confirmDialog}
-    </div>
-  );
-}
-
-function TimelineView({ habits, completions, tasks, goals, workoutSessions, goalProgressLog, stats, isPro, onUpgrade }) {
-  const events = useMemo(() => {
-    const rows = [];
-
-    const firstHabitCompletion = [...completions].sort((a, b) => a.date.localeCompare(b.date))[0];
-    if (firstHabitCompletion) {
-      rows.push({ id: "first-habit", date: firstHabitCompletion.date, title: "Primeiro hábito concluído", desc: "O início da sua jornada registrada no Constancce.", icon: ListChecks });
-    }
-
-    workoutSessions.filter((s) => s.completed).forEach((session) => {
-      rows.push({ id: `workout-${session.id}`, date: session.date, title: "Treino concluído", desc: "Mais uma sessão registrada na sua evolução física.", icon: Dumbbell });
-    });
-
-    goals.filter((g) => g.completed).forEach((goal) => {
-      rows.push({ id: `goal-${goal.id}`, date: goal.completedAt || goal.endDate || today(), title: `Meta alcançada: ${goal.name}`, desc: goal.type === "financeira" ? `Objetivo de ${money(goal.target)} concluído.` : "Objetivo concluído.", icon: Trophy });
-    });
-
-    tasks.filter((task) => !isRecurringTask(task) && task.status === "concluida" && task.completedAt).forEach((task) => {
-      rows.push({ id: `task-${task.id}`, date: task.completedAt, title: `Tarefa entregue: ${task.title}`, desc: "Execução concluída.", icon: CheckCircle2 });
-    });
-
-    // Um Set por meta+marco evita que o mesmo marco (ex.: 50%) apareça duas vezes
-    // na Jornada quando o progresso oscila dentro da margem de tolerância (±3%)
-    // em registros diferentes.
-    const emittedGoalMilestones = new Set();
-    goalProgressLog.forEach((log) => {
-      const goal = goals.find((g) => g.id === log.goalId);
-      if (!goal || !goal.target || goal.completed) return;
-      const pct = Math.round(Number(log.value || 0) / Number(goal.target) * 100);
-      const milestone = [25, 50, 75].find((m) => Math.abs(pct - m) <= 3);
-      if (!milestone) return;
-      const milestoneKey = `${goal.id}:${milestone}`;
-      if (emittedGoalMilestones.has(milestoneKey)) return;
-      emittedGoalMilestones.add(milestoneKey);
-      rows.push({ id: `milestone-${log.id}`, date: log.date, title: `${milestone}% da meta ${goal.name}`, desc: "Marco intermediário alcançado.", icon: Target });
-    });
-
-    const sorted = rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
-    return isPro ? sorted.slice(0, 120) : sorted.filter((event) => event.date >= proCutoffDate()).slice(0, 60);
-  }, [habits, completions, tasks, goals, workoutSessions, goalProgressLog, stats.bestStreak]);
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="font-display text-2xl md:text-3xl">Jornada</h2>
-        <p className="text-dim text-sm mt-1">Sua história de disciplina, evolução e marcos importantes.</p>
-      </div>
-
-      {stats.bestStreak >= 7 && (
-        // Fica fora da lista ordenada por data de propósito: é um recorde vigente,
-        // não um evento datado — misturado com data de "hoje" na timeline ele
-        // sempre flutuava pro topo, fazendo um recorde antigo parecer recente.
-        <div className="surface-2 rounded-2xl p-3.5 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full shrink-0 flex items-center justify-center" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-            <Flame size={15} className="text-brass" />
-          </div>
-          <div className="min-w-0">
-            <p className="font-medium text-sm">Recorde atual: {stats.bestStreak} dias</p>
-            <p className="text-dim text-xs mt-0.5">Sua maior sequência de dias perfeitos registrada até agora.</p>
-          </div>
-        </div>
-      )}
-
-      <div className="surface rounded-2xl p-4 md:p-5">
-        {events.length === 0 && <p className="text-dim text-sm py-4">Sua timeline aparecerá conforme você conclui hábitos, tarefas, treinos e metas.</p>}
-        <div className="flex flex-col">
-          {events.map((event, index) => {
-            const Icon = event.icon;
-            return (
-              <div key={event.id} className="flex gap-3 relative pb-5">
-                {index < events.length - 1 && <div className="absolute left-[17px] top-9 bottom-0 w-px" style={{ background: "var(--border)" }} />}
-                <div className="w-9 h-9 rounded-full shrink-0 flex items-center justify-center z-10" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
-                  <Icon size={15} className="text-brass" />
-                </div>
-                <div className="flex-1 min-w-0 pt-0.5">
-                  <p className="text-[10px] text-faint">{dateLabel(event.date)}</p>
-                  <p className="font-medium text-sm mt-0.5 break-words">{event.title}</p>
-                  <p className="text-dim text-xs mt-1">{event.desc}</p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      {!isPro && (
-        <ProLockCard
-          feature="timeline"
-          title="Jornada completa"
-          description="No plano Free, a Jornada mostra os últimos 30 dias. Seus eventos antigos continuam salvos e voltam a aparecer ao liberar o PRO."
-          onUpgrade={onUpgrade}
-        />
-      )}
-    </div>
-  );
-}
-
-
 
 function FriendsView({ session, profile, game, streaks, isPro, onUpgrade }) {
   const [rows, setRows] = useState([]);
@@ -10365,7 +9893,7 @@ function PlanComparisonSection({ isPro, accessInfo, onUpgrade }) {
     "Hábitos, tarefas, treinos e metas ilimitados",
     "Histórico completo + análises avançadas",
     "Intelligence + Assistente Financeiro",
-    "Produtos por barcode, TMB e Nutrition Intelligence",
+    "TMB e Nutrition Intelligence",
     "Temas, menu personalizado e prêmios físicos",
   ];
 
@@ -11055,47 +10583,6 @@ function NotificationPermissionPrompt({ onEnable, onLater, busy }) {
         <p className="text-faint text-[10px] mt-3 text-center">
           Você pode alterar essa escolha depois na aba Notificações.
         </p>
-      </div>
-    </div>
-  );
-}
-
-function AccessPaywall({ access, user, onCheckout, checkoutLoading, onRefresh, verifyLoading, onLogout, message }) {
-  const info = accessSummary(access);
-  return (
-    <div className="min-h-screen flex items-center justify-center p-5 relative overflow-hidden">
-      <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(circle at 50% 0%, rgba(201,162,74,.16), transparent 34%)" }} />
-      <div className="w-full max-w-lg relative surface rounded-3xl p-6 sm:p-8">
-        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
-          <Trophy size={25} className="text-brass" />
-        </div>
-        <p className="text-brass text-xs uppercase tracking-[.18em] mb-2">Constancce Founder</p>
-        <h1 className="font-display text-3xl sm:text-4xl leading-tight mb-3">Seu teste terminou. Seu progresso continua salvo.</h1>
-        <p className="text-dim text-sm leading-relaxed mb-6">Libere o Constancce para sempre e continue sua evolução sem mensalidade.</p>
-        <div className="surface-2 rounded-2xl p-5 mb-5">
-          <div className="flex items-end justify-between gap-4">
-            <div><p className="text-faint text-xs uppercase tracking-widest">Acesso vitalício</p><p className="font-display text-3xl mt-1">R$ 37,90</p></div>
-            <span className="text-moss text-xs px-2.5 py-1 rounded-full" style={{ border: "1px solid var(--border)" }}>Pagamento único</span>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-dim">
-            {["Todos os recursos", "Dados preservados", "Sem mensalidade", "Selo Founder"].map((x) => <div key={x} className="flex items-center gap-2"><Check size={14} className="text-moss" />{x}</div>)}
-          </div>
-        </div>
-        {message && <div className="rounded-xl px-3 py-2.5 text-xs mb-4" style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-dim)" }}>{message}</div>}
-        <button onClick={onCheckout} disabled={checkoutLoading} className="btn-primary w-full rounded-xl py-3.5 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-60">
-          {checkoutLoading ? "Abrindo pagamento…" : "Desbloquear acesso vitalício"}<ArrowUpRight size={16} />
-        </button>
-        <button
-          onClick={onRefresh}
-          disabled={verifyLoading}
-          className="btn-ghost w-full rounded-xl py-2.5 text-sm mt-2 disabled:opacity-60"
-        >
-          {verifyLoading ? "Verificando pagamento…" : "Já paguei · verificar acesso"}
-        </button>
-        <div className="mt-5 pt-4 flex items-center justify-between gap-3 text-[11px] text-faint" style={{ borderTop: "1px solid var(--border-soft)" }}>
-          <span className="truncate">{user?.email}</span>
-          <button onClick={onLogout} className="hover:text-dim">Sair</button>
-        </div>
       </div>
     </div>
   );

@@ -374,21 +374,6 @@
       radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--brass) 7%, transparent), transparent 35%),
       var(--surface);
   }
-  .diet-barcode-camera{
-    position:relative;
-    border-color:color-mix(in srgb, var(--brass) 22%, var(--border));
-  }
-  .diet-barcode-camera::after{
-    content:"";
-    position:absolute;
-    left:12%;
-    right:12%;
-    top:50%;
-    height:1px;
-    background:var(--brass);
-    box-shadow:0 0 14px color-mix(in srgb, var(--brass) 60%, transparent);
-    pointer-events:none;
-  }
   .diet-meal-row{
     min-width:0;
   }
@@ -1227,10 +1212,6 @@
     .diet-selected-food input,
     .diet-selected-food select{
       font-size:16px !important;
-    }
-    .diet-barcode-camera video{
-      min-height:190px !important;
-      max-height:48vh;
     }
     .finance-history-head{
       padding:12px !important;

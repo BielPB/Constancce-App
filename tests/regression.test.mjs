@@ -779,7 +779,7 @@ test("Hoje: card de hábito com checklist não marca 100% direto no Dashboard", 
 
 test("Conquistas: galeria de marcos usa a prop unlocked (30 ACHIEVEMENT_DEFS ficam visíveis)", () => {
   const achievementsStart = app.indexOf("function AchievementsView({");
-  const achievementsEnd = app.indexOf("\nfunction ChallengeForm", achievementsStart);
+  const achievementsEnd = app.indexOf("\nfunction FriendsView", achievementsStart);
   assert.ok(achievementsStart > -1 && achievementsEnd > achievementsStart);
   const achievementsSlice = app.slice(achievementsStart, achievementsEnd);
   // Antes a tela só mostrava os 4 níveis de prêmio físico por streak — a prop `unlocked`
