@@ -3072,9 +3072,8 @@ function TaskForm({ initial, onSave, onClose, isPro, onUpgrade, defaultDueDate =
             />
             <Clock3
               size={17}
-              color="#FFFFFF"
               strokeWidth={2}
-              className="task-time-icon pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"
+              className="task-time-icon pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-faint"
               aria-hidden="true"
             />
           </div>
@@ -7243,7 +7242,7 @@ function GoalsView({
         Defina onde quer chegar, registre o avanço e deixe uma próxima ação clara. O Constancce usa esses registros para mostrar seu ritmo.
       </FirstVisitTip>
 
-      <div className="goal-section-tabs surface rounded-2xl p-1 grid grid-cols-3 gap-1">
+      <div className="goal-section-tabs task-glass-tabs rounded-2xl p-1 grid grid-cols-3 gap-1">
         {[
           ["overview", "Visão geral"],
           ["active", "Em andamento"],
@@ -7251,13 +7250,8 @@ function GoalsView({
         ].map(([id, label]) => (
           <button
             key={id}
-            className="goal-tab-button rounded-xl py-2 text-[10px] sm:text-xs md:text-sm font-medium min-w-0"
+            className={`goal-tab-button task-tab-button rounded-xl py-2 text-[10px] sm:text-xs md:text-sm font-medium min-w-0 ${section === id ? "task-tab-active" : ""}`}
             onClick={() => setSection(id)}
-            style={{
-              background: section === id ? "var(--surface-2)" : "transparent",
-              border: `1px solid ${section === id ? "var(--brass-dim)" : "transparent"}`,
-              color: section === id ? "var(--text)" : "var(--text-dim)",
-            }}
           >
             {label}
           </button>
@@ -9448,7 +9442,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
                       key={item.id}
                       type="button"
                       onClick={() => setSelectedBadge(item)}
-                      className="surface-2 rounded-xl p-3 flex items-center gap-3 text-left"
+                      className="surface-2 interactive rounded-xl p-3 flex items-center gap-3 text-left"
                     >
                       <div
                         className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
@@ -9558,7 +9552,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
               key={level.id}
               type="button"
               onClick={() => setSelectedReward({ ...level, unlockedLevel, progress, remaining })}
-              className="achievement-level-card surface rounded-2xl p-4 md:p-5 text-left w-full"
+              className="achievement-level-card surface interactive rounded-2xl p-4 md:p-5 text-left w-full"
               style={{
                 borderColor: unlockedLevel ? "var(--brass-dim)" : "var(--border)",
                 opacity: unlockedLevel ? 1 : 0.9,
@@ -9734,7 +9728,7 @@ function FriendsView({ session, profile, game, streaks, isPro, onUpgrade }) {
     {sent.length>0&&<div className="surface-2 rounded-2xl p-4"><p className="text-xs text-faint uppercase tracking-widest mb-2">Convites enviados</p>{sent.map(r=><div key={r.friendship_id} className="flex items-center gap-2 text-sm py-1"><RefreshCw size={13} className="text-brass"/><span className="truncate flex-1">{r.display_name||r.email}</span><span className="chip">Pendente</span></div>)}</div>}
     <div className="surface rounded-2xl p-4 md:p-5">
       <div className="flex items-center justify-between mb-4"><div><p className="text-xs text-faint uppercase tracking-widest">Ranking entre amigos</p><p className="text-dim text-xs mt-1">Ordenado pelo XP total.</p></div><span className="chip">{accepted.length} amigo{accepted.length===1?'':'s'}</span></div>
-      {loading?<div className="py-10 text-center text-dim text-sm">Carregando ranking…</div>:<div className="flex flex-col gap-2">{leaderboard.map((r,i)=><button key={r.user_id} onClick={()=>!r.isMe&&setSelected(r)} className="surface-2 p-3 md:p-4 text-left flex items-center gap-3 hover:-translate-y-[1px]">
+      {loading?<div className="py-10 text-center text-dim text-sm">Carregando ranking…</div>:<div className="flex flex-col gap-2">{leaderboard.map((r,i)=><button key={r.user_id} onClick={()=>!r.isMe&&setSelected(r)} className="surface-2 interactive rounded-xl p-3 md:p-4 text-left flex items-center gap-3">
         <div className="font-mono text-sm w-6 text-center text-brass">#{i+1}</div><Avatar r={r}/><div className="flex-1 min-w-0"><div className="flex items-center gap-2"><p className="font-semibold text-sm truncate">{r.display_name||'Usuário'}</p>{r.isMe&&<span className="chip">Você</span>}</div><p className="text-faint text-[11px] truncate">{r.rank_name||'Recruta'} · Nível {r.level||1}</p></div><div className="text-right shrink-0"><p className="font-mono text-sm">{Number(r.xp||0).toLocaleString('pt-BR')} XP</p><p className="text-faint text-[10px]">{r.streak_current||0}d perfeitos</p></div>
       </button>)}</div>}
     </div>
@@ -11722,7 +11716,7 @@ function ConstancceApp() {
       const message = String(error?.message || "task_sync_failed");
       setTaskSyncError(message);
       if (message.toLowerCase().includes("task_time_required")) {
-        fireToast("Uma tarefa nova sem horário foi recusada. Defina o horário e tente novamente.", <Clock3 size={16} color="#FFFFFF" />);
+        fireToast("Uma tarefa nova sem horário foi recusada. Defina o horário e tente novamente.", <Clock3 size={16} className="text-ember" />);
         permanentRejection = true;
       } else if (message.toLowerCase().includes("free_limit_tasks")) {
         fireToast("O plano Free permite até 5 tarefas ativas. Exclua uma tarefa ativa ou assine o PRO para sincronizar esta.", <RefreshCw size={16} className="text-ember" />);
@@ -12705,7 +12699,7 @@ function ConstancceApp() {
   const saveTask = (tk) => {
     const exists = tasks.some((item) => item.id === tk.id);
     if (!exists && !/^\d{2}:\d{2}$/.test(String(tk?.taskTime || ""))) {
-      fireToast("Defina um horário antes de criar a tarefa.", <Clock3 size={16} color="#FFFFFF" />);
+      fireToast("Defina um horário antes de criar a tarefa.", <Clock3 size={16} className="text-ember" />);
       return false;
     }
     const activeCount = tasks.filter((item) => {

@@ -112,6 +112,34 @@ test("Calendário: tarefas e metas têm cores de bolinha distintas, e a legenda 
   assert.match(legendSection, /metas/);
 });
 
+test("Design: GoalsView reusa as abas .task-glass-tabs/.task-tab-active em vez de reinventar com style inline", () => {
+  // GoalsView tinha seu próprio sistema de abas (goal-section-tabs/
+  // goal-tab-button), com o estado ativo via style inline (background/
+  // border/color calculados na mão) em vez de reusar .task-glass-tabs/
+  // .task-tab-button/.task-tab-active já usado em Tarefas/Calendário/Dieta.
+  assert.match(app, /className="goal-section-tabs task-glass-tabs rounded-2xl p-1 grid grid-cols-3 gap-1"/);
+  assert.match(app, /className=\{`goal-tab-button task-tab-button rounded-xl py-2 text-\[10px\] sm:text-xs md:text-sm font-medium min-w-0 \$\{section === id \? "task-tab-active" : ""\}`\}/);
+});
+
+test("Design: ícones não usam mais cor hardcoded (#FFFFFF) em vez de classes de tema", () => {
+  // Um ícone de horário em TasksView e dois toasts usavam color="#FFFFFF"
+  // fixo — quebra em temas claros (branco em cima de fundo claro fica
+  // invisível). Trocado por classes text-faint/text-ember (currentColor),
+  // igual ao resto dos ícones do app.
+  assert.doesNotMatch(app, /color="#FFFFFF"/);
+});
+
+test("Design: cards clicáveis de Conquistas e Amigos usam a classe .interactive, não um hover próprio mais fraco", () => {
+  // O card de marco (badge) e o de nível/prêmio em AchievementsView não
+  // tinham nenhum hover; a linha do ranking em FriendsView tinha um hover
+  // próprio (hover:-translate-y-[1px]) mais fraco que .interactive (que
+  // também muda borda e sombra). Unificado nos três.
+  assert.match(app, /className="surface-2 interactive rounded-xl p-3 flex items-center gap-3 text-left"/);
+  assert.match(app, /className="achievement-level-card surface interactive rounded-2xl p-4 md:p-5 text-left w-full"/);
+  assert.doesNotMatch(app, /hover:-translate-y-\[1px\]/);
+  assert.match(app, /className="surface-2 interactive rounded-xl p-3 md:p-4 text-left flex items-center gap-3"/);
+});
+
 test("Acessibilidade: rótulos sobre valores monetários críticos em Finanças têm contraste suficiente", () => {
   // "Saldo do mês", "Ainda pode gastar" e "Vs. mês anterior" usavam
   // text-faint (#5F5F58 no escuro) — ~2.8:1 de contraste contra o fundo do
@@ -520,7 +548,7 @@ test("1.1.20 mantém seletor de horário responsivo no mobile", async () => {
   assert.match(css, /\.task-time-input\s*\{[\s\S]*min-width:\s*0/);
   assert.match(css, /-webkit-appearance:\s*none/);
   assert.match(css, /font-size:\s*16px/);
-  assert.match(app, /color="#FFFFFF"/);
+  assert.match(app, /className="task-time-icon pointer-events-none absolute right-3 top-1\/2 -translate-y-1\/2 text-faint"/);
 });
 
 test("1.1.20+ sincronização continua cloud-first e agora usa revisão atômica v3", async () => {
