@@ -35,6 +35,94 @@ test("modal possui acessibilidade mínima de produção", () => {
   assert.match(ui, /aria-labelledby=\{titleId\}/);
 });
 
+test("Acessibilidade: Field associa o label ao input via htmlFor/id (usado em ~80 formulários)", () => {
+  // Field renderizava um <label> solto, sem htmlFor nem id no filho — clicar
+  // no rótulo não focava o campo, e leitores de tela não liam a associação
+  // label/controle. Corrigido gerando um id via useId() e injetando no
+  // filho quando ele é um input/select/textarea nativo (o caso comum);
+  // quando o Field envolve outra coisa (ex.: dois botões lado a lado, sem
+  // um único controle rotulável), cai no catch e mantém o comportamento
+  // anterior — nunca aponta um htmlFor pra um elemento não-focável.
+  assert.match(ui, /const generatedId = useId\(\);/);
+  assert.match(ui, /const onlyChild = React\.Children\.only\(children\);/);
+  assert.match(ui, /\["input", "select", "textarea"\]\.includes\(onlyChild\.type\)/);
+  assert.match(ui, /fieldId = onlyChild\.props\.id \|\| generatedId;/);
+  assert.match(ui, /React\.cloneElement\(onlyChild, \{ id: fieldId \}\);/);
+  assert.match(ui, /<label htmlFor=\{fieldId \|\| undefined\}/);
+});
+
+test("Acessibilidade: reagendar tarefa na visão semanal de Tarefas tem alternativa por teclado, não só arrastar", () => {
+  // "Sua semana" (Planejamento) só reagendava por drag/touch — sem
+  // equivalente por teclado, inconsistente com o resto do app (que já tem
+  // o select "Adiar ou reagendar" em outras visões de Tarefas). Adicionado
+  // um select por card, listando os outros dias da mesma semana.
+  assert.match(app, /className="task-week-postpone-select[^"]*"/);
+  const ariaLabelMatches = app.match(/aria-label=\{`Adiar ou reagendar \$\{task\.title\}`\}/g) || [];
+  assert.equal(ariaLabelMatches.length, 2, "esperava o select de 'Adiar' em renderTaskActions e o novo select do planejador semanal");
+  assert.match(app, /scheduleTask\(task, value, false\);/);
+});
+
+test("Acessibilidade: reordenar template de treino por setas funciona no desktop, não só no mobile", () => {
+  // Os botões de mover (ChevronUp/Down, moveTemplateByStep) tinham a classe
+  // md:hidden — só apareciam no mobile. No desktop só existia o handle de
+  // arrastar (mouse), sem alternativa de teclado. Removido o md:hidden dos
+  // dois botões.
+  assert.doesNotMatch(workoutsView, /className="btn-ghost rounded-lg p-2 md:hidden"\s*\n\s*disabled=\{index === 0\}/);
+  assert.doesNotMatch(workoutsView, /className="btn-ghost rounded-lg p-2 md:hidden"\s*\n\s*disabled=\{index === templates\.length - 1\}/);
+  assert.match(workoutsView, /onClick=\{\(\) => moveTemplateByStep\(template\.id, "up"\)\}/);
+  assert.match(workoutsView, /onClick=\{\(\) => moveTemplateByStep\(template\.id, "down"\)\}/);
+});
+
+test("Acessibilidade: ícones de ação (pausar/editar/excluir/favoritar) e a grade de hábitos têm aria-label, não só title", () => {
+  // Padrão inconsistente: alguns ícones de ação só tinham title (tooltip
+  // visual, invisível pra leitor de tela), enquanto FinanceView.jsx já
+  // fazia certo (title + aria-label juntos). Corrigido em HabitsView
+  // (pausar/reativar, editar, excluir — nos dois layouts, mobile e
+  // desktop) e no botão de favoritar exercício em WorkoutTemplateForm.
+  assert.match(app, /aria-label=\{`\$\{habit\.active !== false \? "Pausar" : "Reativar"\} \$\{habit\.name\}`\}/);
+  assert.match(app, /aria-label=\{`Editar \$\{habit\.name\}`\}/);
+  assert.match(app, /aria-label=\{`Excluir \$\{habit\.name\}`\}/);
+  assert.match(workoutTemplateForm, /aria-label=\{`\$\{exercise\.favorite \? "Remover dos favoritos" : "Favoritar"\} \$\{exercise\.name \|\| `exercício \$\{index \+ 1\}`\}`\}/);
+
+  // A grade mensal de hábitos (até 31 botões idênticos por hábito) não
+  // tinha NENHUM nome acessível — nem title virava aria-label, nem havia
+  // texto visível na maioria dos estados. Cada célula agora anuncia o
+  // hábito e o dia, não só o status genérico repetido em todo o mês.
+  assert.match(app, /const cellStatusLabel = showAsEmpty/);
+  assert.match(app, /aria-label=\{`\$\{habit\.name\}, \$\{dateLabel\(dateStr, \{ day: "2-digit", month: "2-digit" \}\)\}: \$\{cellStatusLabel\}`\}/);
+});
+
+test("Calendário: tarefas e metas têm cores de bolinha distintas, e a legenda documenta as 5 categorias", () => {
+  // As bolinhas de categoria no grid mensal e na visão semanal usavam
+  // var(--brass) tanto pra tarefas quanto pra metas — impossível distinguir
+  // uma da outra só pela cor. Metas passou a usar var(--danger) (única cor
+  // de acento do app ainda não usada por nenhuma categoria do calendário).
+  // A legenda também só documentava 3 das 5 categorias (tarefas/treino/
+  // finanças) — hábitos e metas foram adicionadas.
+  const goalDotMatches = app.match(/style=\{\{ background: "var\(--danger\)" \}\} aria-label="Metas"/g) || [];
+  assert.equal(goalDotMatches.length, 2, "esperava a bolinha de metas (var(--danger)) na visão semanal e no grid mensal");
+  assert.doesNotMatch(
+    app,
+    /showType\("goals"\) && data\.goals\.length > 0 && <span className="calendar-dot" style=\{\{ background: "var\(--brass\)" \}\}/,
+    "a bolinha de metas não deveria mais usar a mesma cor (var(--brass)) das tarefas"
+  );
+
+  const legendSection = app.slice(app.indexOf('<div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-4'), app.indexOf("</div>", app.indexOf('<div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-4')) + 200);
+  assert.match(legendSection, /hábitos/);
+  assert.match(legendSection, /metas/);
+});
+
+test("Acessibilidade: rótulos sobre valores monetários críticos em Finanças têm contraste suficiente", () => {
+  // "Saldo do mês", "Ainda pode gastar" e "Vs. mês anterior" usavam
+  // text-faint (#5F5F58 no escuro) — ~2.8:1 de contraste contra o fundo do
+  // cartão, abaixo do mínimo de 4.5:1 (WCAG AA) pra texto pequeno. Trocado
+  // pra text-dim (~7:1), que já é o padrão usado em textos secundários
+  // menos críticos no resto do app.
+  assert.match(financeView, /text-dim uppercase tracking-widest">Saldo do mês</);
+  assert.match(financeView, /text-dim uppercase tracking-widest">Ainda pode gastar</);
+  assert.match(financeView, /text-dim uppercase tracking-widest">\s*\n\s*Vs\. mês anterior/);
+});
+
 test("food-search exige plano PRO no backend", () => {
   assert.match(foodSearch, /constancce_access/);
   assert.match(foodSearch, /pro_required/);

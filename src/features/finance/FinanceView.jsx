@@ -1109,7 +1109,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
           <div className="finance-overview-hero glass-panel-strong rounded-2xl p-4 md:p-6">
             <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
               <div className="min-w-0">
-                <p className="text-[9px] md:text-[10px] text-faint uppercase tracking-widest">Saldo do mês</p>
+                <p className="text-[9px] md:text-[10px] text-dim uppercase tracking-widest">Saldo do mês</p>
                 <p className={`finance-hero-balance font-display text-3xl md:text-4xl mt-1 break-words ${monthBalance >= 0 ? "text-moss" : "text-ember"}`}>
                   {money(monthBalance)}
                 </p>
@@ -1120,12 +1120,12 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
 
               <div className="finance-overview-mini-grid grid grid-cols-2 gap-2 w-full lg:w-auto lg:min-w-[360px]">
                 <div className="surface-2 rounded-xl p-3 min-w-0">
-                  <p className="text-[9px] text-faint uppercase tracking-widest">Ainda pode gastar</p>
+                  <p className="text-[9px] text-dim uppercase tracking-widest">Ainda pode gastar</p>
                   <p className="font-mono text-sm md:text-base mt-1 truncate">{money(availableToSpend)}</p>
                   <p className="text-[8px] text-faint mt-0.5">{monthlyLimit > 0 ? "com base no limite mensal" : "saldo atual (sem limite definido)"}</p>
                 </div>
                 <div className="surface-2 rounded-xl p-3 min-w-0">
-                  <p className="text-[9px] text-faint uppercase tracking-widest">
+                  <p className="text-[9px] text-dim uppercase tracking-widest">
                     Vs. mês anterior{isCurrentMonthView ? " (até hoje)" : ""}
                   </p>
                   <p className={`font-mono text-sm md:text-base mt-1 truncate ${outDeltaPct !== null && outDeltaPct <= 0 ? "text-moss" : outDeltaPct !== null ? "text-ember" : "text-dim"}`}>

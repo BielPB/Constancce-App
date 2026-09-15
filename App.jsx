@@ -2741,25 +2741,25 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                                 </span>
                               </div>
                               <div className="habit-grid-row-actions flex items-center gap-0.5 shrink-0">
-                                <button className="btn-ghost rounded-lg p-1.5" title={habit.active !== false ? "Pausar" : "Reativar"} onClick={() => toggleActive(habit.id)}>
+                                <button className="btn-ghost rounded-lg p-1.5" title={habit.active !== false ? "Pausar" : "Reativar"} aria-label={`${habit.active !== false ? "Pausar" : "Reativar"} ${habit.name}`} onClick={() => toggleActive(habit.id)}>
                                   {habit.active !== false ? <Pause size={12} /> : <Play size={12} />}
                                 </button>
-                                <button className="btn-ghost rounded-lg p-1.5" title="Editar" onClick={() => { setEditing(habit); setShowForm(true); }}>
+                                <button className="btn-ghost rounded-lg p-1.5" title="Editar" aria-label={`Editar ${habit.name}`} onClick={() => { setEditing(habit); setShowForm(true); }}>
                                   <Pencil size={12} />
                                 </button>
-                                <button className="btn-ghost rounded-lg p-1.5" title="Excluir" onClick={() => deleteHabit(habit.id)}>
+                                <button className="btn-ghost rounded-lg p-1.5" title="Excluir" aria-label={`Excluir ${habit.name}`} onClick={() => deleteHabit(habit.id)}>
                                   <Trash2 size={12} />
                                 </button>
                               </div>
                             </div>
                             <div className="hidden sm:flex habit-grid-row-actions items-center gap-0.5 shrink-0">
-                              <button className="btn-ghost rounded-lg p-1.5" title={habit.active !== false ? "Pausar" : "Reativar"} onClick={() => toggleActive(habit.id)}>
+                              <button className="btn-ghost rounded-lg p-1.5" title={habit.active !== false ? "Pausar" : "Reativar"} aria-label={`${habit.active !== false ? "Pausar" : "Reativar"} ${habit.name}`} onClick={() => toggleActive(habit.id)}>
                                 {habit.active !== false ? <Pause size={12} /> : <Play size={12} />}
                               </button>
-                              <button className="btn-ghost rounded-lg p-1.5" title="Editar" onClick={() => { setEditing(habit); setShowForm(true); }}>
+                              <button className="btn-ghost rounded-lg p-1.5" title="Editar" aria-label={`Editar ${habit.name}`} onClick={() => { setEditing(habit); setShowForm(true); }}>
                                 <Pencil size={12} />
                               </button>
-                              <button className="btn-ghost rounded-lg p-1.5" title="Excluir" onClick={() => deleteHabit(habit.id)}>
+                              <button className="btn-ghost rounded-lg p-1.5" title="Excluir" aria-label={`Excluir ${habit.name}`} onClick={() => deleteHabit(habit.id)}>
                                 <Trash2 size={12} />
                               </button>
                             </div>
@@ -2786,19 +2786,20 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                             checklistPct = total ? doneCount / total : 0;
                           }
 
+                          const cellStatusLabel = showAsEmpty
+                            ? (isFuture ? "Ainda não chegou" : "Não aplicável")
+                            : !editable
+                              ? "Dias passados ficam travados — não é possível alterar"
+                              : hasChecklist ? "Ver etapas do dia" : done ? "Concluído — clique para desmarcar" : "Marcar como concluído";
+
                           return (
                             <td key={day} className={`habit-grid-cell-wrap ${isToday ? "habit-grid-today" : ""}`}>
                               <button
                                 type="button"
                                 className={`habit-grid-cell ${!showAsEmpty && (done || (hasChecklist && checklistPct > 0)) ? "habit-grid-cell-done" : ""}`}
                                 disabled={!editable}
-                                title={
-                                  showAsEmpty
-                                    ? (isFuture ? "Ainda não chegou" : "Não aplicável")
-                                    : !editable
-                                      ? "Dias passados ficam travados — não é possível alterar"
-                                      : hasChecklist ? "Ver etapas do dia" : done ? "Concluído — clique para desmarcar" : "Marcar como concluído"
-                                }
+                                title={cellStatusLabel}
+                                aria-label={`${habit.name}, ${dateLabel(dateStr, { day: "2-digit", month: "2-digit" })}: ${cellStatusLabel}`}
                                 onClick={() => {
                                   if (!editable) return;
                                   if (hasChecklist) { setChecklistCell({ habitId: habit.id, dateStr }); return; }
@@ -4503,6 +4504,27 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
                             >
                               {task.title}
                             </p>
+
+                            {!isRecurringTask(task) && task.status !== "concluida" && (
+                              <select
+                                className="task-week-postpone-select rounded-md mt-1.5 text-[9px] ring-focus w-full"
+                                defaultValue=""
+                                onChange={(event) => {
+                                  const value = event.target.value;
+                                  if (!value) return;
+                                  scheduleTask(task, value, false);
+                                  event.target.value = "";
+                                }}
+                                aria-label={`Adiar ou reagendar ${task.title}`}
+                              >
+                                <option value="">Mover para...</option>
+                                {plannerDays
+                                  .filter((day) => day !== dateStr)
+                                  .map((day) => (
+                                    <option key={day} value={day}>{WEEKDAYS[weekdayIndex(day)]}</option>
+                                  ))}
+                              </select>
+                            )}
                           </article>
                         ))}
                       </div>
@@ -5609,10 +5631,11 @@ function CalendarView({
                     </div>
 
                     <div className="flex flex-wrap gap-1 mt-2">
-                      {showType("tasks") && data.tasks.length > 0 && <span className="calendar-dot bg-brass" />}
-                      {showType("workouts") && data.workouts.length > 0 && <span className="calendar-dot bg-moss" />}
-                      {showType("finance") && data.bills.length > 0 && <span className="calendar-dot bg-ember" />}
-                      {showType("habits") && data.habits.length > 0 && <span className="calendar-dot" style={{ background: "var(--text-dim)" }} />}
+                      {showType("tasks") && data.tasks.length > 0 && <span className="calendar-dot bg-brass" aria-label="Tarefas" />}
+                      {showType("workouts") && data.workouts.length > 0 && <span className="calendar-dot bg-moss" aria-label="Treino" />}
+                      {showType("finance") && data.bills.length > 0 && <span className="calendar-dot bg-ember" aria-label="Contas" />}
+                      {showType("habits") && data.habits.length > 0 && <span className="calendar-dot" style={{ background: "var(--text-dim)" }} aria-label="Hábitos" />}
+                      {showType("goals") && data.goals.length > 0 && <span className="calendar-dot" style={{ background: "var(--danger)" }} aria-label="Metas" />}
                     </div>
 
                     {data.estimatedMinutes > 0 && (
@@ -5723,11 +5746,11 @@ function CalendarView({
                     <span className={`font-mono text-xs md:text-sm ${isToday ? "text-brass" : ""}`}>{day}</span>
 
                     <div className="calendar-day-dots flex items-center justify-center gap-1 min-h-[5px]">
-                      {showType("tasks") && data.tasks.length > 0 && <span className="calendar-dot bg-brass" />}
-                      {showType("workouts") && data.workouts.length > 0 && <span className="calendar-dot bg-moss" />}
-                      {showType("finance") && data.bills.length > 0 && <span className="calendar-dot bg-ember" />}
-                      {showType("habits") && data.habits.length > 0 && <span className="calendar-dot" style={{ background: "var(--text-dim)" }} />}
-                      {showType("goals") && data.goals.length > 0 && <span className="calendar-dot" style={{ background: "var(--brass)" }} />}
+                      {showType("tasks") && data.tasks.length > 0 && <span className="calendar-dot bg-brass" aria-label="Tarefas" />}
+                      {showType("workouts") && data.workouts.length > 0 && <span className="calendar-dot bg-moss" aria-label="Treino" />}
+                      {showType("finance") && data.bills.length > 0 && <span className="calendar-dot bg-ember" aria-label="Contas" />}
+                      {showType("habits") && data.habits.length > 0 && <span className="calendar-dot" style={{ background: "var(--text-dim)" }} aria-label="Hábitos" />}
+                      {showType("goals") && data.goals.length > 0 && <span className="calendar-dot" style={{ background: "var(--danger)" }} aria-label="Metas" />}
                     </div>
 
                     {visibleCount > 3 && (
@@ -5742,6 +5765,8 @@ function CalendarView({
               <span className="flex items-center gap-1.5"><span className="calendar-dot bg-brass" /> tarefas</span>
               <span className="flex items-center gap-1.5"><span className="calendar-dot bg-moss" /> treino</span>
               <span className="flex items-center gap-1.5"><span className="calendar-dot bg-ember" /> finanças</span>
+              <span className="flex items-center gap-1.5"><span className="calendar-dot" style={{ background: "var(--text-dim)" }} /> hábitos</span>
+              <span className="flex items-center gap-1.5"><span className="calendar-dot" style={{ background: "var(--danger)" }} /> metas</span>
             </div>
           </div>
 
@@ -7412,6 +7437,7 @@ function GoalsView({
                   <button
                     className="btn-ghost rounded-lg p-2 shrink-0"
                     title="Arquivar meta"
+                    aria-label={`Arquivar meta ${goal.name}`}
                     onClick={() => {
                       if (!isPro) {
                         onUpgrade("goals");
@@ -7448,6 +7474,7 @@ function GoalsView({
                       <button
                         className="btn-ghost rounded-lg p-2"
                         title="Restaurar meta"
+                        aria-label={`Restaurar meta ${goal.name}`}
                         onClick={() => saveGoal({ ...goal, archived: false, archivedAt: null })}
                       >
                         <RotateCcw size={13} />

@@ -1447,8 +1447,7 @@ function WorkoutsView({
           {templates.length > 1 && (
             <div className="flex items-center gap-2 text-[11px] text-faint px-1">
               <GripVertical size={13} />
-              <span className="hidden md:inline">Arraste para organizar a ordem.</span>
-              <span className="md:hidden">Use as setas para organizar.</span>
+              <span>Arraste ou use as setas para organizar a ordem.</span>
             </div>
           )}
 
@@ -1543,7 +1542,7 @@ function WorkoutsView({
                       {doneToday && <span className="chip text-brass whitespace-nowrap">feito hoje</span>}
 
                       <button
-                        className="btn-ghost rounded-lg p-2 md:hidden"
+                        className="btn-ghost rounded-lg p-2"
                         disabled={index === 0}
                         onClick={() => moveTemplateByStep(template.id, "up")}
                         aria-label={`Mover ${template.name} para cima`}
@@ -1551,7 +1550,7 @@ function WorkoutsView({
                         <ChevronUp size={14} />
                       </button>
                       <button
-                        className="btn-ghost rounded-lg p-2 md:hidden"
+                        className="btn-ghost rounded-lg p-2"
                         disabled={index === templates.length - 1}
                         onClick={() => moveTemplateByStep(template.id, "down")}
                         aria-label={`Mover ${template.name} para baixo`}

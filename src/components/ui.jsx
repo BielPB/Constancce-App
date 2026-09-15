@@ -276,10 +276,27 @@ export function Modal({ title, onClose, children, width = 460 }) {
 }
 
 export function Field({ label, children }) {
+  const generatedId = useId();
+  let content = children;
+  let fieldId = null;
+  try {
+    // Só associa o label a um input/select/textarea nativo — o caso comum.
+    // Um Field que envolve outra coisa (ex.: uma div com dois botões de
+    // alternância lado a lado) não tem um único controle rotulável pra
+    // apontar via htmlFor: um <div> não é focável por label, então apontar
+    // pra ele seria uma associação falsa. Cai no catch e renderiza como
+    // antes, sem htmlFor.
+    const onlyChild = React.Children.only(children);
+    if (React.isValidElement(onlyChild) && ["input", "select", "textarea"].includes(onlyChild.type)) {
+      fieldId = onlyChild.props.id || generatedId;
+      content = React.cloneElement(onlyChild, { id: fieldId });
+    }
+  } catch (_) {}
+
   return (
     <div className="mb-3">
-      <label className="text-xs text-dim block mb-1">{label}</label>
-      {children}
+      <label htmlFor={fieldId || undefined} className="text-xs text-dim block mb-1">{label}</label>
+      {content}
     </div>
   );
 }

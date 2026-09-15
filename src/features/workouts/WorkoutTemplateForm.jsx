@@ -141,6 +141,7 @@ export default function WorkoutTemplateForm({ initial, onSave, onClose, exercise
                 type="button"
                 className="btn-ghost rounded-lg p-1.5 shrink-0"
                 title={exercise.favorite ? "Remover dos favoritos" : "Favoritar exercício"}
+                aria-label={`${exercise.favorite ? "Remover dos favoritos" : "Favoritar"} ${exercise.name || `exercício ${index + 1}`}`}
                 onClick={() => update(exercise.id, { favorite: !exercise.favorite })}
               >
                 <Star size={14} className={exercise.favorite ? "text-brass" : "text-faint"} fill={exercise.favorite ? "currentColor" : "none"} />

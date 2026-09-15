@@ -848,6 +848,13 @@
   .task-week-subtasks{
     white-space:nowrap;
   }
+  .task-week-postpone-select{
+    background:var(--surface);
+    border:1px solid var(--border);
+    color:var(--text-faint);
+    min-height:22px;
+    padding:0 4px;
+  }
   .task-glass-tabs{
     position:relative;
     background:color-mix(in srgb, var(--surface-2) 55%, transparent);
