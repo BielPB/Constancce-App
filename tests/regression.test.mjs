@@ -1119,3 +1119,49 @@ test("Performance: CalendarView cacheia getDayData por mês em vez de recalcular
   const cachedCallSites = calendarViewSource.match(/getDayDataCached\(/g) || [];
   assert.equal(cachedCallSites.length, 3, "esperava 3 usos de getDayDataCached em CalendarView (dia selecionado, semana, grid mensal)");
 });
+
+test("Qualidade de código: efeito de bootstrap de sync usa sub-funções nomeadas em vez de um único bloco gigante", () => {
+  // O useEffect que faz o bootstrap de sync (entrar em outro dispositivo,
+  // trocar de conta) tinha ~218 linhas com 6+ níveis de ramificação num só
+  // lugar. Extraídas 3 sub-funções nomeadas dentro do próprio ConstancceApp
+  // (mesmo acesso a refs/setters via closure, sem mudar nenhuma lógica):
+  // resolveBootstrapSnapshot decide o snapshot (remoto vs. cache vs. null),
+  // seedRemoteAccountIfEmpty semeia o servidor quando ele ainda não tem
+  // estado canônico, e handleBootstrapOffline trata a falha/offline.
+  assert.match(app, /const resolveBootstrapSnapshot = async \(\{ session, userId, cached, durableRoutineOutbox, isCancelled \}\) => \{/);
+  assert.match(app, /const seedRemoteAccountIfEmpty = async \(\{ session, userId, cached, durablePending \}\) => \{/);
+  assert.match(app, /const handleBootstrapOffline = \(userId, \{ durablePending, cached \}\) => \{/);
+
+  // O useEffect precisa chamar as três, e não reimplementar a lógica inline.
+  const bootstrapEffectSource = app.slice(
+    app.indexOf("  useEffect(() => {\n    if (!authReady) return;"),
+    app.indexOf("}, [authReady, session?.user?.id]);")
+  );
+  assert.match(bootstrapEffectSource, /await resolveBootstrapSnapshot\(\{/);
+  assert.match(bootstrapEffectSource, /await seedRemoteAccountIfEmpty\(\{ session, userId, cached, durablePending \}\);/);
+  assert.match(bootstrapEffectSource, /if \(!cancelled\) handleBootstrapOffline\(userId, \{ durablePending, cached \}\);/);
+
+  // A checagem de cancelamento no meio do fetch precisa sobreviver à
+  // extração — sem ela, uma sessão trocada/desmontada no meio do bootstrap
+  // continuaria migrando outbox de rotina para o usuário errado.
+  assert.match(app, /if \(isCancelled\(\)\) return \{ cancelled: true, remote: null \};/);
+  assert.match(bootstrapEffectSource, /if \(snapshot\.cancelled\) return;/);
+});
+
+test("Qualidade de código: refeições salvas (Dieta) têm a mesma checagem dupla de limite PRO que hábitos/tarefas/metas/treinos", () => {
+  // FoodView já bloqueava salvar uma refeição ao bater no limite Free (view),
+  // mas a persistência ia direto pro setProfile genérico — sem a segunda
+  // camada que saveHabit/saveTask/saveGoal/saveWorkoutTemplate têm no handler
+  // central de ConstancceApp. Agora existe persistMealTemplate, que refaz a
+  // mesma checagem antes de gravar, e é isso que FoodView chama.
+  assert.match(app, /const persistMealTemplate = \(template\) => \{/);
+  assert.match(app, /if \(!isPro && \(profile\?\.dietSavedMeals \|\| \[\]\)\.length >= PRO_LIMITS\.dietSavedMeals\) \{/);
+  assert.match(app, /persistMealTemplate=\{persistMealTemplate\}/);
+
+  const foodViewSource = app.slice(app.indexOf("function FoodView("), app.indexOf("\nfunction ", app.indexOf("function FoodView(") + 1));
+  assert.match(foodViewSource, /persistMealTemplate,\n/);
+  assert.match(foodViewSource, /persistMealTemplate\(template\);/);
+  // A view não deve mais gravar dietSavedMeals direto no setProfile — isso
+  // pularia a segunda camada de checagem.
+  assert.doesNotMatch(foodViewSource, /setProfile\(\(current\) => \(\{\s*\n\s*\.\.\.current,\s*\n\s*dietSavedMeals: \[template/);
+});

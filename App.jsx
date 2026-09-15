@@ -10,6 +10,11 @@ import { ErrorBoundary } from "./src/components/ErrorBoundary.jsx";
 import { useConstancceData } from "./src/hooks/useConstancceData.js";
 import { useWorkoutRestTimer, useRestCountdown } from "./src/hooks/useWorkoutRestTimer.js";
 import { computeUsageStreaks, normalizeUsageDays } from "./src/lib/usageStreak.js";
+import {
+  daysUntil, goalMilestonePercents, goalMilestonesReached, goalProgressPercent, goalProgressEntries,
+  goalDailyHistory, goalLastActivityDate, goalDaysSinceActivity, goalPaceInfo, goalPaceScore,
+  goalPaceScoreLabel, goalForecast, goalRequiredPace, goalNextMilestone,
+} from "./src/lib/goalForecast.js";
 import { accentInkColor } from "./src/lib/theme.js";
 import { PRO_LIMITS, PRO_FEATURE_COPY, accessSummary } from "./src/lib/plans.js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, authHeaders, rpcRequest } from "./src/lib/supabaseRpc.js";
@@ -386,34 +391,9 @@ function workoutEffectiveWeekday(dateStr, offsetDays) {
   return weekdayIndex(offset ? addDays(dateStr, -offset) : dateStr);
 }
 
-function goalMilestonePercents(goal) {
-  if (goal?.checklist?.length) return [];
-  // Array.isArray (não .length) distingue "usuário escolheu nenhum marco" ([])
-  // de "nunca definiu" (undefined) — com .length, um [] salvo de propósito
-  // sempre revertia pro padrão de 4 marcos.
-  if (Array.isArray(goal?.milestones)) return goal.milestones;
-  return [25, 50, 75, 100];
-}
-
-function goalMilestonesReached(goal) {
-  const target = Math.max(1, Number(goal?.target || 0));
-  // Arredondado igual a goalProgressPercent(), usado pela trilha visual e pelo
-  // toast de "marco alcançado" — sem isso, a trilha comemorava um marco (ex.:
-  // 24,6% arredondado pra 25%) que o score de ritmo/XP não reconhecia.
-  const currentPct = Math.round(Math.min(100, Math.max(0, (Number(goal?.current || 0) / target) * 100)));
-  return goalMilestonePercents(goal).filter((pct) => currentPct >= pct).length;
-}
-
 function moduleEnabled(profile, id) {
   if (["dashboard", "profile", "notifications"].includes(id)) return true;
   return profile?.moduleVisibility?.[id] !== false;
-}
-
-function daysUntil(dateStr) {
-  if (!dateStr) return null;
-  const start = new Date(today() + "T12:00:00");
-  const end = new Date(dateStr + "T12:00:00");
-  return Math.ceil((end - start) / 86400000);
 }
 
 
@@ -1151,210 +1131,6 @@ const goalValueLabel = (goal, value) =>
   goal?.type === "financeira"
     ? money(value)
     : (Number(value) || 0).toLocaleString("pt-BR");
-
-const goalProgressPercent = (goal) => {
-  const target = Math.max(0, Number(goal?.target || 0));
-  const current = Math.max(0, Number(goal?.current || 0));
-  return target > 0 ? Math.min(100, Math.max(0, Math.round((current / target) * 100))) : 0;
-};
-
-const goalProgressEntries = (goalProgressLog, goalId) =>
-  [...(goalProgressLog || [])]
-    .filter((entry) => entry.goalId === goalId)
-    .sort((a, b) =>
-      String(a.createdAt || `${a.date || ""}T00:00:00`).localeCompare(
-        String(b.createdAt || `${b.date || ""}T00:00:00`)
-      )
-    );
-
-const goalDailyHistory = (goal, goalProgressLog) => {
-  const entries = goalProgressEntries(goalProgressLog, goal.id);
-  const byDate = new Map();
-
-  entries.forEach((entry) => {
-    const date = String(entry.date || entry.createdAt || "").slice(0, 10);
-    if (!date) return;
-    byDate.set(date, {
-      date,
-      value: Math.max(0, Number(entry.value || 0)),
-      added: Math.max(0, Number(entry.added || 0)),
-      createdAt: entry.createdAt || `${date}T12:00:00`,
-    });
-  });
-
-  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
-};
-
-const goalLastActivityDate = (goal, goalProgressLog) => {
-  const history = goalDailyHistory(goal, goalProgressLog);
-  const checkins = [...(goal?.weeklyCheckins || [])]
-    .filter((item) => item.value !== "nenhum")
-    .map((item) => String(item.date || item.createdAt || "").slice(0, 10))
-    .filter(Boolean)
-    .sort();
-
-  const candidates = [
-    history.at(-1)?.date,
-    checkins.at(-1),
-    goal?.startDate,
-  ].filter(Boolean).sort();
-
-  return candidates.at(-1) || goal?.startDate || today();
-};
-
-const goalDaysSinceActivity = (goal, goalProgressLog) => {
-  const last = goalLastActivityDate(goal, goalProgressLog);
-  const from = new Date(`${last}T12:00:00`);
-  const to = new Date(`${today()}T12:00:00`);
-  return Math.max(0, Math.floor((to - from) / 86400000));
-};
-
-const goalPaceInfo = (goal, goalProgressLog) => {
-  if (goal?.completed) return { label: "Concluída", tone: "positive", expectedPct: 100, deltaPct: 0 };
-
-  const pct = goalProgressPercent(goal);
-  const inactiveDays = goalDaysSinceActivity(goal, goalProgressLog);
-
-  if (inactiveDays >= 21 && pct < 100) {
-    return { label: "Parada", tone: "danger", expectedPct: null, deltaPct: null, inactiveDays };
-  }
-
-  if (!goal?.endDate) {
-    return { label: "Em andamento", tone: "neutral", expectedPct: null, deltaPct: null, inactiveDays };
-  }
-
-  const start = new Date(`${goal.startDate || today()}T12:00:00`);
-  const end = new Date(`${goal.endDate}T12:00:00`);
-  const now = new Date(`${today()}T12:00:00`);
-  const totalDays = Math.max(1, Math.ceil((end - start) / 86400000));
-  const elapsedDays = Math.max(0, Math.min(totalDays, Math.ceil((now - start) / 86400000)));
-  const expectedPct = Math.max(0, Math.min(100, Math.round(elapsedDays / totalDays * 100)));
-  const deltaPct = pct - expectedPct;
-
-  if (goal.endDate < today() && pct < 100) {
-    return { label: "Atenção", tone: "attention", expectedPct: 100, deltaPct: pct - 100, inactiveDays };
-  }
-
-  if (deltaPct >= -5) {
-    return { label: "No ritmo", tone: "positive", expectedPct, deltaPct, inactiveDays };
-  }
-
-  return { label: "Atenção", tone: "attention", expectedPct, deltaPct, inactiveDays };
-};
-
-const goalPaceScore = (goal, goalProgressLog) => {
-  if (goal?.completed) return 100;
-
-  const pct = goalProgressPercent(goal);
-  const pace = goalPaceInfo(goal, goalProgressLog);
-  const progressPart = Math.min(35, pct * 0.35);
-  const pacePart =
-    pace.label === "No ritmo" ? 35 :
-    pace.label === "Em andamento" ? 25 :
-    pace.label === "Atenção" ? 16 :
-    5;
-
-  const inactiveDays = goalDaysSinceActivity(goal, goalProgressLog);
-  const recencyPart = inactiveDays <= 7 ? 20 : inactiveDays <= 14 ? 12 : inactiveDays <= 21 ? 6 : 0;
-  const milestonePercents = goalMilestonePercents(goal);
-  const milestonePart = milestonePercents.length
-    ? Math.round(goalMilestonesReached(goal) / milestonePercents.length * 10)
-    : Math.min(10, pct * 0.1);
-
-  return Math.max(0, Math.min(100, Math.round(progressPart + pacePart + recencyPart + milestonePart)));
-};
-
-const goalPaceScoreLabel = (score) =>
-  score >= 80 ? "Forte" :
-  score >= 60 ? "Estável" :
-  score >= 40 ? "Atenção" :
-  "Fraco";
-
-const goalForecast = (goal, goalProgressLog) => {
-  if (!goal || goal.completed) {
-    return {
-      predictedDate: goal?.completedAt ? String(goal.completedAt).slice(0, 10) : null,
-      ratePerDay: 0,
-      daysDifference: null,
-    };
-  }
-
-  const target = Math.max(0, Number(goal.target || 0));
-  const current = Math.max(0, Number(goal.current || 0));
-  const remaining = Math.max(0, target - current);
-  if (!target || !remaining) return { predictedDate: today(), ratePerDay: 0, daysDifference: 0 };
-
-  const history = goalDailyHistory(goal, goalProgressLog);
-  let ratePerDay = 0;
-
-  if (history.length >= 2) {
-    const first = history[0];
-    const last = history.at(-1);
-    const days = Math.max(
-      1,
-      Math.round(
-        (new Date(`${last.date}T12:00:00`) - new Date(`${first.date}T12:00:00`)) / 86400000
-      )
-    );
-    ratePerDay = Math.max(0, (Number(last.value || 0) - Number(first.value || 0)) / days);
-  }
-
-  if (ratePerDay <= 0 && current > 0) {
-    const start = new Date(`${goal.startDate || today()}T12:00:00`);
-    const now = new Date(`${today()}T12:00:00`);
-    const elapsedDays = Math.max(1, Math.round((now - start) / 86400000) + 1);
-    ratePerDay = current / elapsedDays;
-  }
-
-  if (!Number.isFinite(ratePerDay) || ratePerDay <= 0) {
-    return { predictedDate: null, ratePerDay: 0, daysDifference: null };
-  }
-
-  const daysNeeded = Math.min(3650, Math.max(1, Math.ceil(remaining / ratePerDay)));
-  const predictedDate = addDays(today(), daysNeeded);
-  const daysDifference = goal.endDate
-    ? Math.round(
-        (new Date(`${predictedDate}T12:00:00`) - new Date(`${goal.endDate}T12:00:00`)) / 86400000
-      )
-    : null;
-
-  return { predictedDate, ratePerDay, daysDifference };
-};
-
-const goalRequiredPace = (goal) => {
-  const remaining = Math.max(0, Number(goal?.target || 0) - Number(goal?.current || 0));
-  if (!goal?.endDate || remaining <= 0) {
-    return { value: 0, unit: goal?.type === "financeira" ? "mês" : "semana" };
-  }
-
-  const days = Math.max(1, daysUntil(goal.endDate) || 1);
-  if (goal.type === "financeira") {
-    return {
-      value: remaining / Math.max(1, days / 30.4375),
-      unit: "mês",
-    };
-  }
-
-  return {
-    value: remaining / Math.max(1, days / 7),
-    unit: "semana",
-  };
-};
-
-const goalNextMilestone = (goal) => {
-  const pct = goalProgressPercent(goal);
-  const milestonePct = goalMilestonePercents(goal)
-    .filter((value) => value > pct)
-    .sort((a, b) => a - b)[0];
-
-  if (!milestonePct) return null;
-
-  const target = Math.max(0, Number(goal.target || 0));
-  return {
-    pct: milestonePct,
-    value: target * milestonePct / 100,
-  };
-};
 
 const normalizeGoalQuestion = (value = "") =>
   String(value)
@@ -8277,6 +8053,7 @@ function FoodView({
   toggleMealConsumed,
   deleteMeal,
   deleteFood,
+  persistMealTemplate,
   profile,
   setProfile,
   session,
@@ -8434,10 +8211,7 @@ function FoodView({
       })),
     };
 
-    setProfile((current) => ({
-      ...current,
-      dietSavedMeals: [template, ...(current?.dietSavedMeals || [])],
-    }));
+    persistMealTemplate(template);
   };
 
   const deleteSavedMeal = async (id) => {
@@ -11475,6 +11249,179 @@ function ConstancceApp() {
     return false;
   }, [isPro, track]);
 
+  // Decide qual snapshot este dispositivo deve usar no bootstrap: busca o
+  // genérico e o atômico (Hábitos/Treinos) em paralelo, migra progresso que
+  // só existia no cache local pra outbox de rotina, e resolve `remote` (null
+  // quando a conta ainda não tem nada no servidor). Não aplica nada a estado
+  // React nem grava local storage — quem chama decide o que fazer com o
+  // resultado (ver seedRemoteAccountIfEmpty e o ramo "if (remote)" abaixo).
+  const resolveBootstrapSnapshot = async ({ session, userId, cached, durableRoutineOutbox, isCancelled }) => {
+    // Sempre usa um JWT renovado no bootstrap. Um PWA que ficou dias fechado
+    // pode reabrir com uma sessão armazenada prestes a expirar; nesse caso a
+    // leitura remota não pode cair silenciosamente para o cache local.
+    let activeSession = session;
+    try { activeSession = await getFreshSession(false); } catch (_) {}
+
+    // 1.1.28 — Hábitos e Treinos são carregados de uma tabela atômica própria
+    // antes do snapshot genérico. Isso impede o desktop de receber uma versão
+    // antiga enquanto o celular já concluiu hábitos ou treino.
+    const [genericResult, routineResult] = await Promise.allSettled([
+      fetchRemoteForUser(activeSession),
+      fetchAtomicRoutineForUser(activeSession),
+    ]);
+    if (isCancelled()) return { cancelled: true, remote: null };
+    const genericRemote = genericResult.status === "fulfilled" ? genericResult.value : null;
+    if (genericResult.status === "rejected") {
+      captureClientError(genericResult.reason, { module: "sync", action: "bootstrap_generic_nonfatal_1_1_28" });
+    }
+    if (routineResult.status !== "fulfilled") throw routineResult.reason || new Error("routine_bootstrap_failed");
+    const routineRemote = routineResult.value;
+
+    routineRevisionRef.current = { ...(routineRemote?.revisions || {}) };
+    let routineBase = {
+      habits: routineRemote?.habits || [],
+      completions: routineRemote?.completions || [],
+      habitChecklistLog: routineRemote?.habitChecklistLog || [],
+      workoutTemplates: routineRemote?.workoutTemplates || [],
+      workoutSessions: routineRemote?.workoutSessions || [],
+    };
+
+    // Migração defensiva por dispositivo. Conclusões/progresso que estavam
+    // apenas no cache local são unidos ao estado remoto e entram na outbox.
+    let visibleRoutineOutbox = durableRoutineOutbox;
+    if (!routineMigrationDone(userId) && cached) {
+      const mergedRoutine = mergeRoutineBootstrap(routineBase, cached);
+      const migrationOps = buildRoutineOps(routineBase, mergedRoutine, routineRemote?.revisions || {}, ROUTINE_FIELDS)
+        .map((op) => ({ ...op, mutationId: newMutationId(), queuedAt: new Date().toISOString() }));
+      if (migrationOps.length) {
+        visibleRoutineOutbox = compactRoutineOutbox([...visibleRoutineOutbox, ...migrationOps]);
+        routineOutboxRef.current = visibleRoutineOutbox;
+        saveRoutineOutbox(userId, visibleRoutineOutbox);
+      }
+      routineBase = mergedRoutine;
+      markRoutineMigrationDone(userId);
+    }
+
+    const visibleRoutine = visibleRoutineOutbox.length
+      ? applyRoutineOutbox(routineBase, visibleRoutineOutbox)
+      : routineBase;
+    routineVisibleRef.current = visibleRoutine;
+
+    // Se a leitura genérica falhar (rede instável, cold start da Edge
+    // Function etc.) mas a tabela atômica de Hábitos/Treinos responder,
+    // NÃO tratamos isso como um snapshot completo vazio: usar apenas
+    // `visibleRoutine` aqui zeraria perfil, conquistas (`unlocked`),
+    // metas etc. a cada reload em que a leitura genérica falha, fazendo
+    // marcos já desbloqueados parecerem "novos" de novo (toast repetido)
+    // e potencialmente apagando outros dados de conta. O cache local
+    // (já carregado acima) é a base mais segura para os campos que a
+    // leitura genérica não conseguiu confirmar desta vez.
+    const remote = genericRemote
+      ? migrateUserData({ ...genericRemote, ...visibleRoutine })
+      : (Object.values(visibleRoutine).some((value) => Array.isArray(value) && value.length)
+          ? migrateUserData({ ...(cached || {}), ...visibleRoutine })
+          : null);
+
+    return { cancelled: false, remote };
+  };
+
+  // Conta sem snapshot remoto ainda (nem genérico, nem atômico): aproveita
+  // dados legados/cache e qualquer fila pendente preservada de uma sessão
+  // anterior, e semeia o servidor com esse snapshot completo uma única vez.
+  const seedRemoteAccountIfEmpty = async ({ session, userId, cached, durablePending }) => {
+    const legacy = loadLegacyLocalData();
+    const base = legacy || cached || {};
+    const seed = durablePending?.data
+      ? migrateUserData(mergeRemoteWithPendingV3(base, durablePending))
+      : (legacy || cached);
+
+    if (!seed) {
+      applyRemoteData({});
+      return;
+    }
+
+    const stampedSeed = migrateUserData({
+      ...seed,
+      schemaVersion: DATA_SCHEMA_VERSION,
+      __syncDomainUpdatedAt: seed?.__syncDomainUpdatedAt || {},
+      __syncUpdatedAt: seed?.__syncUpdatedAt || null,
+      __localUpdatedAt: seed?.__localUpdatedAt || new Date().toISOString(),
+    });
+    applyRemoteData(stampedSeed);
+    saveUserLocalData(userId, stampedSeed);
+
+    // Se o servidor ainda não tem estado canônico, envia o snapshot completo
+    // UMA vez, inclusive quando há fila pendente. Isso evita criar uma conta
+    // remota parcial contendo apenas o último domínio editado offline.
+    const saved = await saveRemoteForUser(session, stampedSeed, {
+      changedKeys: Object.values(DOMAIN_FIELDS).flat().filter((key) => key !== "tasks" && !ROUTINE_FIELDS.includes(key)),
+      baseFieldRevisions: {},
+      mutationId: durablePending?.mutationId || newMutationId(),
+      clientId: getSyncClientId(userId),
+    });
+    if (saved?.data) {
+      const synced = migrateUserData({
+        ...saved.data,
+        __syncRevision: Number(saved.revision || 0),
+        __syncFieldRevisions: saved.fieldRevisions || {},
+        __syncUpdatedAt: saved.updated_at || null,
+      });
+      syncRevisionRef.current = Number(saved.revision || 0);
+      fieldRevisionRef.current = { ...(saved.fieldRevisions || {}) };
+      lastSyncedDataRef.current = synced;
+      pendingSyncRef.current = null;
+      clearPendingSync(userId);
+      const syncedVisible = routineVisibleRef.current ? migrateUserData({ ...synced, ...routineVisibleRef.current }) : synced;
+      applyRemoteData(syncedVisible);
+      saveUserLocalData(userId, syncedVisible);
+    }
+    if (legacy) clearLegacyLocalData();
+  };
+
+  // Sem rede (ou a leitura remota falhou): mantém o snapshot mais novo deste
+  // aparelho e a fila pendente. Nada é descartado só porque a nuvem ficou
+  // indisponível — os outboxes são recarregados do storage porque o efeito
+  // pode ter caído aqui antes de terminar de resolver o snapshot remoto.
+  const handleBootstrapOffline = (userId, { durablePending, cached }) => {
+    let offlineData = durablePending?.data
+      ? migrateUserData(mergeRemoteWithPendingV3(cached || {}, durablePending))
+      : cached;
+    const durableTaskOutbox = loadTaskOutbox(userId);
+    taskOutboxRef.current = durableTaskOutbox;
+    const durableRoutineOutbox = loadRoutineOutbox(userId);
+    routineOutboxRef.current = durableRoutineOutbox;
+    if (offlineData) {
+      const offlineRoutine = {
+        habits: offlineData.habits || [],
+        completions: offlineData.completions || [],
+        habitChecklistLog: offlineData.habitChecklistLog || [],
+        workoutTemplates: offlineData.workoutTemplates || [],
+        workoutSessions: offlineData.workoutSessions || [],
+      };
+      routineVisibleRef.current = offlineRoutine;
+    }
+    if (offlineData && durableTaskOutbox.length) {
+      offlineData = migrateUserData({ ...offlineData, tasks: applyTaskOutbox(offlineData.tasks || [], durableTaskOutbox) });
+    }
+    if (offlineData) {
+      if (durablePending?.data) {
+        pendingSyncRef.current = {
+          ...durablePending,
+          data: pickDataForKeys(offlineData, durablePending.changedKeys || []),
+          changedKeys: [...new Set(durablePending.changedKeys || [])],
+        };
+        savePendingSync(userId, pendingSyncRef.current);
+      }
+      applyRemoteData(offlineData);
+      saveUserLocalData(userId, offlineData);
+    }
+    setSyncStatus(
+      typeof navigator !== "undefined" && navigator.onLine === false
+        ? "offline"
+        : (pendingSyncRef.current ? "error" : "idle")
+    );
+  };
+
   // A nuvem é a fonte principal ao entrar em outro dispositivo, mas uma edição
   // local ainda pendente nunca é descartada. Dados atualizados em outro dispositivo
   // são usados como base antes de reaplicar as mudanças deste aparelho.
@@ -11510,70 +11457,15 @@ function ConstancceApp() {
       routineOutboxRef.current = durableRoutineOutbox;
 
       try {
-        // Sempre usa um JWT renovado no bootstrap. Um PWA que ficou dias fechado
-        // pode reabrir com uma sessão armazenada prestes a expirar; nesse caso a
-        // leitura remota não pode cair silenciosamente para o cache local.
-        let activeSession = session;
-        try { activeSession = await getFreshSession(false); } catch (_) {}
-
-        // 1.1.28 — Hábitos e Treinos são carregados de uma tabela atômica própria
-        // antes do snapshot genérico. Isso impede o desktop de receber uma versão
-        // antiga enquanto o celular já concluiu hábitos ou treino.
-        const [genericResult, routineResult] = await Promise.allSettled([
-          fetchRemoteForUser(activeSession),
-          fetchAtomicRoutineForUser(activeSession),
-        ]);
-        if (cancelled) return;
-        const genericRemote = genericResult.status === "fulfilled" ? genericResult.value : null;
-        if (genericResult.status === "rejected") {
-          captureClientError(genericResult.reason, { module: "sync", action: "bootstrap_generic_nonfatal_1_1_28" });
-        }
-        if (routineResult.status !== "fulfilled") throw routineResult.reason || new Error("routine_bootstrap_failed");
-        const routineRemote = routineResult.value;
-
-        routineRevisionRef.current = { ...(routineRemote?.revisions || {}) };
-        let routineBase = {
-          habits: routineRemote?.habits || [],
-          completions: routineRemote?.completions || [],
-          habitChecklistLog: routineRemote?.habitChecklistLog || [],
-          workoutTemplates: routineRemote?.workoutTemplates || [],
-          workoutSessions: routineRemote?.workoutSessions || [],
-        };
-
-        // Migração defensiva por dispositivo. Conclusões/progresso que estavam
-        // apenas no cache local são unidos ao estado remoto e entram na outbox.
-        if (!routineMigrationDone(userId) && cached) {
-          const mergedRoutine = mergeRoutineBootstrap(routineBase, cached);
-          const migrationOps = buildRoutineOps(routineBase, mergedRoutine, routineRemote?.revisions || {}, ROUTINE_FIELDS)
-            .map((op) => ({ ...op, mutationId: newMutationId(), queuedAt: new Date().toISOString() }));
-          if (migrationOps.length) {
-            durableRoutineOutbox = compactRoutineOutbox([...durableRoutineOutbox, ...migrationOps]);
-            routineOutboxRef.current = durableRoutineOutbox;
-            saveRoutineOutbox(userId, durableRoutineOutbox);
-          }
-          routineBase = mergedRoutine;
-          markRoutineMigrationDone(userId);
-        }
-
-        const visibleRoutine = durableRoutineOutbox.length
-          ? applyRoutineOutbox(routineBase, durableRoutineOutbox)
-          : routineBase;
-        routineVisibleRef.current = visibleRoutine;
-
-        // Se a leitura genérica falhar (rede instável, cold start da Edge
-        // Function etc.) mas a tabela atômica de Hábitos/Treinos responder,
-        // NÃO tratamos isso como um snapshot completo vazio: usar apenas
-        // `visibleRoutine` aqui zeraria perfil, conquistas (`unlocked`),
-        // metas etc. a cada reload em que a leitura genérica falha, fazendo
-        // marcos já desbloqueados parecerem "novos" de novo (toast repetido)
-        // e potencialmente apagando outros dados de conta. O cache local
-        // (já carregado acima) é a base mais segura para os campos que a
-        // leitura genérica não conseguiu confirmar desta vez.
-        const remote = genericRemote
-          ? migrateUserData({ ...genericRemote, ...visibleRoutine })
-          : (Object.values(visibleRoutine).some((value) => Array.isArray(value) && value.length)
-              ? migrateUserData({ ...(cached || {}), ...visibleRoutine })
-              : null);
+        const snapshot = await resolveBootstrapSnapshot({
+          session,
+          userId,
+          cached,
+          durableRoutineOutbox,
+          isCancelled: () => cancelled,
+        });
+        if (snapshot.cancelled) return;
+        const { remote } = snapshot;
 
         if (remote) {
           // A resposta do servidor é a base confirmada deste dispositivo.
@@ -11599,100 +11491,13 @@ function ConstancceApp() {
           saveUserLocalData(userId, visibleData);
           lastRemotePullAtRef.current = Date.now();
         } else {
-          // Conta sem snapshot remoto: aproveita dados legados/cache e também
-          // qualquer fila pendente preservada de uma sessão anterior.
-          const legacy = loadLegacyLocalData();
-          const base = legacy || cached || {};
-          const seed = durablePending?.data
-            ? migrateUserData(mergeRemoteWithPendingV3(base, durablePending))
-            : (legacy || cached);
-
-          if (seed) {
-            const stampedSeed = migrateUserData({
-              ...seed,
-              schemaVersion: DATA_SCHEMA_VERSION,
-              __syncDomainUpdatedAt: seed?.__syncDomainUpdatedAt || {},
-              __syncUpdatedAt: seed?.__syncUpdatedAt || null,
-              __localUpdatedAt: seed?.__localUpdatedAt || new Date().toISOString(),
-            });
-            applyRemoteData(stampedSeed);
-            saveUserLocalData(userId, stampedSeed);
-
-            // Se o servidor ainda não tem estado canônico, envia o snapshot completo
-            // UMA vez, inclusive quando há fila pendente. Isso evita criar uma conta
-            // remota parcial contendo apenas o último domínio editado offline.
-            const saved = await saveRemoteForUser(session, stampedSeed, {
-              changedKeys: Object.values(DOMAIN_FIELDS).flat().filter((key) => key !== "tasks" && !ROUTINE_FIELDS.includes(key)),
-              baseFieldRevisions: {},
-              mutationId: durablePending?.mutationId || newMutationId(),
-              clientId: getSyncClientId(userId),
-            });
-            if (saved?.data) {
-              const synced = migrateUserData({
-                ...saved.data,
-                __syncRevision: Number(saved.revision || 0),
-                __syncFieldRevisions: saved.fieldRevisions || {},
-                __syncUpdatedAt: saved.updated_at || null,
-              });
-              syncRevisionRef.current = Number(saved.revision || 0);
-              fieldRevisionRef.current = { ...(saved.fieldRevisions || {}) };
-              lastSyncedDataRef.current = synced;
-              pendingSyncRef.current = null;
-              clearPendingSync(userId);
-              const syncedVisible = routineVisibleRef.current ? migrateUserData({ ...synced, ...routineVisibleRef.current }) : synced;
-              applyRemoteData(syncedVisible);
-              saveUserLocalData(userId, syncedVisible);
-            }
-            if (legacy) clearLegacyLocalData();
-          } else {
-            applyRemoteData({});
-          }
+          await seedRemoteAccountIfEmpty({ session, userId, cached, durablePending });
         }
         setSyncStatus(durablePending?.data ? "syncing" : "idle");
         setTaskSyncStatus(taskOutboxRef.current.length ? "syncing" : "idle");
         setLastSaved(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
       } catch (e) {
-        // Offline: mantém o snapshot mais novo deste aparelho e a fila pendente.
-        // Nada é descartado só porque a nuvem ficou indisponível.
-        if (!cancelled) {
-          let offlineData = durablePending?.data
-            ? migrateUserData(mergeRemoteWithPendingV3(cached || {}, durablePending))
-            : cached;
-          durableTaskOutbox = loadTaskOutbox(userId);
-          taskOutboxRef.current = durableTaskOutbox;
-          durableRoutineOutbox = loadRoutineOutbox(userId);
-          routineOutboxRef.current = durableRoutineOutbox;
-          if (offlineData) {
-            const offlineRoutine = {
-              habits: offlineData.habits || [],
-              completions: offlineData.completions || [],
-              habitChecklistLog: offlineData.habitChecklistLog || [],
-              workoutTemplates: offlineData.workoutTemplates || [],
-              workoutSessions: offlineData.workoutSessions || [],
-            };
-            routineVisibleRef.current = offlineRoutine;
-          }
-          if (offlineData && durableTaskOutbox.length) {
-            offlineData = migrateUserData({ ...offlineData, tasks: applyTaskOutbox(offlineData.tasks || [], durableTaskOutbox) });
-          }
-          if (offlineData) {
-            if (durablePending?.data) {
-              pendingSyncRef.current = {
-                ...durablePending,
-                data: pickDataForKeys(offlineData, durablePending.changedKeys || []),
-                changedKeys: [...new Set(durablePending.changedKeys || [])],
-              };
-              savePendingSync(userId, pendingSyncRef.current);
-            }
-            applyRemoteData(offlineData);
-            saveUserLocalData(userId, offlineData);
-          }
-          setSyncStatus(
-            typeof navigator !== "undefined" && navigator.onLine === false
-              ? "offline"
-              : (pendingSyncRef.current ? "error" : "idle")
-          );
-        }
+        if (!cancelled) handleBootstrapOffline(userId, { durablePending, cached });
       } finally {
         if (!cancelled) setDataReady(true);
       }
@@ -13395,6 +13200,22 @@ function ConstancceApp() {
     });
   };
 
+  // Segunda camada do limite PRO de refeições salvas (a primeira é a checagem
+  // em FoodView, antes de abrir o prompt de nome) — mesmo padrão de
+  // cinto-e-suspensório já usado em saveHabit/saveTask/saveGoal/saveWorkoutTemplate.
+  const persistMealTemplate = (template) => {
+    if (!isPro && (profile?.dietSavedMeals || []).length >= PRO_LIMITS.dietSavedMeals) {
+      requestPro("diet");
+      fireToast(`No Free, você pode salvar até ${PRO_LIMITS.dietSavedMeals} refeições.`, <Lock size={16} className="text-brass" />);
+      return false;
+    }
+    setProfile((current) => ({
+      ...current,
+      dietSavedMeals: [template, ...(current?.dietSavedMeals || [])],
+    }));
+    return true;
+  };
+
   const addTransaction = (tx) => {
     if (!isPro && transactions.length >= PRO_LIMITS.financeTransactions) {
       requestPro("finance");
@@ -14238,7 +14059,7 @@ function ConstancceApp() {
       case "calendar": return <CalendarView habits={habits} completions={completions} tasks={tasks} saveTask={saveTask} setTaskStatus={setTaskStatus} workoutTemplates={workoutTemplates} workoutSessions={workoutSessions} saveWorkoutTemplate={saveWorkoutTemplate} scheduleWorkoutSession={scheduleWorkoutSession} goals={goals} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
       case "goals": return <GoalsView goals={goals} saveGoal={saveGoal} addProgress={addGoalProgress} updateProgress={updateProgress} toggleGoalChecklist={toggleGoalChecklist} deleteGoal={deleteGoal} goalProgressLog={goalProgressLog} tasks={tasks} habits={habits} autoOpen={quickTrigger.goals} isPro={isPro} onUpgrade={requestPro} />;
       case "workouts": return <WorkoutsView session={session} profile={profile} setProfile={setProfile} templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} scheduleWorkoutSession={scheduleWorkoutSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateReps={updateWorkoutReps} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ timer: workoutRest.timer, total: workoutRest.total }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} onAdjustRest={workoutRest.adjust} resumeSessionId={workoutResumeSessionId} onResumeHandled={() => setWorkoutResumeSessionId(null)} />;
-      case "food": return <FoodView foodBase={dietFoodBase} foods={foods} mealLog={mealLog} addMeal={addMeal} updateMeal={updateMeal} toggleMealConsumed={toggleMealConsumed} deleteMeal={deleteMeal} deleteFood={deleteFood} profile={profile} setProfile={setProfile} session={session} autoOpen={quickTrigger.food} isPro={isPro} onUpgrade={requestPro} />;
+      case "food": return <FoodView foodBase={dietFoodBase} foods={foods} mealLog={mealLog} addMeal={addMeal} updateMeal={updateMeal} toggleMealConsumed={toggleMealConsumed} deleteMeal={deleteMeal} deleteFood={deleteFood} persistMealTemplate={persistMealTemplate} profile={profile} setProfile={setProfile} session={session} autoOpen={quickTrigger.food} isPro={isPro} onUpgrade={requestPro} />;
       case "finance": return <FinanceView transactions={transactions} addTransaction={addTransaction} addGoalProgress={addGoalProgress} deleteTransaction={deleteTransaction} removeTransactionRecord={removeTransactionRecord} profile={profile} setProfile={setProfile} goals={goals} autoOpen={quickTrigger.finance} isPro={isPro} onUpgrade={requestPro} />;
       case "friends": return <FriendsView session={session} profile={profile} game={game} streaks={habitStreaks} isPro={isPro} onUpgrade={requestPro} />;
       case "professional": return <ProfessionalView session={session} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} saveWorkoutTemplate={saveWorkoutTemplate} />;
