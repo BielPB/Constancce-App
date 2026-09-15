@@ -49,10 +49,61 @@ const writeTimer = (userId, value) => {
   }
 };
 
+// Fica de olho no timer e recalcula `remaining` a cada 500ms — isolado num
+// hook próprio pra quem precisa MOSTRAR a contagem regressiva (o badge
+// flutuante da raiz, a tela de Treinos) tickar sozinho, sem forçar o
+// componente raiz do app (e a view ativa no momento, seja qual for) a
+// re-renderizar a cada 500ms só por causa do relógio do descanso.
+// `onExpire` é opcional — só quem precisa detectar o fim de verdade (o
+// badge da raiz, que fica montado o tempo todo enquanto o timer roda,
+// independente da aba ativa) deve passar essa função.
+export function useRestCountdown(timer, onExpire) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!timer?.endAt) return;
+    setNow(Date.now());
+
+    let stopped = false;
+    const refresh = () => {
+      if (stopped) return;
+      const currentNow = Date.now();
+      setNow(currentNow);
+      if (currentNow >= timer.endAt) {
+        stopped = true;
+        onExpire?.(timer);
+      }
+    };
+
+    refresh();
+    const interval = window.setInterval(refresh, 500);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const onFocus = () => refresh();
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [timer?.id, timer?.endAt, onExpire]);
+
+  const remaining = useMemo(() => {
+    if (!timer?.endAt) return 0;
+    return Math.max(0, Math.ceil((timer.endAt - now) / 1000));
+  }, [timer?.endAt, now]);
+
+  return { remaining, running: Boolean(timer && remaining > 0) };
+}
+
 export function useWorkoutRestTimer(userId) {
   const [timer, setTimer] = useState(null);
   const [finishedTimer, setFinishedTimer] = useState(null);
-  const [now, setNow] = useState(() => Date.now());
 
   const finish = useCallback((source) => {
     if (!source) return;
@@ -73,7 +124,6 @@ export function useWorkoutRestTimer(userId) {
   useEffect(() => {
     setTimer(null);
     setFinishedTimer(null);
-    setNow(Date.now());
 
     if (!userId) return;
 
@@ -94,41 +144,6 @@ export function useWorkoutRestTimer(userId) {
     setTimer(stored);
   }, [userId]);
 
-  useEffect(() => {
-    if (!timer?.endAt) return;
-
-    let stopped = false;
-
-    const refresh = () => {
-      if (stopped) return;
-      const currentNow = Date.now();
-      setNow(currentNow);
-
-      if (currentNow >= timer.endAt) {
-        stopped = true;
-        finish(timer);
-      }
-    };
-
-    refresh();
-
-    const interval = window.setInterval(refresh, 500);
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") refresh();
-    };
-    const onFocus = () => refresh();
-
-    document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("focus", onFocus);
-
-    return () => {
-      stopped = true;
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [timer?.id, timer?.endAt, finish]);
-
   const start = useCallback((seconds = 90, metadata = {}) => {
     const total = Math.max(MIN_REST_SECONDS, Math.min(MAX_REST_SECONDS, Number(seconds) || 90));
     const startedAt = Date.now();
@@ -146,7 +161,6 @@ export function useWorkoutRestTimer(userId) {
     };
 
     setFinishedTimer(null);
-    setNow(startedAt);
     setTimer(next);
     writeTimer(userId, next);
     return next;
@@ -180,20 +194,15 @@ export function useWorkoutRestTimer(userId) {
     writeTimer(userId, null);
   }, [userId]);
 
-  const remaining = useMemo(() => {
-    if (!timer?.endAt) return 0;
-    return Math.max(0, Math.ceil((timer.endAt - now) / 1000));
-  }, [timer?.endAt, now]);
-
   return {
     timer,
     finishedTimer,
-    remaining,
-    running: Boolean(timer && remaining > 0),
+    running: Boolean(timer),
     total: Number(timer?.total || 0),
     start,
     cancel,
     adjust,
+    finish,
     acknowledgeFinished,
   };
 }

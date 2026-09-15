@@ -10,6 +10,7 @@ import {
 } from "../../components/ui.jsx";
 import { PRO_LIMITS } from "../../lib/plans.js";
 import { fetchProfessionalLinks, sendPrescription } from "../../lib/professionalLinks.js";
+import { useRestCountdown } from "../../hooks/useWorkoutRestTimer.js";
 import WorkoutTemplateForm from "./WorkoutTemplateForm.jsx";
 
 // Utilitários universais pequenos, copiados aqui de propósito (mesmo padrão já
@@ -586,6 +587,12 @@ function WorkoutsView({
   resumeSessionId,
   onResumeHandled,
 }) {
+  // O objeto `timer` (início/fim/metadados) só muda quando o descanso começa,
+  // é ajustado ou cancelado — raro. O tick de 500ms fica isolado aqui dentro
+  // via useRestCountdown, então só esta tela recalcula a cada meio segundo,
+  // não o app inteiro (o mesmo timer também é mostrado no badge flutuante da
+  // raiz, que tem seu próprio tick independente).
+  const { remaining: restRemaining, running: restRunning } = useRestCountdown(restTimer.timer);
   const [section, setSection] = useState("today");
   const [promptFor, promptDialog] = usePrompt();
   const [showForm, setShowForm] = useState(false);
@@ -2073,20 +2080,20 @@ function WorkoutsView({
                 </div>
                 <div>
                   <p className="text-[9px] text-faint uppercase tracking-widest">Descanso</p>
-                  <p className={`font-mono text-sm mt-1 ${restTimer.running ? "text-brass" : ""}`}>
-                    {restTimer.running ? formatRestCountdown(restTimer.remaining) : "—"}
+                  <p className={`font-mono text-sm mt-1 ${restRunning ? "text-brass" : ""}`}>
+                    {restRunning ? formatRestCountdown(restRemaining) : "—"}
                   </p>
                 </div>
               </div>
 
-              {restTimer.running && (
+              {restRunning && (
                 <div className="workout-rest-active mt-3 pt-3">
                   <div className="flex items-center justify-between gap-3 mb-2">
                     <p className="text-[9px] text-faint uppercase tracking-widest">Descansando</p>
-                    <p className="font-mono text-2xl text-brass">{formatRestCountdown(restTimer.remaining)}</p>
+                    <p className="font-mono text-2xl text-brass">{formatRestCountdown(restRemaining)}</p>
                   </div>
                   <Progress
-                    value={restTimer.total > 0 ? (restTimer.remaining / restTimer.total) * 100 : 0}
+                    value={restTimer.total > 0 ? (restRemaining / restTimer.total) * 100 : 0}
                     height={4}
                   />
                   <div className="flex items-center justify-between gap-2 mt-2.5">

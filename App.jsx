@@ -8,7 +8,7 @@ import { ROUTINE_COLLECTIONS, ROUTINE_FIELDS, compactRoutineOutbox, buildRoutine
 import { captureClientError, consumeQueuedErrors, sendTelemetry, analyticsEvent } from "./src/lib/observability.js";
 import { ErrorBoundary } from "./src/components/ErrorBoundary.jsx";
 import { useConstancceData } from "./src/hooks/useConstancceData.js";
-import { useWorkoutRestTimer } from "./src/hooks/useWorkoutRestTimer.js";
+import { useWorkoutRestTimer, useRestCountdown } from "./src/hooks/useWorkoutRestTimer.js";
 import { computeUsageStreaks, normalizeUsageDays } from "./src/lib/usageStreak.js";
 import { accentInkColor } from "./src/lib/theme.js";
 import { PRO_LIMITS, PRO_FEATURE_COPY, accessSummary } from "./src/lib/plans.js";
@@ -2763,6 +2763,26 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
     Number(a.active === false) - Number(b.active === false) || a.name.localeCompare(b.name, "pt-BR")
   );
 
+  // A grade do mês inteiro (linha × coluna = hábito × dia) e habitMonthRate
+  // repetiam completions.some(...) — uma varredura completa do array — pra
+  // CADA célula. Com histórico de meses/anos isso ficava perceptível ao
+  // marcar um hábito (a grade inteira recalculava). Um Set indexado por
+  // "habitId|data" vira lookup O(1) por célula em vez de O(completions).
+  const completedSet = useMemo(() => {
+    const set = new Set();
+    for (const completion of completions) set.add(`${completion.habitId}|${completion.date}`);
+    return set;
+  }, [completions]);
+  const isDoneOn = (habitId, dateStr) => completedSet.has(`${habitId}|${dateStr}`);
+
+  const checklistDoneSet = useMemo(() => {
+    const set = new Set();
+    for (const row of habitChecklistLog) {
+      if (row.done) set.add(`${row.habitId}|${row.itemId}|${row.date}`);
+    }
+    return set;
+  }, [habitChecklistLog]);
+
   const habitMonthRate = (habit) => {
     let validDays = 0;
     let completedDays = 0;
@@ -2771,7 +2791,7 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
       if (dateStr > t) break;
       if (!habitValidOnDate(habit, dateStr, completions)) continue;
       validDays += 1;
-      if (completions.some((completion) => completion.habitId === habit.id && completion.date === dateStr)) completedDays += 1;
+      if (isDoneOn(habit.id, dateStr)) completedDays += 1;
     }
     return validDays ? Math.round(completedDays / validDays * 100) : 0;
   };
@@ -2979,13 +2999,13 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                           // preservar a integridade do histórico (não dá pra "voltar" e marcar depois).
                           const editable = isToday && scheduledDay;
                           const showAsEmpty = !scheduledDay || isFuture;
-                          const done = completions.some((completion) => completion.habitId === habit.id && completion.date === dateStr);
+                          const done = isDoneOn(habit.id, dateStr);
 
                           let checklistPct = null;
                           if (hasChecklist && scheduledDay) {
                             const total = habit.checklist.length;
                             const doneCount = habit.checklist.filter((item) =>
-                              habitChecklistLog.some((row) => row.habitId === habit.id && row.itemId === item.id && row.date === dateStr && row.done)
+                              checklistDoneSet.has(`${habit.id}|${item.id}|${dateStr}`)
                             ).length;
                             checklistPct = total ? doneCount / total : 0;
                           }
@@ -3663,62 +3683,78 @@ function TasksView({ tasks, saveTask, deleteTask, setStatus, moveTask, autoOpen,
   );
   const plannerWeekEnd = addDays(plannerWeekStart, 6);
 
-  const activeTasks = tasks.filter((task) =>
-    isRecurringTask(task) || task.status !== "concluida"
-  );
+  // Antes esse bloco inteiro (7 filtros + 5 sorts sobre `tasks`) era refeito
+  // em toda renderização de TasksView — qualquer interação de UI (abrir
+  // subtarefa, trocar filtro, hover de drag-and-drop) refazia tudo de novo.
+  // Um só useMemo, recalculado apenas quando `tasks`/o dia mudam.
+  const {
+    activeTasks, todayTasks, todayPending, todayCompleted, todayCompletionPct,
+    todayEstimatedMinutes, overdueTasks, unscheduledTasks, recurringTasks,
+    futureTasks, priorityQueue, nextTask, todayPriority, todayLater,
+  } = useMemo(() => {
+    const activeTasks = tasks.filter((task) =>
+      isRecurringTask(task) || task.status !== "concluida"
+    );
 
-  const todayTasks = tasks
-    .filter((task) => taskOccursOnDate(task, t))
-    .sort((a, b) => taskPriorityScore(b, t) - taskPriorityScore(a, t));
+    const todayTasks = tasks
+      .filter((task) => taskOccursOnDate(task, t))
+      .sort((a, b) => taskPriorityScore(b, t) - taskPriorityScore(a, t));
 
-  const todayPending = todayTasks.filter((task) => !taskDoneOnDate(task, t));
-  const todayCompleted = todayTasks.filter((task) => taskDoneOnDate(task, t));
-  const todayCompletionPct = todayTasks.length
-    ? Math.round(todayCompleted.length / todayTasks.length * 100)
-    : 0;
+    const todayPending = todayTasks.filter((task) => !taskDoneOnDate(task, t));
+    const todayCompleted = todayTasks.filter((task) => taskDoneOnDate(task, t));
+    const todayCompletionPct = todayTasks.length
+      ? Math.round(todayCompleted.length / todayTasks.length * 100)
+      : 0;
 
-  const todayEstimatedMinutes = todayTasks.reduce(
-    (sum, task) => sum + Math.max(0, Number(task.estimatedMinutes || 0)),
-    0
-  );
+    const todayEstimatedMinutes = todayTasks.reduce(
+      (sum, task) => sum + Math.max(0, Number(task.estimatedMinutes || 0)),
+      0
+    );
 
-  const overdueTasks = tasks
-    .filter((task) => taskIsOverdue(task, t))
-    .sort((a, b) => taskPriorityScore(b, t) - taskPriorityScore(a, t));
+    const overdueTasks = tasks
+      .filter((task) => taskIsOverdue(task, t))
+      .sort((a, b) => taskPriorityScore(b, t) - taskPriorityScore(a, t));
 
-  const unscheduledTasks = tasks
-    .filter((task) =>
-      !isRecurringTask(task) &&
-      task.status !== "concluida" &&
-      !task.dueDate
-    )
-    .sort((a, b) => taskPriorityScore(b, t) - taskPriorityScore(a, t));
+    const unscheduledTasks = tasks
+      .filter((task) =>
+        !isRecurringTask(task) &&
+        task.status !== "concluida" &&
+        !task.dueDate
+      )
+      .sort((a, b) => taskPriorityScore(b, t) - taskPriorityScore(a, t));
 
-  const recurringTasks = tasks
-    .filter((task) => isRecurringTask(task))
-    .sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "pt-BR"));
+    const recurringTasks = tasks
+      .filter((task) => isRecurringTask(task))
+      .sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""), "pt-BR"));
 
-  const futureTasks = tasks
-    .filter((task) =>
-      !isRecurringTask(task) &&
-      task.status !== "concluida" &&
-      task.dueDate &&
-      task.dueDate > plannerWeekEnd
-    )
-    .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+    const futureTasks = tasks
+      .filter((task) =>
+        !isRecurringTask(task) &&
+        task.status !== "concluida" &&
+        task.dueDate &&
+        task.dueDate > plannerWeekEnd
+      )
+      .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
 
-  const queueMap = new Map();
-  [...todayPending, ...overdueTasks].forEach((task) => queueMap.set(task.id, task));
-  const priorityQueue = [...queueMap.values()]
-    .sort((a, b) => taskPriorityScore(b, t) - taskPriorityScore(a, t));
+    const queueMap = new Map();
+    [...todayPending, ...overdueTasks].forEach((task) => queueMap.set(task.id, task));
+    const priorityQueue = [...queueMap.values()]
+      .sort((a, b) => taskPriorityScore(b, t) - taskPriorityScore(a, t));
 
-  const nextTask = priorityQueue[0] || null;
-  const todayPriority = todayPending.filter((task) =>
-    ["urgente", "alta"].includes(task.priority)
-  );
-  const todayLater = todayPending.filter((task) =>
-    !["urgente", "alta"].includes(task.priority)
-  );
+    const nextTask = priorityQueue[0] || null;
+    const todayPriority = todayPending.filter((task) =>
+      ["urgente", "alta"].includes(task.priority)
+    );
+    const todayLater = todayPending.filter((task) =>
+      !["urgente", "alta"].includes(task.priority)
+    );
+
+    return {
+      activeTasks, todayTasks, todayPending, todayCompleted, todayCompletionPct,
+      todayEstimatedMinutes, overdueTasks, unscheduledTasks, recurringTasks,
+      futureTasks, priorityQueue, nextTask, todayPriority, todayLater,
+    };
+  }, [tasks, t, plannerWeekEnd]);
 
   const scheduleTask = (task, date, countAsDefer = false) => {
     if (!task || isRecurringTask(task)) return;
@@ -10793,6 +10829,47 @@ const formatRestCountdown = (seconds = 0) => {
   return `${min}:${sec}`;
 };
 
+// Componente próprio só pra isolar o tick de 500ms do timer de descanso —
+// antes ele vivia direto no componente raiz (ConstancceApp), então cada
+// atualização de `now` re-renderizava o app inteiro (sidebar, view ativa,
+// tudo), mesmo o usuário estando em Tarefas ou Hábitos sem nenhuma relação
+// com o descanso do treino. Aqui, só este badge re-renderiza a cada 500ms.
+function WorkoutRestBadge({ timer, onFinish, onOpenSession }) {
+  const { remaining, running } = useRestCountdown(timer, onFinish);
+  if (!running) return null;
+  return (
+    <button
+      type="button"
+      className="workout-global-rest"
+      onClick={onOpenSession}
+      aria-label={`Descanso em andamento. Faltam ${formatRestCountdown(remaining)}.`}
+    >
+      <span className="workout-global-rest-icon">
+        <Timer size={16} />
+      </span>
+      <span className="min-w-0">
+        <span className="workout-global-rest-label">Descanso</span>
+        <span className="workout-global-rest-exercise">
+          {timer?.exerciseName || "Treino em andamento"}
+        </span>
+      </span>
+      <span className="workout-global-rest-time font-mono">
+        {formatRestCountdown(remaining)}
+      </span>
+    </button>
+  );
+}
+
+// O polling curto (fallback do Realtime, a cada 3s) chamava os setters de
+// estado incondicionalmente a cada pull, mesmo quando o servidor devolvia
+// exatamente os mesmos dados — isso invalidava os useMemo mais caros do app
+// (stats de 365 dias, game/XP) e forçava re-render da view ativa a cada 3s,
+// mesmo com o app parado. setIfChanged devolve a MESMA referência de array
+// quando o conteúdo é idêntico, o que faz o React abortar a atualização
+// desse estado (e qualquer memo que dependa só dele).
+const setIfChanged = (setter, next) => {
+  setter((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
+};
 
 function ConstancceApp() {
   const [session, setSession] = useState(() => loadStoredSession());
@@ -11670,7 +11747,7 @@ function ConstancceApp() {
         __taskRevisions: remote.taskRevisions || {},
         __syncUpdatedAt: [lastSyncedDataRef.current?.__syncUpdatedAt, remote.updatedAt].filter(Boolean).sort().at(-1) || null,
       });
-      setTasks(visibleTasks);
+      setIfChanged(setTasks, visibleTasks);
       persistTaskLocalState(visibleTasks);
       setTaskSyncStatus(outbox.length ? "syncing" : "idle");
       setTaskSyncError("");
@@ -11899,11 +11976,11 @@ function ConstancceApp() {
         workoutSessions: remote.workoutSessions || [],
       };
       routineVisibleRef.current = visible;
-      setHabits(visible.habits);
-      setCompletions(visible.completions);
-      setHabitChecklistLog(visible.habitChecklistLog);
-      setWorkoutTemplates(visible.workoutTemplates);
-      setWorkoutSessions(visible.workoutSessions);
+      setIfChanged(setHabits, visible.habits);
+      setIfChanged(setCompletions, visible.completions);
+      setIfChanged(setHabitChecklistLog, visible.habitChecklistLog);
+      setIfChanged(setWorkoutTemplates, visible.workoutTemplates);
+      setIfChanged(setWorkoutSessions, visible.workoutSessions);
       persistRoutineLocalState(visible);
       return true;
     } catch (error) {
@@ -14133,7 +14210,7 @@ function ConstancceApp() {
       case "tasks": return <TasksView tasks={tasks} saveTask={saveTask} deleteTask={deleteTask} setStatus={setTaskStatus} moveTask={moveTaskKanban} autoOpen={quickTrigger.tasks} isPro={isPro} onUpgrade={requestPro} />;
       case "calendar": return <CalendarView habits={habits} completions={completions} tasks={tasks} saveTask={saveTask} setTaskStatus={setTaskStatus} workoutTemplates={workoutTemplates} workoutSessions={workoutSessions} saveWorkoutTemplate={saveWorkoutTemplate} scheduleWorkoutSession={scheduleWorkoutSession} goals={goals} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
       case "goals": return <GoalsView goals={goals} saveGoal={saveGoal} addProgress={addGoalProgress} updateProgress={updateProgress} toggleGoalChecklist={toggleGoalChecklist} deleteGoal={deleteGoal} goalProgressLog={goalProgressLog} tasks={tasks} habits={habits} autoOpen={quickTrigger.goals} isPro={isPro} onUpgrade={requestPro} />;
-      case "workouts": return <WorkoutsView session={session} profile={profile} setProfile={setProfile} templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} scheduleWorkoutSession={scheduleWorkoutSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateReps={updateWorkoutReps} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ remaining: workoutRest.remaining, total: workoutRest.total, running: workoutRest.running }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} onAdjustRest={workoutRest.adjust} resumeSessionId={workoutResumeSessionId} onResumeHandled={() => setWorkoutResumeSessionId(null)} />;
+      case "workouts": return <WorkoutsView session={session} profile={profile} setProfile={setProfile} templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} scheduleWorkoutSession={scheduleWorkoutSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateReps={updateWorkoutReps} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ timer: workoutRest.timer, total: workoutRest.total }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} onAdjustRest={workoutRest.adjust} resumeSessionId={workoutResumeSessionId} onResumeHandled={() => setWorkoutResumeSessionId(null)} />;
       case "food": return <FoodView foodBase={dietFoodBase} foods={foods} mealLog={mealLog} addMeal={addMeal} updateMeal={updateMeal} toggleMealConsumed={toggleMealConsumed} deleteMeal={deleteMeal} deleteFood={deleteFood} profile={profile} setProfile={setProfile} session={session} autoOpen={quickTrigger.food} isPro={isPro} onUpgrade={requestPro} />;
       case "finance": return <FinanceView transactions={transactions} addTransaction={addTransaction} addGoalProgress={addGoalProgress} deleteTransaction={deleteTransaction} removeTransactionRecord={removeTransactionRecord} profile={profile} setProfile={setProfile} goals={goals} autoOpen={quickTrigger.finance} isPro={isPro} onUpgrade={requestPro} />;
       case "friends": return <FriendsView session={session} profile={profile} game={game} streaks={habitStreaks} isPro={isPro} onUpgrade={requestPro} />;
@@ -14223,33 +14300,17 @@ function ConstancceApp() {
         </main>
       </div>
 
-      {workoutRest.running && (
-        <button
-          type="button"
-          className="workout-global-rest"
-          onClick={() => {
-            if (workoutRest.timer?.sessionId) {
-              setWorkoutResumeSessionId(workoutRest.timer.sessionId);
-            }
-            setView("workouts");
-            setShowMore(false);
-          }}
-          aria-label={`Descanso em andamento. Faltam ${formatRestCountdown(workoutRest.remaining)}.`}
-        >
-          <span className="workout-global-rest-icon">
-            <Timer size={16} />
-          </span>
-          <span className="min-w-0">
-            <span className="workout-global-rest-label">Descanso</span>
-            <span className="workout-global-rest-exercise">
-              {workoutRest.timer?.exerciseName || "Treino em andamento"}
-            </span>
-          </span>
-          <span className="workout-global-rest-time font-mono">
-            {formatRestCountdown(workoutRest.remaining)}
-          </span>
-        </button>
-      )}
+      <WorkoutRestBadge
+        timer={workoutRest.timer}
+        onFinish={workoutRest.finish}
+        onOpenSession={() => {
+          if (workoutRest.timer?.sessionId) {
+            setWorkoutResumeSessionId(workoutRest.timer.sessionId);
+          }
+          setView("workouts");
+          setShowMore(false);
+        }}
+      />
 
       <nav
         className="mobile-nav md:hidden fixed bottom-0 left-0 right-0 surface grid items-stretch px-1.5 pt-2 pb-[calc(.5rem+env(safe-area-inset-bottom))] z-40"
