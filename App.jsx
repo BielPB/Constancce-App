@@ -5230,9 +5230,12 @@ function CalendarView({
   const month = cursor.getMonth();
   const firstDow = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells = [];
-  for (let index = 0; index < firstDow; index += 1) cells.push(null);
-  for (let day = 1; day <= daysInMonth; day += 1) cells.push(day);
+  const cells = useMemo(() => {
+    const result = [];
+    for (let index = 0; index < firstDow; index += 1) result.push(null);
+    for (let day = 1; day <= daysInMonth; day += 1) result.push(day);
+    return result;
+  }, [firstDow, daysInMonth]);
 
   const syncCursorToDate = (dateStr) => {
     const date = new Date(`${dateStr}T12:00:00`);
@@ -5328,7 +5331,31 @@ function CalendarView({
     };
   };
 
-  const selectedData = getDayData(selected);
+  const monthDayDataMap = useMemo(() => {
+    const map = new Map();
+    cells.forEach((day) => {
+      if (!day) return;
+      const dateStr = fmt(new Date(year, month, day));
+      map.set(dateStr, getDayData(dateStr));
+    });
+    return map;
+  }, [
+    cells,
+    tasks,
+    habits,
+    completions,
+    workoutSessions,
+    workoutTemplates,
+    bills,
+    goals,
+    profile?.workoutScheduleOffsetDays,
+    year,
+    month,
+  ]);
+
+  const getDayDataCached = (date) => monthDayDataMap.get(date) || getDayData(date);
+
+  const selectedData = getDayDataCached(selected);
 
   const showType = (id) => filter === "all" || filter === id;
 
@@ -5756,7 +5783,7 @@ function CalendarView({
         <>
           <div className="calendar-week-view grid grid-cols-1 md:grid-cols-7 gap-2">
             {weekDays.map((date) => {
-              const data = getDayData(date);
+              const data = getDayDataCached(date);
               const isSelected = date === selected;
               const isToday = date === today();
 
@@ -5879,7 +5906,7 @@ function CalendarView({
                 if (!day) return <div key={`empty-${index}`} className="calendar-day-empty" />;
 
                 const dateStr = fmt(new Date(year, month, day));
-                const data = getDayData(dateStr);
+                const data = getDayDataCached(dateStr);
                 const isSelected = dateStr === selected;
                 const isToday = dateStr === today();
 

@@ -1086,3 +1086,36 @@ test("Velocidade de abertura: lucide-react vira chunk próprio, não junto do re
   assert.ok(lucideCheckIndex > -1 && reactCheckIndex > -1, "checagens não encontradas em vite.config.js");
   assert.ok(lucideCheckIndex < reactCheckIndex, "lucide-react precisa ser checado antes do bucket react-vendor");
 });
+
+test("Performance: CalendarView cacheia getDayData por mês em vez de recalcular por célula", () => {
+  // getDayData (e o getWorkoutEvents que ele chama por dentro) varria
+  // tasks/habits/completions/workoutSessions/workoutTemplates/bills/goals
+  // inteiros — e era chamado uma vez por célula do grid (até 42x) e uma vez
+  // por dia da visão semanal, recalculando tudo de novo mesmo quando o
+  // render era disparado por um estado não relacionado (abrir o menu
+  // rápido, iniciar um drag). Agora o resultado por dia é cacheado num
+  // Map, construído uma única vez por mês dentro de um useMemo.
+  const calendarViewSource = app.slice(app.indexOf("function CalendarView("), app.indexOf("\nfunction ", app.indexOf("function CalendarView(") + 1));
+
+  assert.match(calendarViewSource, /const cells = useMemo\(\(\) => \{/);
+  assert.match(calendarViewSource, /\}, \[firstDow, daysInMonth\]\);/);
+
+  assert.match(calendarViewSource, /const monthDayDataMap = useMemo\(\(\) => \{/);
+  assert.match(calendarViewSource, /map\.set\(dateStr, getDayData\(dateStr\)\);/);
+  assert.match(
+    calendarViewSource,
+    /\},\s*\[\s*cells,\s*tasks,\s*habits,\s*completions,\s*workoutSessions,\s*workoutTemplates,\s*bills,\s*goals,\s*profile\?\.workoutScheduleOffsetDays,\s*year,\s*month,?\s*\]\);/
+  );
+
+  // getDayDataCached precisa cair pro getDayData "cru" quando a data pedida
+  // não está no mês do cursor atual (ex.: `selected` ficou parado num mês
+  // antigo, ou a visão semanal atravessa a virada do mês) — nunca deve
+  // simplesmente retornar undefined pra uma data fora do Map.
+  assert.match(calendarViewSource, /const getDayDataCached = \(date\) => monthDayDataMap\.get\(date\) \|\| getDayData\(date\);/);
+
+  // Os três pontos que antes chamavam getDayData/getWorkoutEvents por
+  // célula (resumo do dia selecionado, visão semanal, grid mensal) devem
+  // usar a versão cacheada — não a crua.
+  const cachedCallSites = calendarViewSource.match(/getDayDataCached\(/g) || [];
+  assert.equal(cachedCallSites.length, 3, "esperava 3 usos de getDayDataCached em CalendarView (dia selecionado, semana, grid mensal)");
+});
