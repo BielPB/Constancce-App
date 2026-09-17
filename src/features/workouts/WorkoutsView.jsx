@@ -237,6 +237,26 @@ const workoutPreviousExerciseLoad = (sessions, templateId, exerciseId, beforeDat
   return previous ? Number(previous.loads?.[exerciseId]) : null;
 };
 
+// "Trocar" (exerciseOverrides) serve tanto pra trocar de exercício de verdade
+// (aparelho ocupado, ex.: leg press → cadeira extensora) quanto — na prática,
+// muita gente usa assim — só pra corrigir a digitação/nome do MESMO exercício
+// (ex.: "leg pres" → "leg press"). O código não pode perguntar a intenção, mas
+// consegue estimar: nomes muito parecidos (um contém o outro, ou compartilham
+// a maioria das palavras, já normalizados) são tratados como o mesmo
+// exercício remendado, não uma troca de verdade.
+const isLikelyWorkoutExerciseRename = (oldName, newName) => {
+  const a = normalizeWorkoutExerciseName(oldName);
+  const b = normalizeWorkoutExerciseName(newName);
+  if (!a || !b) return false;
+  if (a === b || a.includes(b) || b.includes(a)) return true;
+  const wordsA = new Set(a.split(/\s+/).filter(Boolean));
+  const wordsB = new Set(b.split(/\s+/).filter(Boolean));
+  const smaller = Math.min(wordsA.size, wordsB.size);
+  if (!smaller) return false;
+  const shared = [...wordsA].filter((word) => wordsB.has(word)).length;
+  return shared / smaller >= 0.5;
+};
+
 // Quando o exercício é trocado só nesse treino (exerciseOverrides), o slot
 // (exercise.id) continua o mesmo, mas o exercício de fato mudou — mostrar a
 // carga anterior do slot antigo mostraria a carga de um exercício diferente
@@ -244,12 +264,21 @@ const workoutPreviousExerciseLoad = (sessions, templateId, exerciseId, beforeDat
 // anteriores), não pelo id do slot, pra achar a última carga já registrada
 // para este exercício específico, não importa em qual treino/slot ele foi
 // feito. Sem correspondência (nunca feito), retorna null — "deixa em branco".
-const workoutLoadHistoryByName = (sessions, templates, exerciseName, beforeDate = null) => {
+//
+// Prioriza correspondências dentro do MESMO treino (currentTemplateId) sobre
+// as de outros treinos. Sem isso, dois treinos diferentes com um exercício
+// de mesmo nome mas cargas bem diferentes (ex.: "Leg Press" pesado na ficha
+// de perna vs. um "Leg Press" mais leve numa ficha de mobilidade) podiam se
+// contaminar: bastava usar "Trocar" pra só corrigir o nome/digitação de um
+// exercício, e a carga mostrada virava a do OUTRO treino, mais recente —
+// mesmo sendo, pro usuário, o mesmo exercício de sempre.
+const workoutLoadHistoryByName = (sessions, templates, exerciseName, beforeDate = null, currentTemplateId = null) => {
   const target = normalizeWorkoutExerciseName(exerciseName);
   if (!target) return null;
   const templateById = new Map((templates || []).map((tpl) => [tpl.id, tpl]));
 
-  const matches = [];
+  const sameTemplateMatches = [];
+  const otherTemplateMatches = [];
   for (const session of sessions || []) {
     if (beforeDate && !(String(session.date || "") < beforeDate)) continue;
     const template = templateById.get(session.templateId);
@@ -259,20 +288,26 @@ const workoutLoadHistoryByName = (sessions, templates, exerciseName, beforeDate 
       if (normalizeWorkoutExerciseName(effectiveName) !== target) continue;
       const rawLoad = session.loads?.[exercise.id];
       if (rawLoad === "" || rawLoad == null || !Number.isFinite(Number(rawLoad))) continue;
-      matches.push({
+      const bucket = session.templateId === currentTemplateId ? sameTemplateMatches : otherTemplateMatches;
+      bucket.push({
         date: session.date || "",
         stamp: session.completedAt || session.startedAt || "",
         load: Number(rawLoad),
       });
     }
   }
-  if (!matches.length) return null;
-  matches.sort((a, b) => {
-    const byDate = String(b.date).localeCompare(String(a.date));
-    if (byDate !== 0) return byDate;
-    return String(b.stamp).localeCompare(String(a.stamp));
-  });
-  return matches[0].load;
+
+  const pickLatest = (matches) => {
+    if (!matches.length) return null;
+    matches.sort((a, b) => {
+      const byDate = String(b.date).localeCompare(String(a.date));
+      if (byDate !== 0) return byDate;
+      return String(b.stamp).localeCompare(String(a.stamp));
+    });
+    return matches[0].load;
+  };
+
+  return pickLatest(sameTemplateMatches) ?? pickLatest(otherTemplateMatches);
 };
 
 const workoutHistoricalMaxLoad = (sessions, templateId, exerciseId, beforeDate = null) => {
@@ -2158,11 +2193,19 @@ function WorkoutsView({
 
               // Exercício trocado só neste treino: o slot (exercise.id) continua o
               // mesmo, mas passou a representar outro exercício. Buscar a carga
-              // anterior pelo NOME (em qualquer sessão/slot) em vez de pelo slot
-              // evita mostrar a carga do exercício antigo com o nome novo. Sem
-              // registro anterior para este nome, fica em branco (null).
+              // anterior pelo NOME (priorizando o mesmo treino, depois os demais)
+              // em vez de pelo slot evita mostrar a carga do exercício antigo com
+              // o nome novo. Sem correspondência por nome, só cai pro histórico
+              // do próprio slot quando o nome novo parece ser o MESMO exercício
+              // remendado (isLikelyWorkoutExerciseRename) — ex.: "leg pres" →
+              // "leg press" — nunca pra uma troca de exercício de verdade (nesse
+              // caso fica "—", como antes, pra não misturar cargas de exercícios
+              // diferentes).
               const previousLoad = isSwapped
-                ? workoutLoadHistoryByName(sessions, templates, displayName, activeSession.date)
+                ? workoutLoadHistoryByName(sessions, templates, displayName, activeSession.date, activeTemplate.id)
+                  ?? (isLikelyWorkoutExerciseRename(exercise.name, displayName)
+                    ? workoutPreviousExerciseLoad(sessions, activeTemplate.id, exercise.id, activeSession.date)
+                    : null)
                 : workoutPreviousExerciseLoad(sessions, activeTemplate.id, exercise.id, activeSession.date);
               const currentLoad = Number(
                 activeSession.loads?.[exercise.id] ??
@@ -2250,7 +2293,7 @@ function WorkoutsView({
                         className="btn-ghost rounded-lg px-2 py-1 text-[10px] flex items-center gap-1 shrink-0"
                         onClick={async () => {
                           const nextName = await promptFor(
-                            "Substituir apenas neste treino por:",
+                            "Substituir por outro exercício SÓ NESTE TREINO (ex.: aparelho ocupado). Pra corrigir o nome deste exercício em todos os treinos, use \"Editar treino\" em vez disso.",
                             displayName
                           );
                           if (!nextName?.trim()) return;

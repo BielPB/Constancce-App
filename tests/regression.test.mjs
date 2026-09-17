@@ -941,16 +941,39 @@ test("Treinos: trocar exercício busca carga anterior pelo nome, não pelo slot 
   assert.match(helperSlice, /const effectiveName = session\.exerciseOverrides\?\.\[exercise\.id\] \|\| exercise\.name;/);
   assert.match(helperSlice, /normalizeWorkoutExerciseName\(effectiveName\) !== target/);
 
+  // Bug real relatado por usuário (2026-09-16): "Trocar" é usado por muita
+  // gente só pra corrigir a digitação/nome do exercício (não pra trocar de
+  // exercício de verdade). Como a busca por nome é GLOBAL (todos os
+  // treinos), um exercício de mesmo nome só que mais leve em outro treino
+  // (ex.: leg press de 60kg num treino de mobilidade) podia "vazar" e
+  // aparecer como carga anterior de um leg press de 100kg em outro treino
+  // completamente diferente. Prioriza o mesmo treino primeiro.
+  assert.match(helperSlice, /const sameTemplateMatches = \[\];/);
+  assert.match(helperSlice, /const otherTemplateMatches = \[\];/);
+  assert.match(helperSlice, /const bucket = session\.templateId === currentTemplateId \? sameTemplateMatches : otherTemplateMatches;/);
+  assert.match(helperSlice, /return pickLatest\(sameTemplateMatches\) \?\? pickLatest\(otherTemplateMatches\);/);
+
+  // Heurístico que distingue "só corrigiu o nome" (mesmo exercício) de uma
+  // troca de exercício de verdade — usado como ÚLTIMO fallback, só quando a
+  // busca por nome (acima) não encontrou nada.
+  const renameHeuristicStart = workoutsView.indexOf("const isLikelyWorkoutExerciseRename = ");
+  assert.ok(renameHeuristicStart > -1, "isLikelyWorkoutExerciseRename não encontrada");
+  const renameHeuristicSlice = workoutsView.slice(renameHeuristicStart, helperStart);
+  assert.match(renameHeuristicSlice, /if \(a === b \|\| a\.includes\(b\) \|\| b\.includes\(a\)\) return true;/);
+
   const focusStart = workoutsView.indexOf("{activeTemplate.exercises.map((exercise, exerciseIndex) => {");
   const focusEnd = workoutsView.indexOf("\n            })}", focusStart);
   assert.ok(focusStart > -1 && focusEnd > focusStart, "loop de exercícios da sessão ativa não encontrado");
   const focusSlice = workoutsView.slice(focusStart, focusEnd);
 
-  // Trocado (isSwapped): busca por nome, e SEM fallback pro exercise.load do
-  // slot antigo — é exatamente esse fallback que fazia a carga/"Treino
-  // anterior" mostrar o exercício errado depois de uma troca.
+  // Trocado (isSwapped): busca por nome (mesmo treino primeiro), e só cai
+  // pro histórico do próprio slot quando o nome novo parece ser o mesmo
+  // exercício remendado — nunca direto pro exercise.load do slot antigo (é
+  // exatamente esse fallback incondicional que fazia a carga/"Treino
+  // anterior" mostrar o exercício errado depois de uma troca de verdade).
   assert.match(focusSlice, /const isSwapped = Boolean\(activeSession\.exerciseOverrides\?\.\[exercise\.id\]\);/);
-  assert.match(focusSlice, /const previousLoad = isSwapped\s*\?\s*workoutLoadHistoryByName\(sessions, templates, displayName, activeSession\.date\)/);
+  assert.match(focusSlice, /workoutLoadHistoryByName\(sessions, templates, displayName, activeSession\.date, activeTemplate\.id\)/);
+  assert.match(focusSlice, /isLikelyWorkoutExerciseRename\(exercise\.name, displayName\)/);
   assert.match(focusSlice, /value=\{activeSession\.loads\?\.\[exercise\.id\] \?\? \(isSwapped \? \(previousLoad \?\? ""\) : \(exercise\.load \?\? ""\)\)\}/);
   assert.match(focusSlice, /\(!isSwapped && exercise\.load\)/);
 });
