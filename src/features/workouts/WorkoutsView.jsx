@@ -3,10 +3,10 @@ import {
   ArrowRightLeft, BrainCircuit, Calendar as CalendarIcon, CheckCircle2, ChevronDown, ChevronUp,
   ChevronLeft, ChevronRight,
   Circle, Copy, Dumbbell, GripVertical, Lock, Pencil, Play, Plus, RefreshCw, Repeat2, RotateCcw,
-  Share2, Sparkles, Star, Stethoscope, Timer, Trash2, Trophy, Upload, X,
+  Share2, Sparkles, Star, Stethoscope, Timer, Trash2, Trophy, Upload,
 } from "lucide-react";
 import {
-  Modal, Field, EmptyState, Progress, ProLockCard, FirstVisitTip, MiniLineChart, useConfirm, usePrompt,
+  Modal, Field, EmptyState, Progress, ProLockCard, FirstVisitTip, MiniLineChart, usePrompt,
 } from "../../components/ui.jsx";
 import { PRO_LIMITS } from "../../lib/plans.js";
 import { fetchProfessionalLinks, sendPrescription } from "../../lib/professionalLinks.js";

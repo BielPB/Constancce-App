@@ -8,7 +8,7 @@ import {
   Modal, Field, Progress, ProBadge, ProLockCard, FirstVisitTip, ConsistencyHeatmap, RadialProgress, useConfirm,
 } from "../../components/ui.jsx";
 import { PRO_LIMITS } from "../../lib/plans.js";
-import { detectFinanceIntent, executeFinanceIntelligence, computeFinanceProjectionForMonth } from "../../lib/financeIntelligence.js";
+import { executeFinanceIntelligence, computeFinanceProjectionForMonth } from "../../lib/financeIntelligence.js";
 import FinanceBillForm from "./FinanceBillForm.jsx";
 
 // Utilitários universais pequenos, copiados aqui de propósito (mesmo padrão já

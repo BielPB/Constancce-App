@@ -1376,3 +1376,15 @@ test("Metas em galeria: 'Em andamento' usa capas e abre o detalhe completo num m
   assert.match(app, /openGoalRequest=\{goalOpenRequest\}/);
   assert.match(app, /onOpenGoal=\{\(goalId\) => \{ setGoalOpenRequest\(\{ id: goalId, at: Date\.now\(\) \}\); setView\("goals"\); \}\}/);
 });
+
+test("Metas: mutações leem o valor atual (refs) e salvam fora dos updaters de setState", () => {
+  // Antes, addGoalProgress/updateProgress/toggleGoalChecklist montavam o
+  // histórico a partir de `goalProgressLog` do render, dentro do updater de
+  // setGoals: dois ajustes antes do próximo render faziam o segundo apagar o
+  // registro do primeiro. Mesmo padrão já usado nas tarefas.
+  assert.equal(app.match(/\bsetGoals\(/g)?.length, 1, "setGoals só dentro de setGoalsNow");
+  assert.equal(app.match(/\bsetGoalProgressLog\(/g)?.length, 1, "setGoalProgressLog só dentro de setGoalLogNow");
+  assert.doesNotMatch(app, /\[\.\.\.goalProgressLog, logEntry\]/);
+  assert.equal(app.match(/\[\.\.\.goalProgressLogRef\.current, logEntry\]/g)?.length, 3);
+  assert.match(app, /const saveGoal = \(g\) => \{\n\s*const prev = goalsRef\.current;/);
+});

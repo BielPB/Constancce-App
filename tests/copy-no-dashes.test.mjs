@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 // Regra do produto: nenhum travessão (— ou –) em texto que o usuário vê.
 // Percorre textos de JSX, strings e templates (o parser ignora comentários
 // de código) do front-end e das Edge Functions, mais index.html e manifest.
+// Exceção pedida: o nome do produto no checkout do Mercado Pago.
+const EXCEPTIONS = new Set(["supabase/functions/create-mercadopago-checkout/index.ts"]);
 
 const require = createRequire(import.meta.url);
 const { parse } = require("@babel/parser");
@@ -46,13 +48,13 @@ function dashedStrings(file) {
   return found;
 }
 
-test("nenhum travessão na copy do app (telas, notificações, checkout, compartilhamento)", () => {
+test("nenhum travessão na copy do app (telas, notificações, compartilhamento)", () => {
   const sources = [
     join(root, "App.jsx"),
     join(root, "main.jsx"),
     ...listFiles(join(root, "src"), [".js", ".jsx"]),
     ...listFiles(join(root, "supabase/functions"), [".ts"]),
-  ];
+  ].filter((file) => !EXCEPTIONS.has(relative(root, file)));
   const offenders = sources.flatMap(dashedStrings);
   for (const file of ["index.html", "public/site.webmanifest"]) {
     readFileSync(join(root, file), "utf8").split("\n").forEach((line, i) => {

@@ -1,8 +1,8 @@
 import { createClient as createSupabaseRealtimeClient } from "@supabase/supabase-js";
-import React, { useState, useEffect, useMemo, useCallback, useRef, useId, lazy, Suspense } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from "react";
 import { DATA_SCHEMA_VERSION, migrateUserData } from "./src/lib/schema.js";
 import { DOMAIN_FIELDS, mergeDomainRows, pickDataForKeys } from "./src/lib/syncDomains.js";
-import { mergePendingPayloadV3, mergeRemoteWithPendingV3, rebasePendingV3, newMutationId, mergeEntityArray3Way } from "./src/lib/syncV3.js";
+import { mergePendingPayloadV3, mergeRemoteWithPendingV3, rebasePendingV3, newMutationId } from "./src/lib/syncV3.js";
 import { compactTaskOutbox, applyTaskOutbox, makeTaskUpsert, makeTaskDelete, recordConfirmedTaskWrite, mergeTaskRevisions, reconcileRemoteTasks, settleSentTaskOp, atomicTasksFromRows } from "./src/lib/taskSyncV6.js";
 import { mergeMirrorRows, mirrorRows, deltaCursor, needsFullResync, serverTimeFromHeaders } from "./src/lib/remoteMirror.js";
 import { MAP_AREAS } from "./src/lib/trajectoryMap.js";
@@ -15,7 +15,7 @@ import { useWorkoutRestTimer, useRestCountdown } from "./src/hooks/useWorkoutRes
 import { computeUsageStreaks, normalizeUsageDays } from "./src/lib/usageStreak.js";
 import {
   daysUntil, goalMilestonePercents, goalMilestonesReached, goalProgressPercent, goalProgressEntries,
-  goalDailyHistory, goalLastActivityDate, goalDaysSinceActivity, goalPaceInfo, goalPaceScore,
+  goalDailyHistory, goalDaysSinceActivity, goalPaceInfo, goalPaceScore,
   goalPaceScoreLabel, goalForecast, goalRequiredPace, goalNextMilestone,
 } from "./src/lib/goalForecast.js";
 import { accentInkColor } from "./src/lib/theme.js";
@@ -29,13 +29,13 @@ import FinanceBillForm from "./src/features/finance/FinanceBillForm.jsx";
 import {
   Flame, CheckCircle2, Circle, Plus, X, Calendar as CalendarIcon, Waypoints,
   Target, Trophy, User, LayoutGrid, ListChecks, ChevronLeft, ChevronRight,
-  Pencil, Trash2, Copy, GripVertical, ChevronUp, ChevronDown, Pause, Play, Sun, Moon, Monitor, TrendingUp, Award,
+  Pencil, Trash2, GripVertical, ChevronUp, ChevronDown, Pause, Play, Sun, Moon, Monitor, TrendingUp, Award,
   Dumbbell, Apple, Wallet, Bell, FileBarChart, MoreHorizontal, ArrowUpRight,
-  ArrowDownRight, Minus, Download, Upload, ShieldCheck, LogOut, Mail, Lock, Eye, EyeOff, Camera, Users, UserPlus, Swords, RefreshCw, Check,
-  Search, Clock3, Timer, Sparkles, History, Zap, SlidersHorizontal, RotateCcw, CreditCard, Repeat2,
-  Palette, Share2, Archive, Image as ImageIcon, Pipette,
-  Activity, Layers3, Grid3X3, BrainCircuit, Star, ArrowRightLeft, Gauge, Stethoscope,
-  Car, PartyPopper, Receipt, ShoppingBag, GraduationCap, Briefcase, Home,
+  ArrowDownRight, Minus, ShieldCheck, LogOut, Mail, Lock, Eye, EyeOff, Camera, Users, UserPlus, Swords, RefreshCw, Check,
+  Search, Clock3, Timer, Sparkles, History, SlidersHorizontal, RotateCcw, CreditCard, Repeat2,
+  Palette, Archive, Image as ImageIcon, Pipette,
+  Activity, Layers3, Grid3X3, BrainCircuit, Star, Gauge, Stethoscope,
+  GraduationCap, Briefcase, Home,
 } from "lucide-react";
 
 const NotificationsView = lazy(() => import("./src/features/notifications/NotificationsView.jsx"));
@@ -10822,6 +10822,13 @@ function ConstancceApp() {
   // Espelho síncrono de `tasks`: as mutações leem o valor atual daqui (fora de
   // updaters de setState) e setVisibleTasks é o ÚNICO lugar que chama setTasks.
   const tasksRef = useRef([]);
+  // Mesmo padrão das tarefas para metas e histórico de progresso: as mutações
+  // leem o valor ATUAL daqui (não o do render) e os setters abaixo são os
+  // únicos que gravam, atualizando a ref na hora. Sem isso, duas adições de
+  // progresso antes do próximo render partiam do mesmo histórico antigo e a
+  // segunda apagava o registro da primeira.
+  const goalsRef = useRef([]);
+  const goalProgressLogRef = useRef([]);
   const lastSyncedDataRef = useRef({});
   const remotePullInFlightRef = useRef(false);
   const lastRemotePullAtRef = useRef(0);
@@ -10842,6 +10849,15 @@ function ConstancceApp() {
     setTasks(list);
     return list;
   }, [setTasks]);
+
+  const setGoalsNow = useCallback((next) => {
+    goalsRef.current = Array.isArray(next) ? next : [];
+    setGoals(goalsRef.current);
+  }, [setGoals]);
+  const setGoalLogNow = useCallback((next) => {
+    goalProgressLogRef.current = Array.isArray(next) ? next : [];
+    setGoalProgressLog(goalProgressLogRef.current);
+  }, [setGoalProgressLog]);
 
   // Ponto único por onde QUALQUER snapshot remoto de tarefas (pull de tarefas,
   // sync genérica, bootstrap, foco/poll) passa antes de virar estado: mantém
@@ -11159,19 +11175,19 @@ function ConstancceApp() {
     setHabits(migrated.habits || []);
     setCompletions(migrated.completions || []);
     setVisibleTasks(visibleTasks);
-    setGoals(migrated.goals || []);
+    setGoalsNow(migrated.goals || []);
     setUnlocked(migrated.unlocked || []);
     setWorkoutTemplates(migrated.workoutTemplates || []);
     setWorkoutSessions(migrated.workoutSessions || []);
     setFoods(migrated.foods || []);
     setMealLog(migrated.mealLog || []);
     setTransactions(migrated.transactions || []);
-    setGoalProgressLog(migrated.goalProgressLog || []);
+    setGoalLogNow(migrated.goalProgressLog || []);
     setHabitChecklistLog(migrated.habitChecklistLog || []);
     // Devolve o que ficou visível (com as tarefas já protegidas) para quem
     // grava o cache local logo em seguida não persistir o snapshot atrasado.
     return { ...migrated, tasks: visibleTasks };
-  }, [guardRemoteTasks, setVisibleTasks]);
+  }, [guardRemoteTasks, setVisibleTasks, setGoalsNow, setGoalLogNow]);
 
   // valida/renova a sessão ao abrir o app
   useEffect(() => {
@@ -12916,27 +12932,31 @@ function ConstancceApp() {
   };
 
   const saveGoal = (g) => {
-    const exists = goals.some((item) => item.id === g.id);
-    const activeCount = goals.filter((item) => !item.completed && !item.archived).length;
+    const prev = goalsRef.current;
+    const exists = prev.some((item) => item.id === g.id);
+    const activeCount = prev.filter((item) => !item.completed && !item.archived).length;
     if (!exists && !isPro && activeCount >= PRO_LIMITS.activeGoals) {
       requestPro("goals");
       return false;
     }
-    setGoals((prev) => {
-      const base = g.isPrimary
-        ? prev.map((item) => item.id === g.id ? item : { ...item, isPrimary: false })
-        : prev;
-      const next = exists
-        ? base.map((item) => item.id === g.id ? g : item)
-        : [...base, g];
-      persist({ goals: next });
-      return next;
-    });
+    const base = g.isPrimary
+      ? prev.map((item) => item.id === g.id ? item : { ...item, isPrimary: false })
+      : prev;
+    const next = exists
+      ? base.map((item) => item.id === g.id ? g : item)
+      : [...base, g];
+    setGoalsNow(next);
+    persist({ goals: next });
     return true;
   };
-  const deleteGoal = async (id) => { if (!(await confirm("Tem certeza que deseja excluir esta meta?"))) return; setGoals((prev) => { const next = prev.filter((g) => g.id !== id); persist({ goals: next }); return next; }); };
-  const toggleGoalChecklist = (goalId, itemId) => setGoals((prev) => {
-    const next = prev.map((g) => {
+  const deleteGoal = async (id) => {
+    if (!(await confirm("Tem certeza que deseja excluir esta meta?"))) return;
+    const next = goalsRef.current.filter((g) => g.id !== id);
+    setGoalsNow(next);
+    persist({ goals: next });
+  };
+  const toggleGoalChecklist = (goalId, itemId) => {
+    const next = goalsRef.current.map((g) => {
       if (g.id !== goalId) return g;
       const checklist = (g.checklist || []).map((item) => item.id === itemId ? { ...item, done: !item.done } : item);
       const current = checklist.filter((x) => x.done).length;
@@ -12945,15 +12965,17 @@ function ConstancceApp() {
     });
     const changed = next.find((g) => g.id === goalId);
     const logEntry = { id: uid(), goalId, date: today(), value: Number(changed?.current) || 0 };
-    const nextLog = [...goalProgressLog, logEntry];
-    setGoalProgressLog(nextLog); persist({ goals: next, goalProgressLog: nextLog });
+    const nextLog = [...goalProgressLogRef.current, logEntry];
+    setGoalsNow(next);
+    setGoalLogNow(nextLog);
+    persist({ goals: next, goalProgressLog: nextLog });
     if (changed?.completed) {
       fireToast("Meta concluída!", <Trophy size={16} className="text-brass" />);
       recordActivityEvent(session, "goal_completed", `goal:${goalId}`, { date: today() });
     }
-    return next;
-  });
-  const addGoalProgress = (id, amount) => setGoals((prev) => {
+  };
+  const addGoalProgress = (id, amount) => {
+    const prev = goalsRef.current;
     const requestedDelta = Number(amount) || 0;
     if (requestedDelta === 0) return prev;
 
@@ -12987,9 +13009,10 @@ function ConstancceApp() {
       createdAt: new Date().toISOString(),
     };
 
-    const nextLog = [...goalProgressLog, logEntry];
+    const nextLog = [...goalProgressLogRef.current, logEntry];
 
-    setGoalProgressLog(nextLog);
+    setGoalsNow(next);
+    setGoalLogNow(nextLog);
     persist({ goals: next, goalProgressLog: nextLog });
 
     const previousPct = goalProgressPercent(previousGoal);
@@ -13018,11 +13041,11 @@ function ConstancceApp() {
     );
 
     return next;
-  });
+  };
 
-  const updateProgress = (id, current, complete) => setGoals((prev) => {
+  const updateProgress = (id, current, complete) => {
     let changed = null;
-    const next = prev.map((g) => {
+    const next = goalsRef.current.map((g) => {
       if (g.id !== id) return g;
       changed = {
         ...g,
@@ -13033,7 +13056,7 @@ function ConstancceApp() {
       return changed;
     });
 
-    if (!changed) return prev;
+    if (!changed) return;
 
     const logEntry = {
       id: uid(),
@@ -13043,17 +13066,17 @@ function ConstancceApp() {
       createdAt: new Date().toISOString(),
     };
 
-    const nextLog = [...goalProgressLog, logEntry];
+    const nextLog = [...goalProgressLogRef.current, logEntry];
 
-    setGoalProgressLog(nextLog);
+    setGoalsNow(next);
+    setGoalLogNow(nextLog);
     persist({ goals: next, goalProgressLog: nextLog });
 
     if (complete) {
       fireToast("Meta concluída!", <Trophy size={16} className="text-brass" />);
       recordActivityEvent(session, "goal_completed", `goal:${id}`, { date: today() });
     }
-    return next;
-  });
+  };
 
   const saveWorkoutTemplate = (tp) => {
     const exists = workoutTemplates.some((item) => item.id === tp.id);

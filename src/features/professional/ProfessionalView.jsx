@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Stethoscope, Dumbbell, Apple, Mail, UserPlus, Check, RefreshCw, X, Inbox } from "lucide-react";
 import { ProBadge } from "../../components/ui.jsx";
+
+// Data local "YYYY-MM-DD". toISOString() é UTC: entre 21h e meia-noite no
+// Brasil ele já devolve o dia seguinte.
+const localToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 import {
   fetchProfessionalLinks,
   inviteClient,
@@ -89,7 +96,7 @@ export default function ProfessionalView({ session, profile, setProfile, isPro, 
           ...template,
           id: uid(),
           exercises: (template.exercises || []).map((exercise) => ({ ...exercise, id: uid() })),
-          receivedAt: new Date().toISOString().slice(0, 10),
+          receivedAt: localToday(),
         });
         if (saved === false) return;
       } else if (prescription.kind === "diet") {
