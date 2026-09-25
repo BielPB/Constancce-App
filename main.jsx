@@ -15,6 +15,31 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" }).catch(() => {});
 }
 
+// PWA retomado (iOS/Android) não recarrega a página: uma versão publicada só
+// passava a valer quando o sistema matava o app — correções "não chegavam".
+// Ao voltar pra frente, compara o bundle em execução com o do index.html
+// publicado e, se mudou, recarrega nesse momento (o usuário acabou de voltar,
+// ainda não começou a mexer; outboxes e fila pendente ficam no localStorage).
+// `__v` faz o service worker deixar essa requisição passar direto pra rede.
+const runningEntry = () => document.querySelector('script[type="module"][src*="/assets/index-"]')?.getAttribute("src") || "";
+let lastVersionCheckAt = 0;
+async function reloadIfNewVersion() {
+  const running = runningEntry();
+  if (!running || Date.now() - lastVersionCheckAt < 60000) return;
+  lastVersionCheckAt = Date.now();
+  try {
+    const res = await fetch(`/index.html?__v=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const latest = (await res.text()).match(/<script[^>]+src="(\/assets\/index-[^"]+\.js)"/)?.[1];
+    if (latest && latest !== running) window.location.reload();
+  } catch (_) {
+    // Sem rede: tenta de novo no próximo retorno ao app.
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") reloadIfNewVersion();
+});
+
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <App />

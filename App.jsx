@@ -1622,7 +1622,9 @@ function Onboarding({ onDone }) {
       eyebrow: "Bem-vindo",
       title: "Bem-vindo ao Constancce",
       description: "Sua vida organizada em um só lugar.",
-      icon: Flame,
+      // Slide de boas-vindas mostra a marca oficial (foguinho sólido), não o
+      // ícone funcional de chama — que em destaque parecia a logo antiga.
+      brand: true,
       visual: ["Rotina", "Foco", "Evolução"],
     },
     {
@@ -1815,8 +1817,10 @@ function Onboarding({ onDone }) {
         </div>
 
         <div key={step} className="rise">
-          <div className="onboarding-hero-icon mb-6">
-            <CurrentIcon size={34} strokeWidth={2.2} />
+          <div className={`onboarding-hero-icon mb-6 ${currentSlide.brand ? "overflow-hidden" : ""}`}>
+            {currentSlide.brand
+              ? <img src={constancceLogo} alt="" className="w-full h-full object-cover" aria-hidden="true" />
+              : <CurrentIcon size={34} strokeWidth={2.2} />}
           </div>
           <p className="text-[10px] text-brass uppercase tracking-[.2em] mb-2">{currentSlide.eyebrow}</p>
           <h2 className="font-display text-3xl sm:text-[2rem] leading-[1.05] mb-3">{currentSlide.title}</h2>

@@ -1198,21 +1198,24 @@ test("Relatórios: navegação por mês (o PDF exporta o mês escolhido, não s�
   assert.match(reportsView, /O progresso abaixo é o estado atual das metas/);
 });
 
-test("Velocidade de abertura: service worker registra cedo e usa stale-while-revalidate no shell", () => {
+test("Atualização: service worker registra cedo e a abertura do app busca a versão publicada", () => {
   // Antes o único registro do SW ficava dentro do fluxo de permissão de push
   // em App.jsx — sem PushManager (ex.: iOS fora do modo instalado), o SW
   // nunca existia e a abertura do app nunca se beneficiava de cache nenhum.
-  // register() é idempotente, então registrar cedo aqui não conflita com o
-  // que App.jsx ainda faz para configurar push.
   assert.match(mainEntry, /if \("serviceWorker" in navigator\) \{/);
   assert.match(mainEntry, /navigator\.serviceWorker\.register\("\/sw\.js", \{ scope: "\/", updateViaCache: "none" \}\)\.catch/);
 
-  // A navegação (abrir o app) usava network-first — esperava uma ida-e-volta
-  // de rede completa antes de mostrar qualquer coisa, mesmo já tendo o shell
-  // em cache. Agora usa a mesma estratégia stale-while-revalidate já usada
-  // pros demais arquivos (cache na hora, atualiza em segundo plano).
-  assert.doesNotMatch(serviceWorker, /if \(request\.mode === "navigate"\) \{\s*\n\s*event\.respondWith\(\s*\n\s*fetch\(request\)/);
-  assert.match(serviceWorker, /if \(request\.mode === "navigate"\) \{\s*\n\s*event\.respondWith\(\s*\n\s*caches\.match\("\/index\.html"\)\.then\(\(cached\) => \{/);
+  // A navegação chegou a usar stale-while-revalidate (cache na hora), mas
+  // isso abria o index.html ANTIGO depois de cada deploy: correções (ex.: o
+  // flicker de tarefas) não chegavam ao aparelho. Agora é rede primeiro com
+  // teto de tempo, caindo pro cache se a rede demorar ou estiver fora.
+  assert.match(serviceWorker, /const NAVIGATION_TIMEOUT_MS = \d+;/);
+  assert.match(serviceWorker, /Promise\.race\(\[network\.catch\(\(\) => cached\), timeout\]\)/);
+  assert.match(serviceWorker, /if \(url\.searchParams\.has\("__v"\)\) return;/);
+
+  // PWA retomado recarrega quando o bundle publicado mudou.
+  assert.match(mainEntry, /fetch\(`\/index\.html\?__v=\$\{Date\.now\(\)\}`, \{ cache: "no-store" \}\)/);
+  assert.match(mainEntry, /if \(latest && latest !== running\) window\.location\.reload\(\);/);
 });
 
 test("Velocidade de abertura: lucide-react vira chunk próprio, não junto do react-vendor", () => {
@@ -1324,4 +1327,12 @@ test("Tarefas: nenhum snapshot remoto vira estado sem passar pela trava por tare
   const mutations = app.slice(app.indexOf("const commitTaskMutation = "), app.indexOf("const saveGoal = (g) =>"));
   assert.doesNotMatch(mutations, /setTasks\(\(prev\)/);
   assert.match(mutations, /const prev = tasksRef\.current;/);
+});
+
+test("Marca: boas-vindas do onboarding usa a logo oficial, não o ícone funcional de chama", () => {
+  const onboarding = app.slice(app.indexOf("function Onboarding("), app.indexOf("\nfunction ", app.indexOf("function Onboarding(") + 1));
+  assert.match(onboarding, /title: "Bem-vindo ao Constancce",[\s\S]*?brand: true,/);
+  assert.match(onboarding, /currentSlide\.brand\s*\n?\s*\? <img src=\{constancceLogo\}/);
+  // Toda imagem de marca no app aponta pro mesmo arquivo oficial.
+  assert.match(app, /const constancceLogo = "\/constancce-logo\.png";/);
 });

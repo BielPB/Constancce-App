@@ -55,7 +55,8 @@ self.addEventListener("notificationclick", (event) => {
 });
 
 
-const CONSTANCCE_CACHE = "constancce-shell-v26";
+const CONSTANCCE_CACHE = "constancce-shell-v27";
+const NAVIGATION_TIMEOUT_MS = 3000;
 const CONSTANCCE_SHELL = ["/", "/index.html", "/site.webmanifest", "/icon-192.png", "/icon-512.png", "/maskable-icon-512.png", "/apple-touch-icon.png", "/favicon.png", "/favicon-32x32.png"];
 
 self.addEventListener("install", (event) => {
@@ -82,26 +83,29 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  // Checagem de versão do main.jsx: sempre rede, nunca cache.
+  if (url.searchParams.has("__v")) return;
 
-  // Abrir o app (navegação) usava network-first: esperava uma ida-e-volta de
-  // rede completa antes de mostrar qualquer coisa, mesmo já tendo o shell em
-  // cache. Agora usa a mesma estratégia stale-while-revalidate dos demais
-  // arquivos abaixo — mostra o cache na hora e atualiza em segundo plano.
+  // Abrir o app (navegação): rede primeiro, com limite de tempo. Com
+  // stale-while-revalidate o aparelho abria o index.html ANTIGO depois de cada
+  // deploy (que aponta pro bundle antigo em cache) — correções e a logo nova só
+  // chegavam numa abertura seguinte, e no PWA retomado às vezes nunca. Se a
+  // rede demorar mais que NAVIGATION_TIMEOUT_MS ou estiver fora, usa o cache.
   if (request.mode === "navigate") {
-    event.respondWith(
-      caches.match("/index.html").then((cached) => {
-        const network = fetch(request)
-          .then((response) => {
-            if (response.ok) {
-              const clone = response.clone();
-              caches.open(CONSTANCCE_CACHE).then((cache) => cache.put("/index.html", clone)).catch(() => {});
-            }
-            return response;
-          })
-          .catch(() => cached);
-        return cached || network;
-      })
-    );
+    event.respondWith((async () => {
+      const cached = await caches.match("/index.html");
+      const network = fetch(request, { cache: "no-store" })
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CONSTANCCE_CACHE).then((cache) => cache.put("/index.html", clone)).catch(() => {});
+          }
+          return response;
+        });
+      if (!cached) return network;
+      const timeout = new Promise((resolve) => setTimeout(() => resolve(cached), NAVIGATION_TIMEOUT_MS));
+      return Promise.race([network.catch(() => cached), timeout]);
+    })());
     return;
   }
 
