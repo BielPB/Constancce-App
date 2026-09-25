@@ -1673,7 +1673,7 @@ function FinanceView({ transactions, addTransaction, addGoalProgress, deleteTran
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                 <div>
                   <p className="text-[10px] text-faint uppercase tracking-widest">Fixos e recorrentes</p>
-                  <p className="text-[10px] md:text-xs text-dim mt-1">Entradas fixas de um lado, despesas fixas do outro. São lançadas automaticamente todo mês — use para assinaturas e salário; contas com vencimento ficam em 'Próximas contas'.</p>
+                  <p className="text-[10px] md:text-xs text-dim mt-1">Entradas fixas de um lado, despesas fixas do outro. São lançadas automaticamente todo mês. Use para assinaturas e salário; contas com vencimento ficam em 'Próximas contas'.</p>
                 </div>
                 <button className="btn-ghost rounded-xl px-3 py-2 text-xs self-start sm:self-auto" onClick={() => setShowRecurringForm(true)}>
                   <Plus size={12} className="inline mr-1" /> Nova recorrência

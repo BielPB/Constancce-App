@@ -344,7 +344,7 @@ export default function ReportsView({ habits, completions, tasks, workoutSession
           </button>
           <p className="text-[10px] text-faint mt-1 max-w-[230px] text-right leading-relaxed">
             {isPro
-              ? 'Abre a janela de impressão do navegador — escolha "Salvar como PDF" no destino.'
+              ? 'Abre a janela de impressão do navegador. Escolha "Salvar como PDF" no destino.'
               : "Exportar o relatório em PDF é um recurso PRO."}
           </p>
         </div>
@@ -367,7 +367,7 @@ export default function ReportsView({ habits, completions, tasks, workoutSession
           </div>
           {trendChart.length > 1 && (
             <div className="flex-1 min-w-0">
-              <p className="text-[9px] text-faint uppercase tracking-widest mb-1">Tendência — últimos 30 dias</p>
+              <p className="text-[9px] text-faint uppercase tracking-widest mb-1">Tendência dos últimos 30 dias</p>
               <ReportMiniLineChart data={trendChart} height={96} color={scoreColor} />
             </div>
           )}
@@ -506,7 +506,7 @@ export default function ReportsView({ habits, completions, tasks, workoutSession
               </p>
               {!isCurrentMonth && (
                 <p className="text-[10px] text-faint mb-2 leading-relaxed">
-                  O progresso abaixo é o estado atual das metas — ainda não guardamos um histórico de progresso por mês.
+                  O progresso abaixo é o estado atual das metas. Ainda não guardamos um histórico de progresso por mês.
                 </p>
               )}
               {goalsProgress.length === 0 && <p className="text-dim text-sm">Nenhuma meta em aberto.</p>}
@@ -546,7 +546,7 @@ export default function ReportsView({ habits, completions, tasks, workoutSession
 
           {heatmapDays.length > 0 && (
             <div className="surface glass-panel rounded-2xl p-4 md:p-5">
-              <p className="text-[10px] text-faint uppercase tracking-widest mb-3">Consistência — últimos 90 dias</p>
+              <p className="text-[10px] text-faint uppercase tracking-widest mb-3">Consistência dos últimos 90 dias</p>
               <ReportConsistencyHeatmap days={heatmapDays} />
             </div>
           )}
@@ -568,7 +568,7 @@ export default function ReportsView({ habits, completions, tasks, workoutSession
           )}
 
           <div className="surface-2 rounded-2xl p-4 text-xs text-dim">
-            Prioridade recomendada: mantenha os hábitos com maior taxa de conclusão e ajuste horário ou frequência dos que estão com taxa mais baixa — hábitos negligenciados costumam indicar frequência mal calibrada, não falta de vontade.
+            Prioridade recomendada: mantenha os hábitos com maior taxa de conclusão e ajuste horário ou frequência dos que estão com taxa mais baixa. Hábitos negligenciados costumam indicar frequência mal calibrada, não falta de vontade.
             {overdueTasks > 0 && (
               <> Você também tem {overdueTasks} tarefa{overdueTasks === 1 ? "" : "s"} atrasada{overdueTasks === 1 ? "" : "s"} aguardando reagendamento.</>
             )}

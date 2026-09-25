@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, LocateFixed, Target, ZoomIn, ZoomOut } from "lucide-react";
-import { LIFE_AREAS, buildLifeGraph, initLayout, stepLayout, layoutBounds, NODE_RADIUS } from "../../lib/lifeMap.js";
+import { buildLifeGraph, initLayout, stepLayout, layoutBounds, NODE_RADIUS, UNLINKED_GROUP_ID } from "../../lib/lifeMap.js";
 import { daysUntil } from "../../lib/goalForecast.js";
 
-// Mapa da vida: grafo com física (os nós se acomodam sozinhos), arrastável,
-// com zoom por pinça/roda e pan. A lógica (grafo + física) está em
-// src/lib/lifeMap.js; aqui só animação, gestos e desenho.
+// Mapa da vida: só o que existe no app. Você no centro, suas metas em volta
+// e, ligados a cada meta, os hábitos e tarefas vinculados a ela. A lógica
+// (grafo + física) está em src/lib/lifeMap.js; aqui só desenho e gestos.
 
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2.6;
@@ -14,8 +14,8 @@ const TAP_SLOP = 6;
 const prefersReducedMotion = () =>
   typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-// Rótulo em até 2 linhas de ~16 caracteres.
-function wrapLabel(text, max = 16) {
+// Rótulo em até 2 linhas.
+function wrapLabel(text, max) {
   const words = String(text || "").split(/\s+/).filter(Boolean);
   const lines = [""];
   for (const word of words) {
@@ -28,13 +28,31 @@ function wrapLabel(text, max = 16) {
   return lines.map((line) => (line.length > max + 2 ? `${line.slice(0, max).trimEnd()}…` : line));
 }
 
-// Pontinhos decorativos (como estrelas) em posições fixas do "mundo".
-const STARS = Array.from({ length: 28 }, (_, i) => ({
-  x: Math.cos(i * 2.39996) * (140 + ((i * 97) % 520)),
-  y: Math.sin(i * 2.39996) * (140 + ((i * 53) % 480)),
-  r: 1.2 + (i % 3) * 0.7,
-  delay: (i % 7) * 0.9,
-}));
+const deadlineText = (node) => {
+  if (node.completed) return "Concluída";
+  if (!node.endDate) return "Sem prazo";
+  const left = daysUntil(node.endDate);
+  if (left < 0) return "Prazo encerrado";
+  if (left === 0) return "Termina hoje";
+  return `Faltam ${left} dia${left === 1 ? "" : "s"}`;
+};
+
+// Marcadores da legenda (os mesmos desenhos do mapa, em miniatura).
+function LegendMark({ kind, done }) {
+  return (
+    <svg width="18" height="18" viewBox="-9 -9 18 18" aria-hidden="true" className="shrink-0">
+      {kind === "goal" && (
+        <>
+          <circle r="7" fill="var(--surface-2)" stroke="var(--border)" strokeWidth="2" />
+          <circle r="7" fill="none" stroke="var(--brass)" strokeWidth="2" strokeDasharray="30 44" transform="rotate(-90)" />
+        </>
+      )}
+      {kind === "habit" && <circle r="6.5" fill={done ? "var(--brass)" : "var(--surface-2)"} stroke="var(--brass)" strokeWidth="1.5" />}
+      {kind === "task" && <rect x="-6.5" y="-6.5" width="13" height="13" rx="3.5" fill={done ? "var(--brass)" : "var(--surface-2)"} stroke="var(--brass)" strokeWidth="1.5" />}
+      {done && <path d="M-3 0 L-1 2.2 L3.2 -2.2" fill="none" stroke="var(--brass-ink)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />}
+    </svg>
+  );
+}
 
 export default function LifeMap({ goals = [], habits = [], tasks = [], completions = [], today, onOpenGoal, onGoToGoals }) {
   const graph = useMemo(
@@ -50,56 +68,53 @@ export default function LifeMap({ goals = [], habits = [], tasks = [], completio
   const rafRef = useRef(0);
   const pinnedRef = useRef(null);
   const gestureRef = useRef({ pointers: new Map(), mode: null });
-  const fittedRef = useRef(false);
-  // Depois que o usuário mexe (arrasta, dá zoom), o mapa não se reenquadra sozinho.
-  const interactedRef = useRef(false);
+  const interactedRef = useRef(false); // depois que o usuário mexe, não reenquadra sozinho
   const fitRef = useRef(() => {});
   const [, setFrame] = useState(0);
-  // Tamanho real só chega pelo ResizeObserver; antes disso não enquadra.
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  const [view, setView] = useState({ x: 180, y: 240, k: 0.8 });
+  const [size, setSize] = useState({ width: 0, height: 0 }); // chega pelo ResizeObserver
+  const [view, setView] = useState({ x: 0, y: 0, k: 0.8 });
   const [selectedId, setSelectedId] = useState("root");
 
-  const fit = useCallback(() => {
-    const bounds = layoutBounds(graph, posRef.current);
-    if (!Number.isFinite(bounds.width) || !size.width) return;
-    const k = Math.max(MIN_ZOOM, Math.min(1.3, Math.min(size.width / bounds.width, size.height / bounds.height) * 0.94));
-    const next = {
+  const fitTo = useCallback((positions) => {
+    const bounds = layoutBounds(graph, positions);
+    if (!Number.isFinite(bounds.width) || size.width < 50) return;
+    const k = Math.max(MIN_ZOOM, Math.min(1.25, Math.min(size.width / bounds.width, size.height / bounds.height) * 0.94));
+    setView({
       x: size.width / 2 - (bounds.minX + bounds.width / 2) * k,
       y: size.height / 2 - (bounds.minY + bounds.height / 2) * k,
       k,
-    };
-    setView(next);
+    });
   }, [graph, size]);
+  const fit = useCallback(() => fitTo(posRef.current), [fitTo]);
   fitRef.current = fit;
 
-  // Loop da simulação: roda enquanto há energia; arrastar reaquece.
+  // Loop da física: roda até assentar; arrastar reaquece.
   const run = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
     if (prefersReducedMotion()) {
       for (let i = 0; i < 320; i += 1) stepLayout(graph, posRef.current, { alpha: Math.max(0.02, 1 - i / 260) });
       alphaRef.current = 0;
       setFrame((f) => f + 1);
+      if (!interactedRef.current) fitRef.current();
       return;
     }
     const tick = () => {
       const energy = stepLayout(graph, posRef.current, { alpha: alphaRef.current, pinned: pinnedRef.current });
-      alphaRef.current = Math.max(0, alphaRef.current * 0.982);
+      alphaRef.current = Math.max(0, alphaRef.current * 0.98);
       setFrame((f) => f + 1);
       if (pinnedRef.current || alphaRef.current > 0.015 || energy > 0.35) rafRef.current = requestAnimationFrame(tick);
-      else if (!interactedRef.current) fitRef.current(); // assentou: enquadra o resultado final
+      else if (!interactedRef.current) fitRef.current();
     };
     rafRef.current = requestAnimationFrame(tick);
   }, [graph]);
 
   useEffect(() => {
     posRef.current = initLayout(graph, posRef.current);
-    alphaRef.current = fittedRef.current ? 0.45 : 1;
+    alphaRef.current = 1;
     run();
     return () => cancelAnimationFrame(rafRef.current);
   }, [graph, run]);
 
-  // Tamanho do container → primeiro enquadramento.
   useEffect(() => {
     const el = containerRef.current;
     if (!el || typeof ResizeObserver === "undefined") return undefined;
@@ -110,18 +125,15 @@ export default function LifeMap({ goals = [], habits = [], tasks = [], completio
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
-  // Enquadra pela posição que a física vai atingir — na primeira medida e a
-  // cada mudança de tamanho (girar o celular, redimensionar), até o usuário mexer.
+
+  // Enquadra pela posição que a física vai atingir (numa cópia), na primeira
+  // medida e a cada mudança de tamanho, até o usuário mexer.
   useEffect(() => {
     if (size.width < 50 || interactedRef.current) return;
-    // Enquadra pela posição que a física vai atingir (simulação rápida numa cópia).
     const probe = JSON.parse(JSON.stringify(posRef.current));
     for (let i = 0; i < 260; i += 1) stepLayout(graph, probe, { alpha: Math.max(0.02, 1 - i / 220) });
-    const bounds = layoutBounds(graph, probe);
-    const k = Math.max(MIN_ZOOM, Math.min(1.3, Math.min(size.width / bounds.width, size.height / bounds.height) * 0.94));
-    setView({ x: size.width / 2 - (bounds.minX + bounds.width / 2) * k, y: size.height / 2 - (bounds.minY + bounds.height / 2) * k, k });
-    fittedRef.current = true;
-  }, [size, graph]);
+    fitTo(probe);
+  }, [size, graph, fitTo]);
 
   const toWorld = (clientX, clientY) => {
     const rect = svgRef.current.getBoundingClientRect();
@@ -136,7 +148,6 @@ export default function LifeMap({ goals = [], habits = [], tasks = [], completio
     });
   }, []);
 
-  // Roda do mouse / pinça do trackpad (precisa de listener não-passivo).
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return undefined;
@@ -153,9 +164,8 @@ export default function LifeMap({ goals = [], habits = [], tasks = [], completio
     event.stopPropagation();
     const g = gestureRef.current;
     g.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    svgRef.current.setPointerCapture?.(event.pointerId);
+    try { svgRef.current.setPointerCapture?.(event.pointerId); } catch (_) { /* ponteiro sintético */ }
     if (g.pointers.size === 2) {
-      // Segundo dedo: vira pinça (cancela arrasto de nó).
       pinnedRef.current = null;
       const [a, b] = [...g.pointers.values()];
       g.mode = "pinch";
@@ -204,8 +214,7 @@ export default function LifeMap({ goals = [], habits = [], tasks = [], completio
       g.start = null;
       return;
     }
-    if (g.start && !g.moved && g.start.nodeId) setSelectedId(g.start.nodeId);
-    else if (g.start && !g.moved && !g.start.nodeId) setSelectedId("root");
+    if (g.start && !g.moved) setSelectedId(g.start.nodeId || "root");
     if (pinnedRef.current) { pinnedRef.current = null; alphaRef.current = Math.max(alphaRef.current, 0.15); run(); }
     g.start = null;
     g.mode = null;
@@ -218,21 +227,25 @@ export default function LifeMap({ goals = [], habits = [], tasks = [], completio
     .map((l) => nodeById.get(l.source === id ? l.target : l.source))
     .filter(Boolean);
 
-  const goals_ = graph.nodes.filter((n) => n.kind === "goal");
-  const activeGoals = goals_.filter((n) => !n.completed);
-  const avgProgress = activeGoals.length ? Math.round(activeGoals.reduce((s, n) => s + n.progress, 0) / activeGoals.length) : 0;
+  const goalNodes = graph.nodes.filter((n) => n.kind === "goal");
+  const activeGoals = goalNodes.filter((n) => !n.completed);
+  const unlinkedHabits = neighbors(UNLINKED_GROUP_ID).filter((n) => n.kind === "habit");
   const pos = posRef.current;
 
-  const renderNode = (node, index) => {
+  const renderNode = (node) => {
     const p = pos[node.id];
     if (!p) return null;
     const r = NODE_RADIUS[node.kind];
     const isSelected = selected?.id === node.id;
-    const lines = wrapLabel(node.label, node.kind === "habit" || node.kind === "task" ? 15 : 17);
-    const circumference = 2 * Math.PI * (r + 0.5);
-    const labelSize = node.kind === "root" ? 13 : node.kind === "area" ? 12 : node.kind === "goal" ? 11 : 10;
-    const strong = node.kind === "root" || node.kind === "area";
-    const ariaState = node.kind === "goal" ? `${node.progress}% concluída` : node.kind === "habit" || node.kind === "task" ? (node.done ? "feito" : "pendente") : "";
+    const leaf = node.kind === "habit" || node.kind === "task";
+    const circumference = 2 * Math.PI * r;
+    const lines = node.kind === "root" ? [] : wrapLabel(node.label, leaf ? 16 : 18);
+    const labelSize = leaf ? 11.5 : 13;
+    const status = node.kind === "goal"
+      ? `meta, ${node.progress}%${node.completed ? ", concluída" : ""}`
+      : node.kind === "habit" ? `hábito, ${node.paused ? "pausado" : node.done ? "feito hoje" : "pendente hoje"}`
+      : node.kind === "task" ? `tarefa, ${node.done ? "concluída" : "pendente"}`
+      : node.kind === "group" ? `${unlinkedHabits.length} ${unlinkedHabits.length === 1 ? "hábito" : "hábitos"} sem meta` : "centro do mapa";
     return (
       <g
         key={node.id}
@@ -240,66 +253,65 @@ export default function LifeMap({ goals = [], habits = [], tasks = [], completio
         className="life-node"
         role="button"
         tabIndex={0}
-        aria-label={`${node.label}${ariaState ? `, ${ariaState}` : ""}`}
+        aria-label={`${node.label}, ${status}`}
         aria-pressed={isSelected}
         onPointerDown={(event) => onPointerDown(event, node.id)}
         onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(node.id); } }}
       >
-        <g className="life-node-float" style={{ animationDelay: `${(index % 9) * -0.7}s` }}>
-          <circle r={r + 10} fill="transparent" />
-          {isSelected && <circle r={r + 6} fill="none" stroke="var(--brass)" strokeOpacity="0.55" strokeWidth="1.5" />}
+        <circle r={r + 12} fill="transparent" />
+        {isSelected && <circle r={r + 7} fill="none" stroke="var(--brass)" strokeOpacity="0.6" strokeWidth="1.5" />}
 
-          {node.kind === "root" && (
-            <>
-              <circle r={r + 5} fill="none" stroke="var(--brass)" strokeOpacity="0.25" />
-              <circle r={r} fill="var(--surface-2)" stroke="var(--brass)" strokeWidth="2" />
-              <circle r={r * 0.34} fill="var(--brass)" fillOpacity="0.2" />
-            </>
-          )}
-          {node.kind === "area" && <circle r={r} fill="var(--surface-2)" stroke="var(--border)" strokeWidth="1.5" />}
-          {node.kind === "goal" && (
-            <>
-              <circle r={r} fill="var(--surface-2)" stroke="var(--border)" strokeWidth="2.5" />
-              <circle
-                r={r + 0.5}
-                fill="none"
-                stroke="var(--brass)"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeDasharray={`${(circumference * node.progress) / 100} ${circumference}`}
-                transform="rotate(-90)"
-              />
-              {node.completed && <path d="M-6 0.5 L-2 4.5 L6.5 -4.5" fill="none" stroke="var(--brass)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />}
-            </>
-          )}
-          {(node.kind === "habit" || node.kind === "task") && (
-            node.done ? (
-              <>
-                <circle r={r} fill="var(--brass)" />
-                <path d="M-3.4 0.2 L-1.1 2.6 L3.6 -2.4" fill="none" stroke="var(--brass-ink)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </>
-            ) : (
-              <>
-                <circle r={r} fill="var(--surface-2)" stroke="var(--brass)" strokeOpacity={node.paused ? 0.35 : 0.8} strokeWidth="1.5" />
-                <circle r={node.kind === "task" ? 1.8 : 2.6} fill="var(--brass)" fillOpacity={node.paused ? 0.35 : 0.9} />
-              </>
-            )
-          )}
+        {node.kind === "root" && (
+          <>
+            <circle r={r} fill="var(--surface-2)" stroke="var(--brass)" strokeWidth="2.5" />
+            <text textAnchor="middle" dominantBaseline="central" fontSize="14" fontWeight="700" fill="var(--text)">Você</text>
+          </>
+        )}
+        {node.kind === "goal" && (
+          <>
+            <circle r={r} fill="var(--surface-2)" stroke="var(--border)" strokeWidth="3" />
+            <circle
+              r={r}
+              fill="none"
+              stroke="var(--brass)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeDasharray={`${(circumference * node.progress) / 100} ${circumference}`}
+              transform="rotate(-90)"
+            />
+            {node.completed
+              ? <path d="M-7 0.5 L-2.5 5 L7.5 -5" fill="none" stroke="var(--brass)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+              : <text textAnchor="middle" dominantBaseline="central" fontSize="11" fontWeight="700" fill="var(--text)">{node.progress}%</text>}
+          </>
+        )}
+        {node.kind === "group" && (
+          <>
+            <circle r={r} fill="var(--surface-2)" stroke="var(--text-faint)" strokeWidth="1.5" strokeDasharray="4 4" />
+            <text textAnchor="middle" dominantBaseline="central" fontSize="12" fontWeight="700" fill="var(--text-dim)">{unlinkedHabits.length}</text>
+          </>
+        )}
+        {leaf && (
+          <g opacity={node.paused ? 0.45 : 1}>
+            {node.kind === "habit"
+              ? <circle r={r} fill={node.done ? "var(--brass)" : "var(--surface-2)"} stroke="var(--brass)" strokeWidth="1.8" />
+              : <rect x={-r} y={-r} width={r * 2} height={r * 2} rx="5" fill={node.done ? "var(--brass)" : "var(--surface-2)"} stroke="var(--brass)" strokeWidth="1.8" />}
+            {node.done && <path d="M-4.2 0.2 L-1.4 3 L4.4 -3" fill="none" stroke="var(--brass-ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+          </g>
+        )}
 
-          {lines.map((line, i) => (
-            <text
-              key={i}
-              y={r + 14 + i * (labelSize + 2)}
-              textAnchor="middle"
-              fontSize={labelSize}
-              fontWeight={strong ? 600 : 400}
-              fill={strong ? "var(--text)" : "var(--text-dim)"}
-              className="life-node-label"
-            >
-              {line}
-            </text>
-          ))}
-        </g>
+        {lines.map((line, i) => (
+          <text
+            key={i}
+            y={r + 16 + i * (labelSize + 3)}
+            textAnchor="middle"
+            fontSize={labelSize}
+            fontWeight={leaf ? 400 : 600}
+            fill={leaf ? "var(--text-dim)" : "var(--text)"}
+            className="life-node-label"
+          >
+            {line}
+          </text>
+        ))}
       </g>
     );
   };
@@ -320,12 +332,9 @@ export default function LifeMap({ goals = [], habits = [], tasks = [], completio
           className="block w-full h-full"
           onPointerDown={(event) => onPointerDown(event, null)}
           role="group"
-          aria-label="Mapa da sua vida: áreas, metas, hábitos e tarefas. Arraste para mover, use os botões ou a pinça para zoom."
+          aria-label="Mapa das suas metas, com os hábitos e tarefas ligados a cada uma. Arraste para mover e use os botões ou a pinça para zoom."
         >
-          <g className="life-map-world" transform={`translate(${view.x.toFixed(1)} ${view.y.toFixed(1)}) scale(${view.k.toFixed(3)})`}>
-            {STARS.map((s, i) => (
-              <circle key={`s${i}`} cx={s.x} cy={s.y} r={s.r} fill="var(--text)" className="life-star" style={{ animationDelay: `${s.delay}s` }} />
-            ))}
+          <g transform={`translate(${view.x.toFixed(1)} ${view.y.toFixed(1)}) scale(${view.k.toFixed(3)})`}>
             {graph.links.map((link) => {
               const a = pos[link.source];
               const b = pos[link.target];
@@ -336,8 +345,8 @@ export default function LifeMap({ goals = [], habits = [], tasks = [], completio
                   key={`${link.source}->${link.target}`}
                   x1={a.x} y1={a.y} x2={b.x} y2={b.y}
                   stroke={highlighted ? "var(--brass)" : "var(--text-faint)"}
-                  strokeOpacity={highlighted ? 0.7 : 0.35}
-                  strokeWidth={highlighted ? 1.6 : 1}
+                  strokeOpacity={highlighted ? 0.8 : 0.4}
+                  strokeWidth={highlighted ? 2 : 1.2}
                 />
               );
             })}
@@ -348,64 +357,59 @@ export default function LifeMap({ goals = [], habits = [], tasks = [], completio
         <div className="absolute right-2 top-2 flex flex-col gap-1.5">
           <button className="life-map-control" onClick={() => zoomButton(1.25)} aria-label="Aproximar"><ZoomIn size={15} /></button>
           <button className="life-map-control" onClick={() => zoomButton(0.8)} aria-label="Afastar"><ZoomOut size={15} /></button>
-          <button className="life-map-control" onClick={() => fit()} aria-label="Centralizar o mapa"><LocateFixed size={15} /></button>
+          <button className="life-map-control" onClick={() => { interactedRef.current = false; fit(); }} aria-label="Centralizar o mapa"><LocateFixed size={15} /></button>
         </div>
 
-        {!goals_.length && (
+        {graph.nodes.length === 1 && (
           <div className="absolute left-3 right-3 bottom-3 surface-2 rounded-xl p-3 flex items-center justify-between gap-3">
-            <p className="text-xs text-dim">Seu mapa cresce com suas metas. Crie uma e escolha a área da vida dela.</p>
+            <p className="text-xs text-dim">Seu mapa começa na primeira meta. Crie uma e vincule a ela os hábitos e tarefas que levam até lá.</p>
             <button className="btn-primary rounded-xl px-3 py-2 text-xs shrink-0" onClick={onGoToGoals}>Criar meta</button>
           </div>
         )}
       </div>
 
+      <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-[11px] text-dim" aria-label="Legenda do mapa">
+        <li className="flex items-center gap-1.5"><LegendMark kind="goal" /> Meta (o anel mostra o progresso)</li>
+        <li className="flex items-center gap-1.5"><LegendMark kind="habit" /> Hábito</li>
+        <li className="flex items-center gap-1.5"><LegendMark kind="task" /> Tarefa</li>
+        <li className="flex items-center gap-1.5"><LegendMark kind="habit" done /> Feito</li>
+      </ul>
+
       <div className="surface glass-panel rounded-2xl p-4 md:p-5" aria-live="polite">
         {selected?.kind === "root" && (
           <div>
-            <p className="text-[10px] text-brass uppercase tracking-widest">Minha evolução</p>
+            <p className="text-[10px] text-brass uppercase tracking-widest">Seu mapa</p>
             <div className="grid grid-cols-3 gap-2 mt-3">
-              <div className="surface-2 rounded-xl p-3"><p className="text-[10px] text-faint uppercase tracking-widest">Ativas</p><p className="font-display text-2xl mt-1">{activeGoals.length}</p></div>
-              <div className="surface-2 rounded-xl p-3"><p className="text-[10px] text-faint uppercase tracking-widest">Concluídas</p><p className="font-display text-2xl mt-1">{goals_.length - activeGoals.length}</p></div>
-              <div className="surface-2 rounded-xl p-3"><p className="text-[10px] text-faint uppercase tracking-widest">Média</p><p className="font-display text-2xl mt-1">{avgProgress}%</p></div>
+              <div className="surface-2 rounded-xl p-3"><p className="text-[10px] text-faint uppercase tracking-widest">Metas ativas</p><p className="font-display text-2xl mt-1">{activeGoals.length}</p></div>
+              <div className="surface-2 rounded-xl p-3"><p className="text-[10px] text-faint uppercase tracking-widest">Concluídas</p><p className="font-display text-2xl mt-1">{goalNodes.length - activeGoals.length}</p></div>
+              <div className="surface-2 rounded-xl p-3"><p className="text-[10px] text-faint uppercase tracking-widest">Hábitos sem meta</p><p className="font-display text-2xl mt-1">{unlinkedHabits.length}</p></div>
             </div>
-            <p className="text-xs text-faint mt-3">Toque numa área, meta, hábito ou tarefa para ver os detalhes. Arraste os pontos para reorganizar.</p>
+            <p className="text-xs text-faint mt-3">Toque numa meta, hábito ou tarefa para ver os detalhes. Arraste os pontos para reorganizar.</p>
           </div>
         )}
 
-        {selected?.kind === "area" && (() => {
-          const areaGoals = neighbors(selected.id).filter((n) => n.kind === "goal");
-          return (
-            <div>
-              <p className="text-[10px] text-brass uppercase tracking-widest">Área da vida</p>
-              <p className="font-display text-xl mt-1">{selected.label}</p>
-              {areaGoals.length ? (
-                <ul className="mt-3 flex flex-col gap-2">
-                  {areaGoals.map((goal) => (
-                    <li key={goal.id}>
-                      <button className="w-full text-left surface-2 interactive rounded-xl px-3 py-2 flex items-center justify-between gap-3" onClick={() => setSelectedId(goal.id)}>
-                        <span className="text-sm min-w-0 truncate">{goal.label}</span>
-                        <span className="font-mono text-xs text-brass shrink-0">{goal.progress}%</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <p className="text-sm text-dim">Nenhuma meta em {selected.label} ainda.</p>
-                  <button className="btn-ghost rounded-xl px-3 py-2 text-xs shrink-0" onClick={onGoToGoals}>Criar meta</button>
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        {selected?.kind === "group" && (
+          <div>
+            <p className="text-[10px] text-brass uppercase tracking-widest">Sem meta</p>
+            <p className="font-display text-xl mt-1">Hábitos que ainda não levam a nenhuma meta</p>
+            <ul className="mt-3 flex flex-col gap-1.5">
+              {unlinkedHabits.map((habit) => (
+                <li key={habit.id} className="flex items-center gap-2 text-sm">
+                  <LegendMark kind="habit" done={habit.done} />
+                  <span className="min-w-0 truncate">{habit.label}</span>
+                  <span className="text-[10px] text-faint shrink-0">{habit.done ? "feito hoje" : "pendente hoje"}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-faint mt-3">Para ligar um hábito a uma meta, edite a meta e marque o hábito em "Relacionados".</p>
+          </div>
+        )}
 
         {selected?.kind === "goal" && (() => {
           const leaves = neighbors(selected.id).filter((n) => n.kind === "habit" || n.kind === "task");
-          const left = selected.endDate ? daysUntil(selected.endDate) : null;
-          const area = LIFE_AREAS.find((a) => a.id === selected.areaId);
           return (
             <div>
-              <p className="text-[10px] text-brass uppercase tracking-widest">Meta · {area?.label}</p>
+              <p className="text-[10px] text-brass uppercase tracking-widest">Meta</p>
               <p className="font-display text-xl mt-1">{selected.label}</p>
               <div className="flex items-center gap-3 mt-2">
                 <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--surface-2)" }}>
@@ -413,21 +417,19 @@ export default function LifeMap({ goals = [], habits = [], tasks = [], completio
                 </div>
                 <span className="font-mono text-xs text-brass">{selected.progress}%</span>
               </div>
-              <p className="text-xs text-faint mt-1.5">
-                {selected.completed ? "Concluída" : left === null ? "Sem prazo" : left >= 0 ? `Faltam ${left} dia${left === 1 ? "" : "s"}` : "Prazo encerrado"}
-              </p>
-              {leaves.length > 0 && (
+              <p className="text-xs text-faint mt-1.5">{deadlineText(selected)}</p>
+              {leaves.length > 0 ? (
                 <ul className="mt-3 flex flex-col gap-1.5">
                   {leaves.map((leaf) => (
                     <li key={leaf.id} className="flex items-center gap-2 text-sm">
-                      <span className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${leaf.done ? "bg-brass" : ""}`} style={leaf.done ? {} : { border: "1.5px solid var(--brass-dim)" }}>
-                        {leaf.done && <Check size={10} style={{ color: "var(--brass-ink)" }} />}
-                      </span>
+                      <LegendMark kind={leaf.kind} done={leaf.done} />
                       <span className={`min-w-0 truncate ${leaf.done ? "text-dim" : ""}`}>{leaf.label}</span>
                       <span className="text-[10px] text-faint shrink-0">{leaf.kind === "habit" ? "hábito" : "tarefa"}</span>
                     </li>
                   ))}
                 </ul>
+              ) : (
+                <p className="text-sm text-dim mt-3">Nenhum hábito ou tarefa vinculado a esta meta ainda.</p>
               )}
               <button className="btn-primary rounded-xl px-3 py-2 text-xs mt-3 inline-flex items-center gap-1.5" onClick={() => onOpenGoal?.(selected.goalId)}>
                 <Target size={13} /> Abrir meta
@@ -442,7 +444,8 @@ export default function LifeMap({ goals = [], habits = [], tasks = [], completio
             <div>
               <p className="text-[10px] text-brass uppercase tracking-widest">{selected.kind === "habit" ? "Hábito" : "Tarefa"}</p>
               <p className="font-display text-xl mt-1">{selected.label}</p>
-              <p className="text-sm text-dim mt-1">
+              <p className="text-sm text-dim mt-1 flex items-center gap-1.5">
+                {selected.done && <Check size={14} className="text-brass" aria-hidden="true" />}
                 {selected.kind === "habit"
                   ? (selected.paused ? "Pausado" : selected.done ? "Feito hoje" : "Ainda não feito hoje")
                   : (selected.done ? "Concluída" : "Pendente")}

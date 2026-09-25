@@ -6,7 +6,6 @@ import { mergePendingPayloadV3, mergeRemoteWithPendingV3, rebasePendingV3, newMu
 import { compactTaskOutbox, applyTaskOutbox, makeTaskUpsert, makeTaskDelete, recordConfirmedTaskWrite, mergeTaskRevisions, reconcileRemoteTasks, settleSentTaskOp, atomicTasksFromRows } from "./src/lib/taskSyncV6.js";
 import { mergeMirrorRows, mirrorRows, deltaCursor, needsFullResync, serverTimeFromHeaders } from "./src/lib/remoteMirror.js";
 import { MAP_AREAS } from "./src/lib/trajectoryMap.js";
-import { LIFE_AREAS, goalArea, suggestGoalArea } from "./src/lib/lifeMap.js";
 import GoalCoverCard from "./src/features/goals/GoalCoverCard.jsx";
 import { ROUTINE_COLLECTIONS, ROUTINE_FIELDS, compactRoutineOutbox, buildRoutineOps, routineFieldsFromRows, applyRoutineOutbox, mergeRoutineBootstrap, confirmedEntityRow } from "./src/lib/routineSyncV1.js";
 import { captureClientError, consumeQueuedErrors, sendTelemetry, analyticsEvent } from "./src/lib/observability.js";
@@ -369,7 +368,7 @@ function monthKey(dateStr = today()) {
 }
 
 function dateLabel(dateStr, options = { weekday: "short", day: "2-digit", month: "2-digit" }) {
-  if (!dateStr) return "—";
+  if (!dateStr) return "Sem data";
   return new Date(dateStr + "T12:00:00").toLocaleDateString("pt-BR", options);
 }
 
@@ -2171,7 +2170,7 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
               const done = taskDoneOnDate(task, t);
               return (
                 <div key={task.id} className="surface-2 rounded-xl p-3.5 md:p-3 flex items-center gap-3.5 md:gap-3">
-                  <span className="font-mono text-[13px] md:text-xs text-brass w-11 shrink-0">{task.taskTime || "—"}</span>
+                  <span className="font-mono text-[13px] md:text-xs text-brass w-11 shrink-0">{task.taskTime || "Livre"}</span>
                   {done ? <CheckCircle2 size={16} className="text-brass shrink-0" /> : <Circle size={16} className="text-faint shrink-0" />}
                   <div className="flex-1 min-w-0">
                     <span className="text-[15px] md:text-sm break-words block" style={{ textDecoration: done ? "line-through" : "none", color: done ? "var(--text-dim)" : "var(--text)" }}>{task.title}</span>
@@ -2422,7 +2421,7 @@ function Dashboard({ profile, setProfile, habits, completions, tasks, toggleHabi
           <div className="surface-2 rounded-xl p-4 mt-3">
             <p className="text-[10px] text-faint uppercase tracking-widest">Como o foguinho conta</p>
             <p className="text-sm text-dim leading-relaxed mt-2">
-              Cada dia em que você abre e usa o Constancce conta para esta sequência. Você não precisa concluir todos os hábitos para manter o foguinho — basta voltar ao app em dias consecutivos.
+              Cada dia em que você abre e usa o Constancce conta para esta sequência. Você não precisa concluir todos os hábitos para manter o foguinho: basta voltar ao app em dias consecutivos.
             </p>
           </div>
 
@@ -2817,8 +2816,8 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
                           const cellStatusLabel = showAsEmpty
                             ? (isFuture ? "Ainda não chegou" : "Não aplicável")
                             : !editable
-                              ? "Dias passados ficam travados — não é possível alterar"
-                              : hasChecklist ? "Ver etapas do dia" : done ? "Concluído — clique para desmarcar" : "Marcar como concluído";
+                              ? "Dias passados ficam travados e não podem ser alterados"
+                              : hasChecklist ? "Ver etapas do dia" : done ? "Concluído. Clique para desmarcar" : "Marcar como concluído";
 
                           return (
                             <td key={day} className={`habit-grid-cell-wrap ${isToday ? "habit-grid-today" : ""}`}>
@@ -2887,7 +2886,7 @@ function HabitsView({ habits, completions, toggleHabit, saveHabit, deleteHabit, 
 
       {activeChecklistHabit && checklistCell && (
         <Modal
-          title={`${activeChecklistHabit.name} — ${dateLabel(checklistCell.dateStr, { day: "2-digit", month: "long" })}`}
+          title={`${activeChecklistHabit.name} · ${dateLabel(checklistCell.dateStr, { day: "2-digit", month: "long" })}`}
           onClose={() => setChecklistCell(null)}
           width={380}
         >
@@ -5589,7 +5588,7 @@ function CalendarView({
             {mode === "month"
               ? `${MONTHS[month]} ${year}`
               : mode === "week"
-                ? `${dateLabel(weekStart, { day: "2-digit", month: "short" })} — ${dateLabel(addDays(weekStart, 6), { day: "2-digit", month: "short" })}`
+                ? `${dateLabel(weekStart, { day: "2-digit", month: "short" })} a ${dateLabel(addDays(weekStart, 6), { day: "2-digit", month: "short" })}`
                 : dateLabel(selected, { day: "2-digit", month: "short", year: "numeric" })}
           </p>
           <p className="text-[9px] md:text-[10px] text-faint mt-0.5">
@@ -5954,8 +5953,6 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
   const [linkedHabitIds, setLinkedHabitIds] = useState(initial?.linkedHabitIds || []);
   const [milestones, setMilestones] = useState(initial?.milestones?.length ? initial.milestones : [25, 50, 75, 100]);
   const [imageDataUrl, setImageDataUrl] = useState(initial?.imageDataUrl || "");
-  // Área da vida (ramo do Mapa). Meta antiga sem área abre com a sugestão.
-  const [area, setArea] = useState(initial ? goalArea(initial) : "");
   const goalImageRef = useRef(null);
   const [confirm, confirmDialog] = useConfirm();
   const [checklist, setChecklist] = useState(() =>
@@ -6050,29 +6047,6 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
           </div>
           <span className="chip shrink-0">{isPrimary ? "Ativa" : "Não"}</span>
         </button>
-      </div>
-
-      <div className="mb-3">
-        <p className="text-xs text-dim mb-1" id="goal-area-label">Área da vida</p>
-        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby="goal-area-label">
-          {LIFE_AREAS.map((option) => {
-            const selectedArea = (area || suggestGoalArea({ name, type })) === option.id;
-            return (
-              <button
-                key={option.id}
-                type="button"
-                role="radio"
-                aria-checked={selectedArea}
-                className={`chip ${selectedArea ? "text-brass" : ""}`}
-                style={selectedArea ? { borderColor: "var(--brass-dim)", background: "var(--surface-2)" } : {}}
-                onClick={() => setArea(option.id)}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-        {!area && <p className="text-[10px] text-faint mt-1">Sugerida pelo nome da meta — toque para escolher outra.</p>}
       </div>
 
       {isPro ? (
@@ -6335,7 +6309,6 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
             checklist: isChecklist ? cleanChecklist : [],
             milestones: isChecklist ? [] : milestones,
             imageDataUrl: imageDataUrl || null,
-            area: area || suggestGoalArea({ name: name.trim(), type }),
             startDate: initial?.startDate || today(),
             endDate: endDate || "",
             nextAction: nextAction.trim(),
@@ -6508,7 +6481,7 @@ function GoalAddValue({ goal, onAdjust }) {
       )}
       {current <= 0 && (
         <p className="text-[9px] text-faint mt-1.5">
-          Nada para remover ainda — adicione progresso primeiro.
+          Nada para remover ainda. Adicione progresso primeiro.
         </p>
       )}
 
@@ -6711,12 +6684,12 @@ function GoalIntelligencePanel({ goals, goalProgressLog, isPro, onUpgrade }) {
         <div className="goal-intelligence-card surface-2 rounded-xl p-3">
           <p className="text-[9px] text-faint uppercase tracking-widest">Mais próxima</p>
           <p className="text-sm font-medium mt-1 break-words">{closest?.name || "Sem meta ativa"}</p>
-          <p className="font-mono text-xs text-brass mt-1">{closest ? `${goalProgressPercent(closest)}%` : "—"}</p>
+          <p className="font-mono text-xs text-brass mt-1">{closest ? `${goalProgressPercent(closest)}%` : "Nenhuma"}</p>
         </div>
         <div className="goal-intelligence-card surface-2 rounded-xl p-3">
           <p className="text-[9px] text-faint uppercase tracking-widest">Maior atenção</p>
           <p className="text-sm font-medium mt-1 break-words">{slowest?.name || "Sem meta ativa"}</p>
-          <p className="font-mono text-xs text-brass mt-1">{slowest ? `${goalPaceScore(slowest, goalProgressLog)}/100` : "—"}</p>
+          <p className="font-mono text-xs text-brass mt-1">{slowest ? `${goalPaceScore(slowest, goalProgressLog)}/100` : "Nenhuma"}</p>
         </div>
         <div className="goal-intelligence-card surface-2 rounded-xl p-3">
           <p className="text-[9px] text-faint uppercase tracking-widest">6 meses</p>
@@ -7360,7 +7333,7 @@ function GoalsView({
               </div>
               <div className="surface-2 rounded-xl p-3 min-w-0">
                 <p className="text-[9px] text-faint uppercase tracking-widest">Mais próxima</p>
-                <p className="font-display text-xl mt-1">{closestGoal ? `${goalProgressPercent(closestGoal)}%` : "—"}</p>
+                <p className="font-display text-xl mt-1">{closestGoal ? `${goalProgressPercent(closestGoal)}%` : "Nenhuma"}</p>
               </div>
               <div className="surface-2 rounded-xl p-3 min-w-0">
                 <p className="text-[9px] text-faint uppercase tracking-widest">No ritmo</p>
@@ -7683,7 +7656,7 @@ function NutritionIntelligencePanel({ mealLog, profile, isPro, onUpgrade }) {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4">
         {[
-          ["Média calórica", loggedRows.length ? `${avgCalories.toLocaleString("pt-BR")} kcal` : "—"],
+          ["Média calórica", loggedRows.length ? `${avgCalories.toLocaleString("pt-BR")} kcal` : "Sem registros"],
           ["Proteína", `${proteinTotal.toLocaleString("pt-BR")} g`],
           ["Meta de proteína", `${proteinHitDays}/${loggedRows.length || 0} dias`],
           ["Macros completos", `${macroHitDays}/${loggedRows.length || 0} dias`],
@@ -8031,7 +8004,7 @@ function DietMealEditModal({ meal, isPro, onSave, onClose }) {
         <p className="text-sm font-medium mt-1">{meal?.name}</p>
         <p className="text-[10px] text-faint mt-1">Edite a refeição, quantidade e informações do item sem precisar excluí-lo.</p>
         {meal?.dietPlanId && (
-          <p className="text-[10px] text-brass mt-1.5">Este item faz parte de "Manter esta dieta" — a alteração vale só para hoje; os próximos dias voltam a usar o plano original.</p>
+          <p className="text-[10px] text-brass mt-1.5">Este item faz parte de "Manter esta dieta". A alteração vale só para hoje; os próximos dias voltam a usar o plano original.</p>
         )}
       </div>
 
@@ -8061,7 +8034,7 @@ function DietMealEditModal({ meal, isPro, onSave, onClose }) {
               ))}
             </select>
             {!measureIsTrusted && (
-              <p className="text-[9px] text-faint mt-1">Medida original não encontrada — escolha uma acima ou ajuste os valores manualmente abaixo.</p>
+              <p className="text-[9px] text-faint mt-1">Medida original não encontrada. Escolha uma acima ou ajuste os valores manualmente abaixo.</p>
             )}
           </Field>
           <Field label={activeMeasure?.custom ? "Quantidade (g)" : "Quantidade"}>
@@ -8467,7 +8440,7 @@ function FoodView({
                 </div>
                 {activeDietPlan && (
                   <p className="text-[10px] text-brass mt-1.5">
-                    <RefreshCw size={10} className="inline mr-1" /> Dieta ativa — repetindo automaticamente até o fim do mês.
+                    <RefreshCw size={10} className="inline mr-1" /> Dieta ativa: repetindo automaticamente até o fim do mês.
                   </p>
                 )}
               </div>
@@ -8793,7 +8766,7 @@ function FoodView({
                     <p className="text-[10px] text-faint uppercase tracking-widest">Taxa Metabólica Basal</p>
                     <p className="text-dim text-xs mt-1">Estimativa automática pela fórmula de Mifflin-St Jeor.</p>
                     <div className="flex items-baseline gap-2 mt-3">
-                      <p className="font-display text-3xl text-brass">{tmb ? tmb.toLocaleString("pt-BR") : "—"}</p>
+                      <p className="font-display text-3xl text-brass">{tmb ? tmb.toLocaleString("pt-BR") : "Sem dados"}</p>
                       <span className="text-dim text-sm">kcal/dia</span>
                     </div>
                   </div>
@@ -9080,13 +9053,13 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
     delta > -5 ? "Leve recuo" :
     "Recuo importante";
 
-  const strongest = stats.strongestArea || { label: "—", value: 0 };
-  const weakest = stats.weakestArea || { label: "—", value: 0 };
+  const strongest = stats.strongestArea || { label: "Sem dados", value: 0 };
+  const weakest = stats.weakestArea || { label: "Sem dados", value: 0 };
   const areaPerformance = stats.areaPerformance || [];
   const insights = stats.insights || [];
   const heatmap = stats.heatmap90 || [];
 
-  const focusText = weakest?.label && weakest.label !== "—"
+  const focusText = weakest?.label && weakest.label !== "Sem dados"
     ? `Sua principal oportunidade agora está em ${weakest.label}.`
     : "Continue registrando sua rotina para identificar seu próximo ponto de alavancagem.";
 
@@ -9376,15 +9349,15 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
               <div className="flex flex-col gap-3 text-sm">
                 <div className="progress-reading-row">
                   <span className="text-dim">Melhor dia da semana</span>
-                  <span>{stats.bestWeekday || "—"} · {stats.bestWeekdayAverage || 0}%</span>
+                  <span>{stats.bestWeekday || "Sem dados"} · {stats.bestWeekdayAverage || 0}%</span>
                 </div>
                 <div className="progress-reading-row">
                   <span className="text-dim">Hábito mais consistente</span>
-                  <span className="text-right">{stats.bestHabit || "—"} · {stats.bestHabitRate || 0}%</span>
+                  <span className="text-right">{stats.bestHabit || "Sem dados"} · {stats.bestHabitRate || 0}%</span>
                 </div>
                 <div className="progress-reading-row">
                   <span className="text-dim">Mais negligenciado</span>
-                  <span className="text-right">{stats.worstHabit || "—"} · {stats.worstHabitRate || 0}%</span>
+                  <span className="text-right">{stats.worstHabit || "Sem dados"} · {stats.worstHabitRate || 0}%</span>
                 </div>
               </div>
             </div>
@@ -9470,7 +9443,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
       <div>
         <h2 className="font-display text-2xl md:text-3xl">Conquistas</h2>
         <p className="text-dim text-sm mt-1">
-          Cada marco abaixo fica registrado aqui pra sempre — mesmo depois que o aviso de desbloqueio sumir da tela.
+          Cada marco abaixo fica registrado aqui pra sempre, mesmo depois que o aviso de desbloqueio sumir da tela.
         </p>
       </div>
 
@@ -9559,7 +9532,7 @@ function AchievementsView({ unlocked, stats, profile, setProfile, isPro, onUpgra
       <div>
         <h3 className="font-display text-lg">Prêmios físicos por sequência</h3>
         <p className="text-dim text-sm mt-1">
-          Liberados pela sua maior sequência de dias perfeitos — dias em que todos os hábitos marcados para contar streak foram concluídos. Não é o mesmo número do foguinho de uso no topo do app.
+          Liberados pela sua maior sequência de dias perfeitos: dias em que todos os hábitos marcados para contar streak foram concluídos. Não é o mesmo número do foguinho de uso no topo do app.
         </p>
       </div>
 
@@ -10052,7 +10025,7 @@ function ProfileView({ profile, setProfile, theme, setTheme, streaks, stats, gam
                   disabled={checkoutLoading}
                 >
                   <CreditCard size={15} />
-                  {checkoutLoading ? "Abrindo pagamento…" : "Garantir PRO Vitalício — R$ 37,90"}
+                  {checkoutLoading ? "Abrindo pagamento…" : "Garantir PRO Vitalício por R$ 37,90"}
                 </button>
                 {(paymentMessage || accessError) && (
                   <div className="surface rounded-xl p-3 mt-3 text-xs text-dim flex items-start gap-2" role="status">
@@ -10073,7 +10046,7 @@ function ProfileView({ profile, setProfile, theme, setTheme, streaks, stats, gam
               <div className="surface-2 rounded-xl p-2.5"><p className="text-[9px] text-faint">Treinos</p><p className="font-mono text-xs mt-1">2</p></div>
               <div className="surface-2 rounded-xl p-2.5"><p className="text-[9px] text-faint">Metas ativas</p><p className="font-mono text-xs mt-1">2</p></div>
             </div>
-            <p className="text-[10px] text-faint mt-1.5">Limites do seu plano atual — não é sua contagem de uso.</p>
+            <p className="text-[10px] text-faint mt-1.5">Limites do seu plano atual. Não é sua contagem de uso.</p>
           </div>
         )}
       </div>
@@ -10646,7 +10619,7 @@ function ProUpgradeModal({ request, accessInfo, onClose, onCheckout, checkoutLoa
           disabled={checkoutLoading}
         >
           <CreditCard size={15} />
-          {checkoutLoading ? "Abrindo pagamento…" : "Garantir PRO Vitalício — R$ 37,90"}
+          {checkoutLoading ? "Abrindo pagamento…" : "Garantir PRO Vitalício por R$ 37,90"}
         </button>
 
         <button
@@ -13717,7 +13690,7 @@ function ConstancceApp() {
       return { label, vals, average: avg(vals) };
     });
     const orderedWeekdays = [...weekdayBuckets].sort((a, b) => b.average - a.average);
-    const bestWeekdayInfo = orderedWeekdays[0] || { label: "—", average: 0 };
+    const bestWeekdayInfo = orderedWeekdays[0] || { label: "Sem dados", average: 0 };
 
     const habitRates = habits.map((h) => {
       const relevant = history365.slice(-90).filter((d) => habitValidOnDate(h, d.date, completions));
@@ -13829,8 +13802,8 @@ function ConstancceApp() {
     const tasksDone = taskCompletionDates.length;
     const workoutsDone = workoutSessions.filter((s) => s.completed).length;
 
-    const weakestArea = [...areaPerformance].sort((a, b) => a.value - b.value)[0] || { label: "—", value: 0 };
-    const strongestArea = [...areaPerformance].sort((a, b) => b.value - a.value)[0] || { label: "—", value: 0 };
+    const weakestArea = [...areaPerformance].sort((a, b) => a.value - b.value)[0] || { label: "Sem dados", value: 0 };
+    const strongestArea = [...areaPerformance].sort((a, b) => b.value - a.value)[0] || { label: "Sem dados", value: 0 };
     const monthDelta = avg(last30Rows.map((r) => r.score)) - avg(prev30Rows.map((r) => r.score));
 
     const insights = [
@@ -13865,9 +13838,9 @@ function ConstancceApp() {
       monthDelta,
       bestWeekday: bestWeekdayInfo.label,
       bestWeekdayAverage: bestWeekdayInfo.average,
-      bestHabit: habitRates[0]?.name || "—",
+      bestHabit: habitRates[0]?.name || "Sem dados",
       bestHabitRate: habitRates[0]?.rate || 0,
-      worstHabit: habitRates.length > 1 ? habitRates[habitRates.length - 1].name : (habitRates[0]?.name || "—"),
+      worstHabit: habitRates.length > 1 ? habitRates[habitRates.length - 1].name : (habitRates[0]?.name || "Sem dados"),
       worstHabitRate: habitRates.length ? habitRates[habitRates.length - 1].rate : 0,
       strongestArea,
       weakestArea,
@@ -14115,8 +14088,8 @@ function ConstancceApp() {
       // Antes só o primeiro item era anunciado quando vários desbloqueavam juntos —
       // os demais ficavam salvos sem nenhuma notificação.
       const toastLabel = newlyUnlocked.length === 1
-        ? `MARCO DESBLOQUEADO — ${newlyUnlocked[0].label}`
-        : `MARCOS DESBLOQUEADOS — ${newlyUnlocked.map((a) => a.label).join(" · ")}`;
+        ? `MARCO DESBLOQUEADO: ${newlyUnlocked[0].label}`
+        : `MARCOS DESBLOQUEADOS: ${newlyUnlocked.map((a) => a.label).join(" · ")}`;
       fireToast(toastLabel, <Award size={16} className="text-brass" />);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

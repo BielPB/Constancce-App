@@ -244,8 +244,8 @@ export default function NotificationsView({
           <p>• Metas próximas da data final.</p>
           <p>• Contas próximas do vencimento e limite financeiro ultrapassado.</p>
           <p>• O lembrete de 30 minutos das tarefas também funciona no plano Free.</p>
-          <p className={!isPro ? "text-faint" : ""}>• Resumos entre 8h e 22h, repetição de tarefas atrasadas e automações avançadas {isPro ? "ativos no PRO." : "— PRO."}</p>
-          <p className={!isPro ? "text-faint" : ""}>• Revisão semanal automática aos domingos {isPro ? "" : "— PRO."}</p>
+          <p className={!isPro ? "text-faint" : ""}>• Resumos entre 8h e 22h, repetição de tarefas atrasadas e automações avançadas {isPro ? "ativos no PRO." : "(PRO)."}</p>
+          <p className={!isPro ? "text-faint" : ""}>• Revisão semanal automática aos domingos {isPro ? "" : "(PRO)."}</p>
         </div>
       </div>
     </div>

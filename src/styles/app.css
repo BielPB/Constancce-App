@@ -3160,15 +3160,12 @@ td.habit-grid-today .habit-grid-cell.habit-grid-cell-done{
     radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--brass) 9%, transparent), transparent 62%),
     color-mix(in srgb, var(--bg) 70%, var(--surface));
 }
+@media (max-width:640px){ .life-map{ height:clamp(360px, 54vh, 560px); } }
 .life-map svg{ touch-action:none; cursor:grab; user-select:none; -webkit-user-select:none; }
 .life-map svg:active{ cursor:grabbing; }
 .life-node{ cursor:pointer; outline:none; }
 .life-node:focus-visible circle:first-of-type{ stroke:var(--brass); stroke-width:2; }
 .life-node-label{ pointer-events:none; paint-order:stroke; stroke:color-mix(in srgb, var(--bg) 85%, transparent); stroke-width:3px; stroke-linejoin:round; }
-.life-node-float{ animation:lifeFloat 6s ease-in-out infinite; }
-.life-star{ opacity:.18; animation:lifeTwinkle 4.5s ease-in-out infinite; }
-@keyframes lifeFloat{ 0%,100%{ transform:translate(0,0); } 50%{ transform:translate(0,-3px); } }
-@keyframes lifeTwinkle{ 0%,100%{ opacity:.12; } 50%{ opacity:.4; } }
 .life-map-control{
   width:34px; height:34px; border-radius:10px;
   display:flex; align-items:center; justify-content:center;
@@ -3178,7 +3175,6 @@ td.habit-grid-today .habit-grid-cell.habit-grid-cell-done{
   backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
 }
 .life-map-control:hover{ color:var(--text); border-color:var(--brass-dim); }
-@media (prefers-reduced-motion: reduce){ .life-node-float, .life-star{ animation:none; } }
 
 /* ---------------------------------------------------------------
    Metas em galeria (src/features/goals/GoalCoverCard.jsx)
@@ -3203,7 +3199,7 @@ td.habit-grid-today .habit-grid-cell.habit-grid-cell-done{
   background:linear-gradient(180deg, transparent 30%, color-mix(in srgb, var(--surface) 55%, transparent) 58%, color-mix(in srgb, var(--surface) 94%, transparent) 100%);
 }
 .goal-cover-caption{ position:absolute; left:0; right:0; bottom:0; padding:12px 14px 12px; }
-.goal-cover-area{
+.goal-cover-type{
   display:inline-block; font-size:9px; letter-spacing:.14em; text-transform:uppercase;
   color:var(--brass); margin-bottom:5px;
 }
@@ -3220,18 +3216,18 @@ td.habit-grid-today .habit-grid-cell.habit-grid-cell-done{
 .goal-cover-value{ font-size:13px; font-weight:600; color:var(--text); min-width:0; overflow-wrap:normal; word-break:normal; font-variant-numeric:tabular-nums; }
 .goal-cover-left{ font-size:11px; color:var(--text-faint); text-align:right; flex-shrink:0; max-width:48%; }
 
-/* Capa sem foto: gradiente + ícone da área da vida (só variáveis do tema). */
+/* Capa sem foto: gradiente + ícone do tipo da meta (só variáveis do tema). */
 .goal-cover-fallback{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; --area:var(--brass); background:
   radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--area) 38%, transparent), transparent 58%),
   radial-gradient(circle at 85% 90%, color-mix(in srgb, var(--area) 22%, transparent), transparent 55%),
   linear-gradient(160deg, color-mix(in srgb, var(--area) 16%, var(--surface)), var(--surface)); }
 .goal-cover-fallback-icon{ width:46%; height:46%; color:var(--area); opacity:.35; transform:translateY(-12%); }
-.goal-cover-saude{ --area:var(--moss); }
-.goal-cover-mente{ --area:var(--brass); }
-.goal-cover-carreira{ --area:var(--ember); }
-.goal-cover-financas{ --area:var(--brass-dim); }
-.goal-cover-relacionamentos{ --area:var(--danger); }
-.goal-cover-disciplina{ --area:var(--text-dim); }
+.goal-cover-financeira{ --area:var(--ember); }
+.goal-cover-numerica{ --area:var(--brass); }
+.goal-cover-quantidade{ --area:var(--moss); }
+.goal-cover-frequencia{ --area:var(--brass-dim); }
+.goal-cover-prazo{ --area:var(--danger); }
+.goal-cover-checklist{ --area:var(--text-dim); }
 @media (prefers-reduced-motion: reduce){ .goal-cover-card, .goal-cover-bar > div{ transition:none; } }
 /* Card estreito (2 colunas no celular): valor e prazo empilhados, sem quebrar números. */
 @media (max-width:640px){

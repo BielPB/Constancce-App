@@ -14,7 +14,7 @@ import {
 const PRODUCT = {
   code: "constancce_founder_lifetime",
   itemId: "constancce-founder-lifetime",
-  title: "Constancce PRO Founder — Acesso Vitalício",
+  title: "Constancce PRO Founder: Acesso Vitalício",
   description: "Constancce PRO vitalício. Pagamento único, sem mensalidade.",
   amount: 37.90,
   currency: "BRL",

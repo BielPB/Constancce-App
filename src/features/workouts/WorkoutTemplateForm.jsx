@@ -93,7 +93,7 @@ export default function WorkoutTemplateForm({ initial, onSave, onClose, exercise
       <Field label="Nome do treino">
         <input
           className="w-full p-3 ring-focus"
-          placeholder="Ex: Treino A — Peito e Tríceps"
+          placeholder="Ex: Treino A: Peito e Tríceps"
           value={name}
           onChange={(event) => setName(event.target.value)}
         />

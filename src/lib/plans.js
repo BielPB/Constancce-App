@@ -74,6 +74,6 @@ export function accessSummary(access) {
     expired,
     daysRemaining,
     label: isTrial ? `PRO · Teste ${daysRemaining}d` : "Free",
-    planLabel: isTrial ? "Constancce PRO — Teste" : "Constancce Free",
+    planLabel: isTrial ? "Constancce PRO (teste)" : "Constancce Free",
   };
 }

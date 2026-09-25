@@ -332,7 +332,7 @@ test("nome do exercício abre vídeo explicativo sob demanda", () => {
 test("Perfil oferece compra vitalícia durante PRO temporário", () => {
   assert.match(app, /Acesso PRO temporário/);
   assert.match(app, /dias restantes/);
-  assert.match(app, /Garantir PRO Vitalício — R\$ 37,90/);
+  assert.match(app, /Garantir PRO Vitalício por R\$ 37,90/);
   assert.match(app, /onBuyLifetime=\{handleLifetimeCheckout\}/);
   assert.match(app, /disabled=\{checkoutLoading\}/);
 });
@@ -470,7 +470,7 @@ test("SQLs legados não reabrem permissões da arquitetura antiga", async () => 
 test("paywall PRO possui componente real e não derruba o React", () => {
   assert.match(app, /function ProUpgradeModal\(/);
   assert.match(app, /<ProUpgradeModal/);
-  assert.match(app, /Garantir PRO Vitalício — R\$ 37,90/);
+  assert.match(app, /Garantir PRO Vitalício por R\$ 37,90/);
   assert.match(app, /Já paguei · verificar acesso/);
 });
 
@@ -1369,8 +1369,9 @@ test("Metas em galeria: 'Em andamento' usa capas e abre o detalhe completo num m
   assert.match(app, /\{active\.length > 0 && renderCoverGrid\(active\)\}/);
   assert.match(app, /<Modal title=\{detailGoal\.name\} onClose=\{\(\) => setDetailGoalId\(null\)\} width=\{680\}>\s*\{renderGoalCard\(detailGoal\)\}/);
   assert.match(app, /setDetailGoalId\(null\); \/\/ não empilha o formulário sobre o modal de detalhe/);
-  // Área da vida gravada na meta (ramo do Mapa da vida).
-  assert.match(app, /area: area \|\| suggestGoalArea\(\{ name: name\.trim\(\), type \}\),/);
+  // O mapa e a galeria só usam o que existe no app: nada de "Área da vida"
+  // inventada no formulário da meta.
+  assert.doesNotMatch(app, /Área da vida/);
   // Mapa → "Abrir meta" leva à tela de Metas com o detalhe aberto.
   assert.match(app, /openGoalRequest=\{goalOpenRequest\}/);
   assert.match(app, /onOpenGoal=\{\(goalId\) => \{ setGoalOpenRequest\(\{ id: goalId, at: Date\.now\(\) \}\); setView\("goals"\); \}\}/);

@@ -14,7 +14,7 @@ const CENTER = SIZE / 2;
 const RINGS = [62, 110, 158];
 
 const formatDate = (dateStr, options = { day: "2-digit", month: "2-digit", year: "numeric" }) =>
-  dateStr ? new Date(`${dateStr}T12:00:00`).toLocaleDateString("pt-BR", options) : "—";
+  dateStr ? new Date(`${dateStr}T12:00:00`).toLocaleDateString("pt-BR", options) : "Sem data";
 
 const activateOnKey = (handler) => (event) => {
   if (event.key === "Enter" || event.key === " ") {
@@ -63,14 +63,14 @@ export default function TrajectoryMapView({ data, today, game, streaks, unlocked
             {isPro && <ProBadge compact />}
           </div>
           <p className="text-dim text-sm mt-1">
-            Sua vida em um mapa: áreas, metas, hábitos e tarefas — e a trajetória que te trouxe até aqui.
+            Suas metas, os hábitos e tarefas que levam até elas, e a trajetória que te trouxe até aqui.
           </p>
         </div>
         <span className="chip self-start sm:self-auto">{game.rank.title} · Nv. {game.level}</span>
       </div>
 
       <FirstVisitTip id="map" icon={Waypoints} title="Seu mapa cresce junto com você.">
-        Cada meta entra na área da vida dela, com os hábitos e tarefas que levam até lá. Arraste, aproxime e toque nos pontos para explorar.
+        Cada meta aparece ligada aos hábitos e tarefas que você vinculou a ela. Toque num ponto para ver os detalhes.
       </FirstVisitTip>
 
       <div className="task-glass-tabs rounded-2xl p-1 grid grid-cols-3 gap-1" role="tablist" aria-label="Visualização">

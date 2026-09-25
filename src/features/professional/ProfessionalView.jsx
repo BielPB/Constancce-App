@@ -298,7 +298,7 @@ export default function ProfessionalView({ session, profile, setProfile, isPro, 
             className="w-full p-2.5 text-xs ring-focus mt-2"
           />
           <p className="text-[9px] text-faint mt-1">
-            O Constancce não verifica esse número — ele só fica visível para quem receber o convite, pra conferir por conta própria.
+            O Constancce não verifica esse número. Ele só fica visível para quem receber o convite, pra conferir por conta própria.
           </p>
           {notice && <p className={`text-xs mt-3 ${notice.type === "error" ? "text-ember" : "text-moss"}`}>{notice.text}</p>}
         </form>

@@ -1,83 +1,63 @@
-// Mapa da vida: "Minha evolução" no centro → áreas da vida → metas de cada
-// área → hábitos e tarefas vinculados a cada meta. Tudo puro (sem React/DOM):
-// montagem do grafo, área sugerida para metas antigas e a simulação de física
-// que o componente anima a cada frame.
+// Mapa da vida: só o que existe no app. "Você" no centro → suas metas →
+// os hábitos e tarefas que você vinculou a cada meta. Hábitos ativos sem
+// nenhuma meta ficam num grupo "Sem meta" (que só aparece se houver algum).
+// Nada de categorias inventadas nem ramos vazios.
+//
+// Tudo puro (sem React/DOM): montagem do grafo e a simulação de física que
+// o componente usa para acomodar os nós.
 
 import { goalProgressPercent } from "./goalForecast.js";
 
-export const LIFE_AREAS = Object.freeze([
-  { id: "saude", label: "Saúde", icon: "HeartPulse" },
-  { id: "mente", label: "Mente", icon: "Brain" },
-  { id: "carreira", label: "Carreira", icon: "Briefcase" },
-  { id: "financas", label: "Finanças", icon: "Wallet" },
-  { id: "relacionamentos", label: "Relacionamentos", icon: "Users" },
-  { id: "disciplina", label: "Disciplina", icon: "Shield" },
-]);
-const AREA_IDS = new Set(LIFE_AREAS.map((a) => a.id));
-
-// Metas criadas antes do campo "área" ganham uma sugestão (o usuário troca no
-// formulário). Tipo financeiro → Finanças; senão, palavras do nome.
-const AREA_KEYWORDS = [
-  ["saude", ["corr", "maratona", "trein", "academia", "peso", "dieta", "saúde", "saude", "km", "nadar", "dormir", "sono", "água", "agua", "bike", "pedal"]],
-  ["mente", ["ler", "livro", "leitura", "medit", "estud", "curso", "idioma", "inglês", "ingles", "diário", "diario", "redes sociais", "terapia"]],
-  ["carreira", ["projeto", "trabalho", "empresa", "cliente", "lançar", "lancar", "carreira", "promoç", "promoc", "negócio", "negocio", "vendas", "portfólio", "portfolio"]],
-  ["financas", ["reserva", "invest", "dívida", "divida", "poupar", "economizar", "r$", "salário", "salario", "renda"]],
-  ["relacionamentos", ["família", "familia", "amigo", "namor", "casamento", "filho", "pais", "relacion"]],
-];
-
-export function suggestGoalArea(goal = {}) {
-  if (goal?.type === "financeira") return "financas";
-  const name = String(goal?.name || "").toLowerCase();
-  for (const [area, words] of AREA_KEYWORDS) if (words.some((word) => name.includes(word))) return area;
-  return "disciplina";
-}
-
-export function goalArea(goal = {}) {
-  return AREA_IDS.has(goal?.area) ? goal.area : suggestGoalArea(goal);
-}
+export const UNLINKED_GROUP_ID = "group:unlinked";
 
 const isRecurring = (task) => (task?.repeat || "none") !== "none";
 const taskDone = (task, today) => (isRecurring(task)
   ? (task.completionDates || []).includes(today)
   : task?.status === "concluida");
 
-const MAX_TASKS_PER_GOAL = 6;
+export const MAX_TASKS_PER_GOAL = 6;
 
-// nodes: { id, kind: root|area|goal|habit|task, label, ... }; links: { source, target }
+// nodes: { id, kind: root|goal|group|habit|task, label, ... }; links: { source, target }
 export function buildLifeGraph({ goals = [], habits = [], tasks = [], completions = [], today } = {}) {
-  const nodes = [{ id: "root", kind: "root", label: "Minha evolução" }];
+  const nodes = [{ id: "root", kind: "root", label: "Você" }];
   const links = [];
-  const byId = new Map();
-  const add = (node) => { if (!byId.has(node.id)) { byId.set(node.id, node); nodes.push(node); } return byId.get(node.id); };
-
-  for (const area of LIFE_AREAS) {
-    add({ id: `area:${area.id}`, kind: "area", label: area.label, areaId: area.id, icon: area.icon });
-    links.push({ source: "root", target: `area:${area.id}` });
-  }
+  const byId = new Map([["root", nodes[0]]]);
+  const add = (node) => {
+    if (!byId.has(node.id)) { byId.set(node.id, node); nodes.push(node); }
+    return byId.get(node.id);
+  };
 
   const doneToday = new Set(completions.filter((c) => c?.date === today).map((c) => c.habitId));
   const habitById = new Map(habits.map((h) => [h.id, h]));
   const taskById = new Map(tasks.map((t) => [t.id, t]));
+  const habitNode = (habit) => ({
+    id: `habit:${habit.id}`,
+    kind: "habit",
+    label: habit.name || "Hábito",
+    habitId: habit.id,
+    done: doneToday.has(habit.id),
+    paused: habit.active === false,
+  });
+  const linkedHabitIds = new Set();
 
   for (const goal of goals.filter((g) => g && !g.archived)) {
     const goalId = `goal:${goal.id}`;
-    const areaId = goalArea(goal);
     add({
       id: goalId,
       kind: "goal",
       label: goal.name || "Meta",
       goalId: goal.id,
-      areaId,
       progress: goal.completed ? 100 : goalProgressPercent(goal),
       completed: Boolean(goal.completed),
       endDate: goal.endDate || "",
     });
-    links.push({ source: `area:${areaId}`, target: goalId });
+    links.push({ source: "root", target: goalId });
 
     for (const habitId of goal.linkedHabitIds || []) {
       const habit = habitById.get(habitId);
       if (!habit) continue;
-      add({ id: `habit:${habit.id}`, kind: "habit", label: habit.name || "Hábito", habitId: habit.id, done: doneToday.has(habit.id), paused: habit.active === false });
+      linkedHabitIds.add(habit.id);
+      add(habitNode(habit));
       links.push({ source: goalId, target: `habit:${habit.id}` });
     }
 
@@ -89,23 +69,47 @@ export function buildLifeGraph({ goals = [], habits = [], tasks = [], completion
       links.push({ source: goalId, target: `task:${task.id}` });
     }
   }
+
+  // Hábitos ativos que não estão ligados a nenhuma meta.
+  const unlinked = habits.filter((h) => h && h.active !== false && !linkedHabitIds.has(h.id));
+  if (unlinked.length) {
+    add({ id: UNLINKED_GROUP_ID, kind: "group", label: "Sem meta" });
+    links.push({ source: "root", target: UNLINKED_GROUP_ID });
+    for (const habit of unlinked) {
+      add(habitNode(habit));
+      links.push({ source: UNLINKED_GROUP_ID, target: `habit:${habit.id}` });
+    }
+  }
   return { nodes, links };
 }
 
 // ---------------------------------------------------------------------------
 // Física (force-directed): repulsão entre todos, molas nos vínculos, leve
-// atração ao centro. O componente chama stepLayout a cada frame enquanto
-// `alpha` (energia) não esfria; arrastar um nó reaquece.
+// atração ao centro. O componente roda stepLayout até assentar; arrastar
+// um nó reaquece.
 // ---------------------------------------------------------------------------
 
-export const LINK_LENGTH = { area: 190, goal: 130, habit: 88, task: 88 };
-export const NODE_RADIUS = { root: 30, area: 22, goal: 19, habit: 8, task: 8 };
-const CHARGE = { root: 2600, area: 2000, goal: 1400, habit: 900, task: 900 };
+export const LINK_LENGTH = { goal: 200, group: 200, habit: 108, task: 108 };
+export const NODE_RADIUS = { root: 30, goal: 24, group: 20, habit: 10, task: 10 };
+const CHARGE = { root: 2800, goal: 2200, group: 1800, habit: 1000, task: 1000 };
+const isLeaf = (kind) => kind === "habit" || kind === "task";
 
-// Posições iniciais determinísticas: áreas em círculo, filhos em leque ao
-// redor do pai, na mesma direção (o mapa já "abre" arrumado e só se acomoda).
+// Caixa ocupada por um nó: o desenho em cima e o rótulo (até 2 linhas)
+// embaixo. Usada para que nenhum rótulo encoste em outro nó ou rótulo.
+const LABEL_WIDTH = { root: 70, goal: 128, group: 90, habit: 108, task: 108 };
+export function nodeBox(kind, x, y) {
+  const r = NODE_RADIUS[kind];
+  const labelHeight = kind === "root" ? 0 : 36;
+  const top = y - r;
+  const bottom = y + r + (labelHeight ? 10 + labelHeight : 0);
+  return { left: x - LABEL_WIDTH[kind] / 2, right: x + LABEL_WIDTH[kind] / 2, top, bottom };
+}
+
+// Posições iniciais determinísticas: filhos da raiz em círculo, filhos das
+// metas em leque na mesma direção (o mapa já abre arrumado e só se acomoda).
 export function initLayout(graph, previous = {}) {
   const pos = {};
+  const kindOf = new Map(graph.nodes.map((n) => [n.id, n.kind]));
   const children = new Map();
   for (const link of graph.links) {
     if (!children.has(link.source)) children.set(link.source, []);
@@ -123,14 +127,12 @@ export function initLayout(graph, previous = {}) {
       const a = depth === 0
         ? -Math.PI / 2 + (i * spread) / Math.max(1, kids.length)
         : angle - spread / 2 + (spread * (i + 0.5)) / kids.length;
-      const kind = graph.nodes.find((n) => n.id === id)?.kind || "task";
-      const r = LINK_LENGTH[kind] || 80;
+      const r = LINK_LENGTH[kindOf.get(id)] || 90;
       place(id, pos[parentId].x + Math.cos(a) * r, pos[parentId].y + Math.sin(a) * r);
       visit(id, a, depth + 1);
     });
   };
   visit("root", 0, 0);
-  // Nós sem pai (não deveria acontecer) ficam perto do centro.
   graph.nodes.forEach((n, i) => { if (!pos[n.id]) place(n.id, Math.cos(i) * 40, Math.sin(i) * 40); });
   return pos;
 }
@@ -153,13 +155,10 @@ export function stepLayout(graph, pos, { alpha = 1, pinned = null } = {}) {
       if (d2 < 0.01) { dx = (i - j) * 0.1 || 0.1; dy = 0.1; d2 = dx * dx + dy * dy; }
       const d = Math.sqrt(d2);
       const strength = ((CHARGE[a.kind] + CHARGE[b.kind]) / 2) / Math.max(d2, 400);
-      // Folga extra entre pontas (hábitos/tarefas): os rótulos ficam embaixo
-      // do ponto e são mais largos que ele.
-      const leafPair = (a.kind === "habit" || a.kind === "task") && (b.kind === "habit" || b.kind === "task");
-      const minGap = NODE_RADIUS[a.kind] + NODE_RADIUS[b.kind] + (leafPair ? 58 : 30);
-      const push = strength + (d < minGap ? (minGap - d) * 0.25 : 0);
-      force[a.id].x += (dx / d) * push; force[a.id].y += (dy / d) * push;
-      force[b.id].x -= (dx / d) * push; force[b.id].y -= (dy / d) * push;
+      // Folga para os rótulos (ficam embaixo do ponto e são mais largos que ele).
+      force[a.id].x += (dx / d) * strength; force[a.id].y += (dy / d) * strength;
+      force[b.id].x -= (dx / d) * strength; force[b.id].y -= (dy / d) * strength;
+
     }
   }
   // Molas.
@@ -170,7 +169,7 @@ export function stepLayout(graph, pos, { alpha = 1, pinned = null } = {}) {
     const dx = t.x - s.x;
     const dy = t.y - s.y;
     const d = Math.sqrt(dx * dx + dy * dy) || 0.01;
-    const rest = LINK_LENGTH[kindOf.get(link.target)] || 80;
+    const rest = LINK_LENGTH[kindOf.get(link.target)] || 90;
     const k = 0.06 * (d - rest);
     force[link.source].x += (dx / d) * k; force[link.source].y += (dy / d) * k;
     force[link.target].x -= (dx / d) * k; force[link.target].y -= (dy / d) * k;
@@ -183,14 +182,47 @@ export function stepLayout(graph, pos, { alpha = 1, pinned = null } = {}) {
     if (pinned && pinned.id === node.id) { p.x = pinned.x; p.y = pinned.y; p.vx = 0; p.vy = 0; continue; }
     const f = force[node.id];
     f.x -= p.x * 0.002; f.y -= p.y * 0.002; // gravidade leve
-    p.vx = (p.vx + f.x * alpha) * 0.62;
-    p.vy = (p.vy + f.y * alpha) * 0.62;
+    p.vx = (p.vx + f.x * alpha) * 0.6;
+    p.vy = (p.vy + f.y * alpha) * 0.6;
     const speed = Math.hypot(p.vx, p.vy);
     if (speed > 40) { p.vx *= 40 / speed; p.vy *= 40 / speed; }
     p.x += p.vx; p.y += p.vy;
     energy += speed;
   }
+  resolveCollisions(nodes, pos, pinned);
   return energy / Math.max(1, nodes.length);
+}
+
+// Separação direta das caixas (desenho + rótulo), independente da energia da
+// simulação: garante que nenhum rótulo termine em cima de outro nó. Move os
+// dois nós pela metade da sobreposição, no eixo em que ela é menor; a raiz e
+// o nó sendo arrastado ficam parados (o outro anda a sobreposição inteira).
+function resolveCollisions(nodes, pos, pinned, passes = 3) {
+  const fixed = (id) => id === "root" || (pinned && pinned.id === id);
+  for (let pass = 0; pass < passes; pass += 1) {
+    for (let i = 0; i < nodes.length; i += 1) {
+      for (let j = i + 1; j < nodes.length; j += 1) {
+        const a = nodes[i]; const b = nodes[j];
+        const pa = pos[a.id]; const pb = pos[b.id];
+        const ba = nodeBox(a.kind, pa.x, pa.y);
+        const bb = nodeBox(b.kind, pb.x, pb.y);
+        const overlapX = Math.min(ba.right, bb.right) - Math.max(ba.left, bb.left) + 6;
+        const overlapY = Math.min(ba.bottom, bb.bottom) - Math.max(ba.top, bb.top) + 6;
+        if (overlapX <= 0 || overlapY <= 0) continue;
+        const fa = fixed(a.id); const fb = fixed(b.id);
+        if (fa && fb) continue;
+        const shareA = fa ? 0 : fb ? 1 : 0.5;
+        const shareB = 1 - shareA;
+        if (overlapX < overlapY) {
+          const dir = pa.x === pb.x ? (i % 2 ? 1 : -1) : Math.sign(pa.x - pb.x);
+          pa.x += dir * overlapX * shareA; pb.x -= dir * overlapX * shareB;
+        } else {
+          const dir = (ba.top + ba.bottom) === (bb.top + bb.bottom) ? (i % 2 ? 1 : -1) : Math.sign((ba.top + ba.bottom) - (bb.top + bb.bottom));
+          pa.y += dir * overlapY * shareA; pb.y -= dir * overlapY * shareB;
+        }
+      }
+    }
+  }
 }
 
 export function layoutBounds(graph, pos) {
@@ -198,7 +230,7 @@ export function layoutBounds(graph, pos) {
   for (const node of graph.nodes) {
     const p = pos[node.id];
     if (!p) continue;
-    const r = NODE_RADIUS[node.kind] + 40; // folga pro rótulo
+    const r = NODE_RADIUS[node.kind] + 48; // folga pro rótulo
     minX = Math.min(minX, p.x - r); maxX = Math.max(maxX, p.x + r);
     minY = Math.min(minY, p.y - r); maxY = Math.max(maxY, p.y + r);
   }

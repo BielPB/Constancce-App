@@ -37,7 +37,7 @@ const shiftMonthStart = (monthStartStr, offset) => {
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const uid = () => Math.random().toString(36).slice(2, 10);
 const dateLabel = (dateStr, options = { weekday: "short", day: "2-digit", month: "2-digit" }) => {
-  if (!dateStr) return "—";
+  if (!dateStr) return "Sem data";
   return new Date(dateStr + "T12:00:00").toLocaleDateString("pt-BR", options);
 };
 function proCutoffDate(days = PRO_LIMITS.historyDays) {
@@ -774,7 +774,7 @@ function WorkoutsView({
         start,
         end,
         label: start && end
-          ? `${dateLabel(start, { day: "2-digit", month: "2-digit", year: "numeric" })} — ${dateLabel(end, { day: "2-digit", month: "2-digit", year: "numeric" })}`
+          ? `${dateLabel(start, { day: "2-digit", month: "2-digit", year: "numeric" })} a ${dateLabel(end, { day: "2-digit", month: "2-digit", year: "numeric" })}`
           : "Período personalizado",
       };
     }
@@ -1088,7 +1088,7 @@ function WorkoutsView({
 
     const saved = saveTemplate({
       id: uid(),
-      name: `${payload.name} — Recebido`,
+      name: `${payload.name} (recebido)`,
       scheduleDays: Array.isArray(payload.scheduleDays) ? payload.scheduleDays : [],
       exercises: payload.exercises.map((exercise) => ({
         id: uid(),
@@ -1269,7 +1269,7 @@ function WorkoutsView({
                       {new Date(`${date}T12:00:00`).getDate()}
                     </p>
                     <p className={`text-[10px] mt-1 ${done || scheduled ? "text-brass" : "text-faint"}`}>
-                      {done ? "✓" : scheduled ? "●" : "—"}
+                      {done ? "✓" : scheduled ? "●" : "·"}
                     </p>
                   </button>
                 );
@@ -1297,7 +1297,7 @@ function WorkoutsView({
                     className="chip"
                     onClick={() => saveTemplate({
                       id: uid(),
-                      name: "Treino A — Corpo inteiro",
+                      name: "Treino A: Corpo inteiro",
                       scheduleDays: [1, 3, 5],
                       exercises: [
                         { id: uid(), name: "Agachamento", sets: 3, reps: "8-12", load: "", muscleGroup: "Pernas", restSeconds: 90, favorite: false, videoUrl: "" },
@@ -1756,7 +1756,7 @@ function WorkoutsView({
                       <span className="text-right shrink-0">
                         <span
                           className="font-mono text-brass block"
-                          title="Recorde pessoal — maior carga já registrada nesse exercício"
+                          title="Recorde pessoal: maior carga já registrada nesse exercício"
                         >
                           {record.load} kg
                         </span>
@@ -1947,7 +1947,7 @@ function WorkoutsView({
                   <p className="font-display text-sm md:text-base mt-1 break-words">
                     {filteredHistoryVolume > 0
                       ? `${Math.round(filteredHistoryVolume).toLocaleString("pt-BR")} kg`
-                      : "—"}
+                      : "0 kg"}
                   </p>
                 </div>
                 <div className="surface-2 rounded-xl p-2.5 md:p-3 min-w-0">
@@ -1957,7 +1957,7 @@ function WorkoutsView({
                       ? filteredHistoryMinutes >= 60
                         ? `${Math.floor(filteredHistoryMinutes / 60)}h ${filteredHistoryMinutes % 60}min`
                         : `${filteredHistoryMinutes} min`
-                      : "—"}
+                      : "0 min"}
                   </p>
                 </div>
               </div>
@@ -2115,7 +2115,7 @@ function WorkoutsView({
                 <div>
                   <p className="text-[9px] text-faint uppercase tracking-widest">Descanso</p>
                   <p className={`font-mono text-sm mt-1 ${restRunning ? "text-brass" : ""}`}>
-                    {restRunning ? formatRestCountdown(restRemaining) : "—"}
+                    {restRunning ? formatRestCountdown(restRemaining) : "0:00"}
                   </p>
                 </div>
               </div>
@@ -2275,7 +2275,7 @@ function WorkoutsView({
                           {isPr && (
                             <span
                               className="chip text-brass"
-                              title="Recorde pessoal — maior carga já registrada nesse exercício"
+                              title="Recorde pessoal: maior carga já registrada nesse exercício"
                             >
                               PR
                             </span>
@@ -2330,7 +2330,7 @@ function WorkoutsView({
                           ? `${previousLoad} kg`
                           : (!isSwapped && exercise.load)
                             ? `${exercise.load} kg`
-                            : "—"}
+                            : "Sem registro"}
                       </p>
                       {previousLoad != null && currentLoad > 0 && (
                         <p className={`text-[9px] mt-0.5 ${
@@ -2646,7 +2646,7 @@ function WorkoutsView({
                   >
                     <p className="font-mono text-[11px]">{new Date(`${date}T12:00:00`).getDate()}</p>
                     <p className={`text-[10px] mt-0.5 ${done || scheduled ? "text-brass" : "text-faint"}`}>
-                      {done ? "✓" : scheduled ? "●" : "—"}
+                      {done ? "✓" : scheduled ? "●" : "·"}
                     </p>
                   </button>
                 );
@@ -2708,7 +2708,7 @@ function WorkoutsView({
                               <p className="text-[9px] text-faint mt-0.5">{completed}/{exercise.sets} séries concluídas</p>
                             </div>
                             <span className="font-mono text-xs shrink-0">
-                              {load !== "" && load != null && Number(load) > 0 ? `${Number(load)} kg` : "—"}
+                              {load !== "" && load != null && Number(load) > 0 ? `${Number(load)} kg` : "Sem carga"}
                             </span>
                           </div>
                         );
