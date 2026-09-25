@@ -6,6 +6,8 @@ import { mergePendingPayloadV3, mergeRemoteWithPendingV3, rebasePendingV3, newMu
 import { compactTaskOutbox, applyTaskOutbox, makeTaskUpsert, makeTaskDelete, recordConfirmedTaskWrite, mergeTaskRevisions, reconcileRemoteTasks, settleSentTaskOp, atomicTasksFromRows } from "./src/lib/taskSyncV6.js";
 import { mergeMirrorRows, mirrorRows, deltaCursor, needsFullResync, serverTimeFromHeaders } from "./src/lib/remoteMirror.js";
 import { MAP_AREAS } from "./src/lib/trajectoryMap.js";
+import { LIFE_AREAS, goalArea, suggestGoalArea } from "./src/lib/lifeMap.js";
+import GoalCoverCard from "./src/features/goals/GoalCoverCard.jsx";
 import { ROUTINE_COLLECTIONS, ROUTINE_FIELDS, compactRoutineOutbox, buildRoutineOps, routineFieldsFromRows, applyRoutineOutbox, mergeRoutineBootstrap, confirmedEntityRow } from "./src/lib/routineSyncV1.js";
 import { captureClientError, consumeQueuedErrors, sendTelemetry, analyticsEvent } from "./src/lib/observability.js";
 import { ErrorBoundary } from "./src/components/ErrorBoundary.jsx";
@@ -5952,6 +5954,8 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
   const [linkedHabitIds, setLinkedHabitIds] = useState(initial?.linkedHabitIds || []);
   const [milestones, setMilestones] = useState(initial?.milestones?.length ? initial.milestones : [25, 50, 75, 100]);
   const [imageDataUrl, setImageDataUrl] = useState(initial?.imageDataUrl || "");
+  // Área da vida (ramo do Mapa). Meta antiga sem área abre com a sugestão.
+  const [area, setArea] = useState(initial ? goalArea(initial) : "");
   const goalImageRef = useRef(null);
   const [confirm, confirmDialog] = useConfirm();
   const [checklist, setChecklist] = useState(() =>
@@ -6046,6 +6050,29 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
           </div>
           <span className="chip shrink-0">{isPrimary ? "Ativa" : "Não"}</span>
         </button>
+      </div>
+
+      <div className="mb-3">
+        <p className="text-xs text-dim mb-1" id="goal-area-label">Área da vida</p>
+        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby="goal-area-label">
+          {LIFE_AREAS.map((option) => {
+            const selectedArea = (area || suggestGoalArea({ name, type })) === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={selectedArea}
+                className={`chip ${selectedArea ? "text-brass" : ""}`}
+                style={selectedArea ? { borderColor: "var(--brass-dim)", background: "var(--surface-2)" } : {}}
+                onClick={() => setArea(option.id)}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+        {!area && <p className="text-[10px] text-faint mt-1">Sugerida pelo nome da meta — toque para escolher outra.</p>}
       </div>
 
       {isPro ? (
@@ -6308,6 +6335,7 @@ function GoalForm({ initial, onSave, onClose, isPro, onUpgrade, tasks = [], habi
             checklist: isChecklist ? cleanChecklist : [],
             milestones: isChecklist ? [] : milestones,
             imageDataUrl: imageDataUrl || null,
+            area: area || suggestGoalArea({ name: name.trim(), type }),
             startDate: initial?.startDate || today(),
             endDate: endDate || "",
             nextAction: nextAction.trim(),
@@ -6756,6 +6784,7 @@ function GoalsView({
   tasks = [],
   habits = [],
   autoOpen,
+  openGoalRequest,
   isPro,
   onUpgrade,
 }) {
@@ -6763,6 +6792,16 @@ function GoalsView({
   const [showForm, setShowForm] = useState(false);
   const [editingGoal, setEditingGoal] = useState(null);
   const [expandedGoalId, setExpandedGoalId] = useState(null);
+  // Detalhe completo de uma meta (aberto pela galeria ou pelo Mapa da vida).
+  const [detailGoalId, setDetailGoalId] = useState(null);
+  const openGoalDetail = (goalId) => {
+    setExpandedGoalId(goalId);
+    setDetailGoalId(goalId);
+  };
+  useEffect(() => {
+    if (openGoalRequest?.id) openGoalDetail(openGoalRequest.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openGoalRequest]);
   const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
@@ -6795,9 +6834,19 @@ function GoalsView({
   };
 
   const openEdit = (goal) => {
+    setDetailGoalId(null); // não empilha o formulário sobre o modal de detalhe
     setEditingGoal(goal);
     setShowForm(true);
   };
+  const coverValueText = (goal) => `${goalValueLabel(goal, goal.current)} / ${goalValueLabel(goal, goal.target)}`;
+  const renderCoverGrid = (list) => (
+    <div className="goal-cover-grid">
+      {list.map((goal) => (
+        <GoalCoverCard key={goal.id} goal={goal} valueText={coverValueText(goal)} onOpen={openGoalDetail} />
+      ))}
+    </div>
+  );
+  const detailGoal = detailGoalId ? goals.find((goal) => goal.id === detailGoalId) : null;
 
   const completeNextAction = (goal) => {
     if (!goal.nextAction) return;
@@ -7350,34 +7399,7 @@ function GoalsView({
                 <p className="text-[10px] text-faint uppercase tracking-widest">Outras metas</p>
                 <button className="text-[10px] text-brass" onClick={() => setSection("active")}>Ver todas</button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {active
-                  .filter((goal) => goal.id !== primaryGoal?.id)
-                  .slice(0, 4)
-                  .map((goal) => {
-                    const pace = goalPaceInfo(goal, goalProgressLog);
-                    return (
-                      <button
-                        key={goal.id}
-                        className="goal-overview-mini surface rounded-2xl p-3 md:p-4 text-left min-w-0"
-                        onClick={() => {
-                          setSection("active");
-                          setExpandedGoalId(goal.id);
-                        }}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-medium break-words">{goal.name}</p>
-                          <span className={`chip goal-status-${pace.tone} shrink-0`}>{pace.label}</span>
-                        </div>
-                        <div className="flex items-end justify-between gap-3 mt-3 mb-1.5">
-                          <span className="text-[9px] text-faint">{goalValueLabel(goal, goal.current)} de {goalValueLabel(goal, goal.target)}</span>
-                          <span className="font-mono text-xs text-brass">{goalProgressPercent(goal)}%</span>
-                        </div>
-                        <Progress value={goalProgressPercent(goal)} height={5} />
-                      </button>
-                    );
-                  })}
-              </div>
+              {renderCoverGrid(active.filter((goal) => goal.id !== primaryGoal?.id).slice(0, 4))}
             </div>
           )}
 
@@ -7397,8 +7419,14 @@ function GoalsView({
               Nenhuma meta em andamento.
             </div>
           )}
-          {active.map((goal) => renderGoalCard(goal))}
+          {active.length > 0 && renderCoverGrid(active)}
         </div>
+      )}
+
+      {detailGoal && (
+        <Modal title={detailGoal.name} onClose={() => setDetailGoalId(null)} width={680}>
+          {renderGoalCard(detailGoal)}
+        </Modal>
       )}
 
       {section === "completed" && (
@@ -10765,6 +10793,8 @@ function ConstancceApp() {
   const [showMore, setShowMore] = useState(false);
   const [showCommandCenter, setShowCommandCenter] = useState(false);
   const [quickTrigger, setQuickTrigger] = useState({});
+  // Mapa da vida → "Abrir meta": troca pra Metas e abre o detalhe daquela meta.
+  const [goalOpenRequest, setGoalOpenRequest] = useState(null);
   const [lastSaved, setLastSaved] = useState(null);
   const [syncStatus, setSyncStatus] = useState("idle"); // sincronização geral
   const [taskSyncStatus, setTaskSyncStatus] = useState("idle"); // idle | syncing | offline | error
@@ -14217,7 +14247,7 @@ function ConstancceApp() {
       case "habits": return <HabitsView habits={habits} completions={completions} toggleHabit={toggleHabit} saveHabit={saveHabit} deleteHabit={deleteHabit} toggleActive={toggleActive} habitChecklistLog={habitChecklistLog} toggleHabitChecklist={toggleHabitChecklist} autoOpen={quickTrigger.habits} isPro={isPro} onUpgrade={requestPro} streaks={habitStreaks} />;
       case "tasks": return <TasksView tasks={tasks} saveTask={saveTask} deleteTask={deleteTask} setStatus={setTaskStatus} moveTask={moveTaskKanban} autoOpen={quickTrigger.tasks} isPro={isPro} onUpgrade={requestPro} />;
       case "calendar": return <CalendarView habits={habits} completions={completions} tasks={tasks} saveTask={saveTask} setTaskStatus={setTaskStatus} workoutTemplates={workoutTemplates} workoutSessions={workoutSessions} saveWorkoutTemplate={saveWorkoutTemplate} scheduleWorkoutSession={scheduleWorkoutSession} goals={goals} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
-      case "goals": return <GoalsView goals={goals} saveGoal={saveGoal} addProgress={addGoalProgress} updateProgress={updateProgress} toggleGoalChecklist={toggleGoalChecklist} deleteGoal={deleteGoal} goalProgressLog={goalProgressLog} tasks={tasks} habits={habits} autoOpen={quickTrigger.goals} isPro={isPro} onUpgrade={requestPro} />;
+      case "goals": return <GoalsView goals={goals} saveGoal={saveGoal} addProgress={addGoalProgress} updateProgress={updateProgress} toggleGoalChecklist={toggleGoalChecklist} deleteGoal={deleteGoal} goalProgressLog={goalProgressLog} tasks={tasks} habits={habits} autoOpen={quickTrigger.goals} openGoalRequest={goalOpenRequest} isPro={isPro} onUpgrade={requestPro} />;
       case "workouts": return <WorkoutsView session={session} profile={profile} setProfile={setProfile} templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} scheduleWorkoutSession={scheduleWorkoutSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateReps={updateWorkoutReps} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ timer: workoutRest.timer, total: workoutRest.total }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} onAdjustRest={workoutRest.adjust} resumeSessionId={workoutResumeSessionId} onResumeHandled={() => setWorkoutResumeSessionId(null)} />;
       case "food": return <FoodView foodBase={dietFoodBase} foods={foods} mealLog={mealLog} addMeal={addMeal} updateMeal={updateMeal} toggleMealConsumed={toggleMealConsumed} deleteMeal={deleteMeal} deleteFood={deleteFood} persistMealTemplate={persistMealTemplate} profile={profile} setProfile={setProfile} session={session} autoOpen={quickTrigger.food} isPro={isPro} onUpgrade={requestPro} />;
       case "finance": return <FinanceView transactions={transactions} addTransaction={addTransaction} addGoalProgress={addGoalProgress} deleteTransaction={deleteTransaction} removeTransactionRecord={removeTransactionRecord} profile={profile} setProfile={setProfile} goals={goals} autoOpen={quickTrigger.finance} isPro={isPro} onUpgrade={requestPro} />;
@@ -14233,6 +14263,8 @@ function ConstancceApp() {
           enabledAreas={mapEnabledAreas}
           isPro={isPro}
           onUpgrade={requestPro}
+          onOpenGoal={(goalId) => { setGoalOpenRequest({ id: goalId, at: Date.now() }); setView("goals"); }}
+          onGoToGoals={() => { setQuickTrigger({ goals: Date.now() }); setView("goals"); }}
           numbers={<ProgressView streaks={habitStreaks} stats={stats} game={game} session={session} profile={profile} isPro={isPro} onUpgrade={requestPro} embedded />}
         />
       );

@@ -2,10 +2,12 @@ import React, { useMemo, useState } from "react";
 import { Lock, Waypoints } from "lucide-react";
 import { FirstVisitTip, ProBadge } from "../../components/ui.jsx";
 import { MAP_RANGES, FREE_MAP_RANGE, buildTrajectory, layoutTrajectory } from "../../lib/trajectoryMap.js";
+import LifeMap from "./LifeMap.jsx";
 
-// Mapa da trajetória (substitui a antiga seção "Progresso"; os gráficos de
-// antes ficam na aba "Números"). O usuário no centro, cada área um ramo,
-// cada marco real da história dele um nó — mais longe do centro = mais recente.
+// Seção "Mapa" (substitui a antiga "Progresso"), em três abas:
+//   Mapa da vida — áreas → metas → hábitos/tarefas, com física (LifeMap.jsx);
+//   Trajetória   — linha do tempo radial de marcos reais (este arquivo);
+//   Números      — os gráficos do antigo Progresso.
 
 const SIZE = 400;
 const CENTER = SIZE / 2;
@@ -21,8 +23,8 @@ const activateOnKey = (handler) => (event) => {
   }
 };
 
-export default function TrajectoryMapView({ data, today, game, streaks, unlockedCount, enabledAreas, isPro, onUpgrade, numbers }) {
-  const [tab, setTab] = useState("map");
+export default function TrajectoryMapView({ data, today, game, streaks, unlockedCount, enabledAreas, isPro, onUpgrade, numbers, onOpenGoal, onGoToGoals }) {
+  const [tab, setTab] = useState("life");
   const [range, setRange] = useState(FREE_MAP_RANGE);
   const [selection, setSelection] = useState({ type: "center" });
 
@@ -61,18 +63,18 @@ export default function TrajectoryMapView({ data, today, game, streaks, unlocked
             {isPro && <ProBadge compact />}
           </div>
           <p className="text-dim text-sm mt-1">
-            Sua trajetória em um mapa: cada ramo é uma área da sua vida, cada ponto um marco real.
+            Sua vida em um mapa: áreas, metas, hábitos e tarefas — e a trajetória que te trouxe até aqui.
           </p>
         </div>
         <span className="chip self-start sm:self-auto">{game.rank.title} · Nv. {game.level}</span>
       </div>
 
       <FirstVisitTip id="map" icon={Waypoints} title="Seu mapa cresce junto com você.">
-        Cada registro que você faz vira história aqui. Toque em um ponto para ver o que aconteceu, ou em uma área para ver todos os marcos dela.
+        Cada meta entra na área da vida dela, com os hábitos e tarefas que levam até lá. Arraste, aproxime e toque nos pontos para explorar.
       </FirstVisitTip>
 
-      <div className="task-glass-tabs rounded-2xl p-1 grid grid-cols-2 gap-1" role="tablist" aria-label="Visualização">
-        {[["map", "Mapa"], ["numbers", "Números"]].map(([id, label]) => (
+      <div className="task-glass-tabs rounded-2xl p-1 grid grid-cols-3 gap-1" role="tablist" aria-label="Visualização">
+        {[["life", "Mapa da vida"], ["trail", "Trajetória"], ["numbers", "Números"]].map(([id, label]) => (
           <button
             key={id}
             role="tab"
@@ -85,7 +87,19 @@ export default function TrajectoryMapView({ data, today, game, streaks, unlocked
         ))}
       </div>
 
-      {tab === "numbers" ? numbers : (
+      {tab === "numbers" && numbers}
+      {tab === "life" && (
+        <LifeMap
+          goals={data.goals}
+          habits={data.habits}
+          tasks={data.tasks}
+          completions={data.completions}
+          today={today}
+          onOpenGoal={onOpenGoal}
+          onGoToGoals={onGoToGoals}
+        />
+      )}
+      {tab === "trail" && (
         <>
           <div className="surface glass-panel rounded-2xl p-3 md:p-5">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">

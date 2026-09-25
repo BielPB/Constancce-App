@@ -1362,3 +1362,16 @@ test("Mapa: substitui Progresso no menu sem perder os gráficos (aba Números) n
   assert.match(app, /case "progress": return \(\s*<TrajectoryMapView[\s\S]*?numbers=\{<ProgressView [^>]*embedded \/>\}/);
   assert.match(app, /\["progress", "Mapa"\]/);
 });
+
+test("Metas em galeria: 'Em andamento' usa capas e abre o detalhe completo num modal, sem perder funções", () => {
+  // Complementa tests/life-map.test.mjs (área sugerida) — o card completo
+  // (marcos, check-in, histórico, registrar valor) continua sendo renderGoalCard.
+  assert.match(app, /\{active\.length > 0 && renderCoverGrid\(active\)\}/);
+  assert.match(app, /<Modal title=\{detailGoal\.name\} onClose=\{\(\) => setDetailGoalId\(null\)\} width=\{680\}>\s*\{renderGoalCard\(detailGoal\)\}/);
+  assert.match(app, /setDetailGoalId\(null\); \/\/ não empilha o formulário sobre o modal de detalhe/);
+  // Área da vida gravada na meta (ramo do Mapa da vida).
+  assert.match(app, /area: area \|\| suggestGoalArea\(\{ name: name\.trim\(\), type \}\),/);
+  // Mapa → "Abrir meta" leva à tela de Metas com o detalhe aberto.
+  assert.match(app, /openGoalRequest=\{goalOpenRequest\}/);
+  assert.match(app, /onOpenGoal=\{\(goalId\) => \{ setGoalOpenRequest\(\{ id: goalId, at: Date\.now\(\) \}\); setView\("goals"\); \}\}/);
+});
