@@ -1304,3 +1304,24 @@ test("Qualidade de código: refeições salvas (Dieta) têm a mesma checagem dup
   // pularia a segunda camada de checagem.
   assert.doesNotMatch(foodViewSource, /setProfile\(\(current\) => \(\{\s*\n\s*\.\.\.current,\s*\n\s*dietSavedMeals: \[template/);
 });
+
+test("Tarefas: nenhum snapshot remoto vira estado sem passar pela trava por tarefa (flicker concluída → pendente)", () => {
+  // Complementa tests/task-sync-guard.test.mjs (comportamento): garante que o
+  // App continua ligado à lógica testada. setTasks só pode ser chamado pelo
+  // setter único, e applyRemoteData/pullTaskState passam por guardRemoteTasks.
+  assert.equal(app.match(/\bsetTasks\(/g)?.length, 1, "setTasks só deve aparecer dentro de setVisibleTasks");
+  const applyRemoteData = app.slice(app.indexOf("const applyRemoteData = useCallback"), app.indexOf("// valida/renova a sessão ao abrir o app"));
+  assert.match(applyRemoteData, /guardRemoteTasks\(/);
+  assert.doesNotMatch(applyRemoteData, /taskRevisionRef\.current = \{/, "revisões de tarefa não podem regredir por atribuição direta");
+  // Revisões de tarefa só avançam (merge monotônico) — reset só no logout/troca de conta.
+  assert.deepEqual(app.match(/taskRevisionRef\.current = \{[^}]/g) || [], []);
+  const pullTaskState = app.slice(app.indexOf("const pullTaskState = useCallback"), app.indexOf("const flushTaskSync = useCallback"));
+  assert.match(pullTaskState, /guardRemoteTasks\(remote\.tasks/);
+  const flushTaskSync = app.slice(app.indexOf("const flushTaskSync = useCallback"), app.indexOf("const routineFieldsSnapshot"));
+  assert.match(flushTaskSync, /recordConfirmedTaskWrite\([^;]*\);(?:\n\s*\/\/[^\n]*)*\n\s*taskOutboxRef\.current = settleSentTaskOp\(/, "a escrita é registrada antes de sair da outbox");
+
+  // Efeitos colaterais (outbox, ledger) fora de updaters de setState.
+  const mutations = app.slice(app.indexOf("const commitTaskMutation = "), app.indexOf("const saveGoal = (g) =>"));
+  assert.doesNotMatch(mutations, /setTasks\(\(prev\)/);
+  assert.match(mutations, /const prev = tasksRef\.current;/);
+});

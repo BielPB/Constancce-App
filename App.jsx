@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef, useId, lazy, 
 import { DATA_SCHEMA_VERSION, migrateUserData } from "./src/lib/schema.js";
 import { DOMAIN_FIELDS, mergeDomainRows, pickDataForKeys } from "./src/lib/syncDomains.js";
 import { mergePendingPayloadV3, mergeRemoteWithPendingV3, rebasePendingV3, newMutationId, mergeEntityArray3Way } from "./src/lib/syncV3.js";
-import { compactTaskOutbox, applyTaskOutbox, makeTaskUpsert, makeTaskDelete } from "./src/lib/taskSyncV6.js";
+import { compactTaskOutbox, applyTaskOutbox, makeTaskUpsert, makeTaskDelete, recordConfirmedTaskWrite, mergeTaskRevisions, reconcileRemoteTasks, settleSentTaskOp } from "./src/lib/taskSyncV6.js";
 import { ROUTINE_COLLECTIONS, ROUTINE_FIELDS, compactRoutineOutbox, buildRoutineOps, routineFieldsFromRows, applyRoutineOutbox, mergeRoutineBootstrap } from "./src/lib/routineSyncV1.js";
 import { captureClientError, consumeQueuedErrors, sendTelemetry, analyticsEvent } from "./src/lib/observability.js";
 import { ErrorBoundary } from "./src/components/ErrorBoundary.jsx";
@@ -10779,6 +10779,11 @@ function ConstancceApp() {
   const syncRevisionRef = useRef(0);
   const fieldRevisionRef = useRef({});
   const taskRevisionRef = useRef({});
+  // Maior revisão já vista de cada tarefa + estado nela (ver reconcileRemoteTasks).
+  const knownTaskVersionsRef = useRef({});
+  // Espelho síncrono de `tasks`: as mutações leem o valor atual daqui (fora de
+  // updaters de setState) e setVisibleTasks é o ÚNICO lugar que chama setTasks.
+  const tasksRef = useRef([]);
   const lastSyncedDataRef = useRef({});
   const remotePullInFlightRef = useRef(false);
   const lastRemotePullAtRef = useRef(0);
@@ -10786,6 +10791,35 @@ function ConstancceApp() {
   const telemetryQueueRef = useRef([]);
   const telemetryTimerRef = useRef(null);
   const genericSyncFailureCountRef = useRef(0);
+
+  // Mesmo contrato de setIfChanged (conteúdo idêntico não re-renderiza), mas
+  // atualiza tasksRef na hora — assim dois toques seguidos, antes do React
+  // re-renderizar, já partem do resultado do anterior.
+  const setVisibleTasks = useCallback((next) => {
+    const list = Array.isArray(next) ? next : [];
+    let same = false;
+    try { same = JSON.stringify(tasksRef.current) === JSON.stringify(list); } catch (_) {}
+    if (same) return tasksRef.current;
+    tasksRef.current = list;
+    setTasks(list);
+    return list;
+  }, [setTasks]);
+
+  // Ponto único por onde QUALQUER snapshot remoto de tarefas (pull de tarefas,
+  // sync genérica, bootstrap, foco/poll) passa antes de virar estado: mantém
+  // mutações pendentes (outbox) e escritas já confirmadas que a leitura ainda
+  // não reflete, e nunca deixa a revisão conhecida de uma tarefa regredir.
+  const guardRemoteTasks = useCallback((remoteTasks, remoteRevisions) => {
+    const result = reconcileRemoteTasks({
+      remoteTasks,
+      remoteRevisions,
+      outbox: taskOutboxRef.current || [],
+      known: knownTaskVersionsRef.current,
+    });
+    knownTaskVersionsRef.current = result.known;
+    taskRevisionRef.current = mergeTaskRevisions(taskRevisionRef.current, remoteRevisions);
+    return result.tasks;
+  }, []);
 
   const fireToast = useCallback((message, icon) => {
     setToast({ message, icon });
@@ -11074,14 +11108,19 @@ function ConstancceApp() {
       fieldRevisionRef.current = { ...migrated.__syncFieldRevisions };
     }
     syncRevisionRef.current = Number(migrated?.__syncRevision || syncRevisionRef.current || 0);
-    if (migrated?.__taskRevisions && typeof migrated.__taskRevisions === "object") {
-      taskRevisionRef.current = { ...migrated.__taskRevisions };
-    }
+    // Tarefas NUNCA são aplicadas direto do snapshot: ele pode ser anterior a
+    // uma escrita que este aparelho acabou de confirmar (ex.: POST genérico
+    // disparado pelo XP da própria conclusão, ou pull do foco que saiu antes do
+    // clique). guardRemoteTasks também faz o merge monotônico das revisões.
+    const visibleTasks = guardRemoteTasks(
+      migrated.tasks || [],
+      migrated?.__taskRevisions && typeof migrated.__taskRevisions === "object" ? migrated.__taskRevisions : {}
+    );
     if (migrated?.__syncUpdatedAt) lastRemoteSyncStampRef.current = migrated.__syncUpdatedAt;
     setProfileState(migrated.profile || null);
     setHabits(migrated.habits || []);
     setCompletions(migrated.completions || []);
-    setTasks(migrated.tasks || []);
+    setVisibleTasks(visibleTasks);
     setGoals(migrated.goals || []);
     setUnlocked(migrated.unlocked || []);
     setWorkoutTemplates(migrated.workoutTemplates || []);
@@ -11091,7 +11130,10 @@ function ConstancceApp() {
     setTransactions(migrated.transactions || []);
     setGoalProgressLog(migrated.goalProgressLog || []);
     setHabitChecklistLog(migrated.habitChecklistLog || []);
-  }, []);
+    // Devolve o que ficou visível (com as tarefas já protegidas) para quem
+    // grava o cache local logo em seguida não persistir o snapshot atrasado.
+    return { ...migrated, tasks: visibleTasks };
+  }, [guardRemoteTasks, setVisibleTasks]);
 
   // valida/renova a sessão ao abrir o app
   useEffect(() => {
@@ -11368,8 +11410,7 @@ function ConstancceApp() {
       __syncUpdatedAt: seed?.__syncUpdatedAt || null,
       __localUpdatedAt: seed?.__localUpdatedAt || new Date().toISOString(),
     });
-    applyRemoteData(stampedSeed);
-    saveUserLocalData(userId, stampedSeed);
+    saveUserLocalData(userId, applyRemoteData(stampedSeed));
 
     // Se o servidor ainda não tem estado canônico, envia o snapshot completo
     // UMA vez, inclusive quando há fila pendente. Isso evita criar uma conta
@@ -11393,8 +11434,7 @@ function ConstancceApp() {
       pendingSyncRef.current = null;
       clearPendingSync(userId);
       const syncedVisible = routineVisibleRef.current ? migrateUserData({ ...synced, ...routineVisibleRef.current }) : synced;
-      applyRemoteData(syncedVisible);
-      saveUserLocalData(userId, syncedVisible);
+      saveUserLocalData(userId, applyRemoteData(syncedVisible));
     }
     if (legacy) clearLegacyLocalData();
   };
@@ -11433,8 +11473,7 @@ function ConstancceApp() {
         };
         savePendingSync(userId, pendingSyncRef.current);
       }
-      applyRemoteData(offlineData);
-      saveUserLocalData(userId, offlineData);
+      saveUserLocalData(userId, applyRemoteData(offlineData));
     }
     setSyncStatus(
       typeof navigator !== "undefined" && navigator.onLine === false
@@ -11455,6 +11494,8 @@ function ConstancceApp() {
       setDataReady(false);
       pendingSyncRef.current = null;
       taskOutboxRef.current = [];
+      knownTaskVersionsRef.current = {};
+      taskRevisionRef.current = {};
       routineOutboxRef.current = [];
       routineVisibleRef.current = null;
       routineRevisionRef.current = {};
@@ -11468,6 +11509,10 @@ function ConstancceApp() {
       const userId = session.user.id;
       setDataReady(false);
       setSyncStatus("syncing");
+      // Revisões/escritas confirmadas são por conta: nada da sessão anterior
+      // pode proteger (ou bloquear) tarefas desta.
+      knownTaskVersionsRef.current = {};
+      taskRevisionRef.current = {};
 
       const cached = loadUserLocalData(userId);
       const durablePending = loadPendingSync(userId);
@@ -11508,8 +11553,7 @@ function ConstancceApp() {
             pendingSyncRef.current = rebasedPending;
             savePendingSync(userId, rebasedPending);
           }
-          applyRemoteData(visibleData);
-          saveUserLocalData(userId, visibleData);
+          saveUserLocalData(userId, applyRemoteData(visibleData));
           lastRemotePullAtRef.current = Date.now();
         } else {
           await seedRemoteAccountIfEmpty({ session, userId, cached, durablePending });
@@ -11589,18 +11633,21 @@ function ConstancceApp() {
       let activeSession = session;
       try { activeSession = await getFreshSession(false); } catch (_) {}
       const remote = await fetchAtomicTasksForUser(activeSession);
-      taskRevisionRef.current = { ...(remote.taskRevisions || {}) };
-      let outbox = preservePending ? compactTaskOutbox(taskOutboxRef.current || loadTaskOutbox(session.user.id)) : [];
+
+      // A outbox é relida só AGORA, depois do await: uma tarefa marcada enquanto
+      // esta leitura estava em voo continua visível por cima do snapshot, e uma
+      // já confirmada (e removida da outbox) é mantida por guardRemoteTasks.
+      const outbox = preservePending ? compactTaskOutbox(taskOutboxRef.current || loadTaskOutbox(session.user.id)) : [];
       taskOutboxRef.current = outbox;
-      const visibleTasks = outbox.length ? applyTaskOutbox(remote.tasks || [], outbox) : (remote.tasks || []);
+      const visibleTasks = guardRemoteTasks(remote.tasks || [], remote.taskRevisions || {});
 
       lastSyncedDataRef.current = migrateUserData({
         ...(lastSyncedDataRef.current || {}),
         tasks: remote.tasks || [],
-        __taskRevisions: remote.taskRevisions || {},
+        __taskRevisions: { ...taskRevisionRef.current },
         __syncUpdatedAt: [lastSyncedDataRef.current?.__syncUpdatedAt, remote.updatedAt].filter(Boolean).sort().at(-1) || null,
       });
-      setIfChanged(setTasks, visibleTasks);
+      setVisibleTasks(visibleTasks);
       persistTaskLocalState(visibleTasks);
       setTaskSyncStatus(outbox.length ? "syncing" : "idle");
       setTaskSyncError("");
@@ -11612,7 +11659,7 @@ function ConstancceApp() {
       setTaskSyncStatus(typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "error");
       return false;
     }
-  }, [session, getFreshSession, persistTaskLocalState]);
+  }, [session, getFreshSession, persistTaskLocalState, guardRemoteTasks, setVisibleTasks]);
 
   const flushTaskSync = useCallback(async () => {
     if (!session?.user?.id || taskSyncInFlightRef.current) return false;
@@ -11672,7 +11719,7 @@ function ConstancceApp() {
 
         if (response?.conflict) {
           const fresh = await fetchAtomicTasksForUser(activeSession);
-          taskRevisionRef.current = { ...(fresh.taskRevisions || {}) };
+          taskRevisionRef.current = mergeTaskRevisions(taskRevisionRef.current, fresh.taskRevisions || {});
           const remoteExists = (fresh.tasks || []).some((task) => String(task?.id || "") === String(op.id));
           if (response?.reason === "deleted_remotely" || (op.op === "delete" && !remoteExists)) {
             removeSentOp(op);
@@ -11694,12 +11741,18 @@ function ConstancceApp() {
         }
 
         if (response?.task_id) {
-          taskRevisionRef.current = {
-            ...taskRevisionRef.current,
-            [String(response.task_id)]: Number(response.revision || taskRevisionRef.current?.[response.task_id] || 0),
-          };
+          taskRevisionRef.current = mergeTaskRevisions(taskRevisionRef.current, {
+            [String(response.task_id)]: Number(response.revision || 0),
+          });
         }
-        removeSentOp(op);
+        // Registra a escrita confirmada ANTES de tirá-la da outbox (no mesmo
+        // tick, sem await no meio): assim não existe instante em que a tarefa
+        // fique sem proteção contra uma leitura que saiu antes deste RPC.
+        knownTaskVersionsRef.current = recordConfirmedTaskWrite(knownTaskVersionsRef.current, op, response);
+        // Numa resposta "duplicate" a revisão é a ATUAL do servidor (pode ser de
+        // outro aparelho): aí não rebaseia, deixa o conflito ser detectado.
+        taskOutboxRef.current = settleSentTaskOp(taskOutboxRef.current || [], op, response?.duplicate ? 0 : response?.revision);
+        saveTaskOutbox(session.user.id, taskOutboxRef.current);
       }
 
       clearTaskOutbox(session.user.id);
@@ -12027,7 +12080,7 @@ function ConstancceApp() {
         __syncUpdatedAt: response?.updated_at || null,
         __taskRevisions: response?.taskRevisions || {},
       });
-      taskRevisionRef.current = { ...(response?.taskRevisions || taskRevisionRef.current || {}) };
+      taskRevisionRef.current = mergeTaskRevisions(taskRevisionRef.current, response?.taskRevisions || {});
       syncRevisionRef.current = Number(response?.revision || syncRevisionRef.current || 0);
       fieldRevisionRef.current = { ...(response?.fieldRevisions || fieldRevisionRef.current || {}) };
       lastRemoteSyncStampRef.current = response?.updated_at || lastRemoteSyncStampRef.current || null;
@@ -12041,8 +12094,7 @@ function ConstancceApp() {
           ? migrateUserData({ ...canonical, tasks: applyTaskOutbox(canonical.tasks || [], taskOutboxRef.current) })
           : canonical;
         if (routineVisibleRef.current) visibleCanonical = migrateUserData({ ...visibleCanonical, ...routineVisibleRef.current });
-        applyRemoteData(visibleCanonical);
-        saveUserLocalData(session.user.id, visibleCanonical);
+        saveUserLocalData(session.user.id, applyRemoteData(visibleCanonical));
       } else if (currentPending?.data) {
         // Uma segunda alteração aconteceu durante o POST. Usa a resposta confirmada
         // como nova base e reaplica a alteração mais nova item a item.
@@ -12052,8 +12104,7 @@ function ConstancceApp() {
         let visible = migrateUserData(mergeRemoteWithPendingV3(canonical, rebased));
         if (taskOutboxRef.current?.length) visible = migrateUserData({ ...visible, tasks: applyTaskOutbox(canonical.tasks || [], taskOutboxRef.current) });
         if (routineVisibleRef.current) visible = migrateUserData({ ...visible, ...routineVisibleRef.current });
-        applyRemoteData(visible);
-        saveUserLocalData(session.user.id, visible);
+        saveUserLocalData(session.user.id, applyRemoteData(visible));
       }
 
       genericSyncFailureCountRef.current = 0;
@@ -12077,7 +12128,7 @@ function ConstancceApp() {
           if (latest) {
             syncRevisionRef.current = Number(latest?.__syncRevision || 0);
             fieldRevisionRef.current = { ...(latest?.__syncFieldRevisions || {}) };
-            taskRevisionRef.current = { ...(latest?.__taskRevisions || e?.details?.taskRevisions || {}) };
+            taskRevisionRef.current = mergeTaskRevisions(taskRevisionRef.current, latest?.__taskRevisions || e?.details?.taskRevisions || {});
             lastSyncedDataRef.current = latest;
             const rebasedPending = rebasePendingV3(latest, pending);
 
@@ -12091,8 +12142,7 @@ function ConstancceApp() {
               ? migrateUserData(mergeRemoteWithPendingV3(latest, rebasedPending))
               : latest;
             if (routineVisibleRef.current) visible = migrateUserData({ ...visible, ...routineVisibleRef.current });
-            applyRemoteData(visible);
-            saveUserLocalData(session.user.id, visible);
+            saveUserLocalData(session.user.id, applyRemoteData(visible));
             lastRemotePullAtRef.current = Date.now();
           }
           setSyncStatus("syncing");
@@ -12162,15 +12212,13 @@ function ConstancceApp() {
           merged = migrateUserData({ ...merged, tasks: applyTaskOutbox(remote.tasks || [], taskOutboxRef.current) });
         }
         if (routineVisibleRef.current) merged = migrateUserData({ ...merged, ...routineVisibleRef.current });
-        applyRemoteData(merged);
-        saveUserLocalData(session.user.id, merged);
+        saveUserLocalData(session.user.id, applyRemoteData(merged));
       } else {
         let visibleRemote = preservePending && taskOutboxRef.current?.length
           ? migrateUserData({ ...remote, tasks: applyTaskOutbox(remote.tasks || [], taskOutboxRef.current) })
           : remote;
         if (routineVisibleRef.current) visibleRemote = migrateUserData({ ...visibleRemote, ...routineVisibleRef.current });
-        applyRemoteData(visibleRemote);
-        saveUserLocalData(session.user.id, visibleRemote);
+        saveUserLocalData(session.user.id, applyRemoteData(visibleRemote));
       }
       if (flushAfterPull) {
         await Promise.allSettled([flushPendingSync(), flushTaskSync()]);
@@ -12577,6 +12625,8 @@ function ConstancceApp() {
     materializedRecurringRef.current = new Set();
     materializedDietPlanRef.current = new Set();
     taskOutboxRef.current = [];
+    knownTaskVersionsRef.current = {};
+    taskRevisionRef.current = {};
     clearTimeout(taskRetryTimerRef.current);
     routineOutboxRef.current = [];
     routineVisibleRef.current = null;
@@ -12685,8 +12735,11 @@ function ConstancceApp() {
   const toggleActive = (id) => setHabits((prev) => { const next = prev.map((h) => h.id === id ? { ...h, active: h.active === false, pausedAt: h.active !== false ? today() : h.pausedAt, resumedAt: h.active === false ? today() : h.resumedAt } : h); persist({ habits: next }); return next; });
 
   const commitTaskMutation = (nextTasks, op) => {
-    persistTaskLocalState(nextTasks);
+    // A outbox recebe o op ANTES do estado visível mudar: qualquer leitura que
+    // chegue a partir daqui já reaplica esta mutação por cima do snapshot.
     if (op) queueTaskMutation(op);
+    setVisibleTasks(nextTasks);
+    persistTaskLocalState(nextTasks);
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       setTaskSyncStatus("offline");
       return;
@@ -12696,7 +12749,24 @@ function ConstancceApp() {
     taskRetryTimerRef.current = setTimeout(() => flushTaskSync(), 120);
   };
 
+  // Mutações de tarefa partem do valor ATUAL (tasksRef) e rodam seus efeitos
+  // (outbox, cache, ledger de atividade) no handler — nunca dentro de um updater
+  // de setState, que o React pode reexecutar (StrictMode, render interrompido).
+  const updateTask = (id, change) => {
+    const prev = tasksRef.current;
+    let changedTask = null;
+    const next = prev.map((task) => {
+      if (task.id !== id) return task;
+      changedTask = change(task);
+      return changedTask;
+    });
+    if (!changedTask) return null;
+    commitTaskMutation(next, makeTaskUpsert(changedTask, taskRevisionRef.current?.[id] || 0, newMutationId()));
+    return changedTask;
+  };
+
   const saveTask = (tk) => {
+    const tasks = tasksRef.current;
     const exists = tasks.some((item) => item.id === tk.id);
     if (!exists && !/^\d{2}:\d{2}$/.test(String(tk?.taskTime || ""))) {
       fireToast("Defina um horário antes de criar a tarefa.", <Clock3 size={16} className="text-ember" />);
@@ -12710,17 +12780,17 @@ function ConstancceApp() {
       requestPro("tasks");
       return false;
     }
-    setTasks((prev) => {
-      const next = exists ? prev.map((x) => x.id === tk.id ? tk : x) : [...prev, tk];
-      commitTaskMutation(next, makeTaskUpsert(tk, taskRevisionRef.current?.[tk.id] || 0, newMutationId()));
-      return next;
-    });
+    const next = exists ? tasks.map((x) => x.id === tk.id ? tk : x) : [...tasks, tk];
+    commitTaskMutation(next, makeTaskUpsert(tk, taskRevisionRef.current?.[tk.id] || 0, newMutationId()));
     return true;
   };
-  const deleteTask = async (id) => { if (!(await confirm("Tem certeza que deseja excluir esta tarefa?"))) return; setTasks((prev) => { const next = prev.filter((t) => t.id !== id); commitTaskMutation(next, makeTaskDelete(id, taskRevisionRef.current?.[id] || 0, newMutationId())); return next; }); };
-  const setTaskStatus = (id, status, dateStr = today()) => setTasks((prev) => {
-    const next = prev.map((task) => {
-      if (task.id !== id) return task;
+  const deleteTask = async (id) => {
+    if (!(await confirm("Tem certeza que deseja excluir esta tarefa?"))) return;
+    const next = tasksRef.current.filter((t) => t.id !== id);
+    commitTaskMutation(next, makeTaskDelete(id, taskRevisionRef.current?.[id] || 0, newMutationId()));
+  };
+  const setTaskStatus = (id, status, dateStr = today()) => {
+    const changedTask = updateTask(id, (task) => {
       if (isRecurringTask(task)) {
         const dates = new Set(task.completionDates || []);
         if (status === "concluida") dates.add(dateStr); else dates.delete(dateStr);
@@ -12728,18 +12798,13 @@ function ConstancceApp() {
       }
       return { ...task, status, completedAt: status === "concluida" ? dateStr : undefined };
     });
-    const changedTask = next.find((task) => task.id === id);
-    if (changedTask) commitTaskMutation(next, makeTaskUpsert(changedTask, taskRevisionRef.current?.[id] || 0, newMutationId()));
-    if (status === "concluida") {
+    if (changedTask && status === "concluida") {
       recordActivityEvent(session, "task_completed", `task:${id}:${dateStr}`, { date: dateStr });
     }
-    return next;
-  });
+  };
 
-  const moveTaskKanban = (id, destination, dateStr = today()) => setTasks((prev) => {
-    const next = prev.map((task) => {
-      if (task.id !== id) return task;
-
+  const moveTaskKanban = (id, destination, dateStr = today()) => {
+    const changedTask = updateTask(id, (task) => {
       if (destination === "concluida") {
         if (isRecurringTask(task)) {
           const dates = new Set(task.completionDates || []);
@@ -12767,14 +12832,10 @@ function ConstancceApp() {
         completedAt: undefined,
       };
     });
-
-    const changedTask = next.find((task) => task.id === id);
-    if (changedTask) commitTaskMutation(next, makeTaskUpsert(changedTask, taskRevisionRef.current?.[id] || 0, newMutationId()));
-    if (destination === "concluida") {
+    if (changedTask && destination === "concluida") {
       recordActivityEvent(session, "task_completed", `task:${id}:${dateStr}`, { date: dateStr, source: "kanban" });
     }
-    return next;
-  });
+  };
 
   const saveGoal = (g) => {
     const exists = goals.some((item) => item.id === g.id);
@@ -13869,12 +13930,7 @@ function ConstancceApp() {
 
     if (snoozeTaskId && snoozeMinutes > 0) {
       const until = new Date(Date.now() + snoozeMinutes * 60000).toISOString();
-      setTasks((prev) => {
-        const next = prev.map((task) => task.id === snoozeTaskId ? { ...task, snoozedUntil: until } : task);
-        const changedTask = next.find((task) => task.id === snoozeTaskId);
-        if (changedTask) commitTaskMutation(next, makeTaskUpsert(changedTask, taskRevisionRef.current?.[snoozeTaskId] || 0, newMutationId()));
-        return next;
-      });
+      updateTask(snoozeTaskId, (task) => ({ ...task, snoozedUntil: until }));
       fireToast(`Tarefa adiada por ${snoozeMinutes} minutos.`, <Clock3 size={16} className="text-brass" />);
     }
 
