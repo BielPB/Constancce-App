@@ -1336,3 +1336,21 @@ test("Marca: boas-vindas do onboarding usa a logo oficial, não o ícone funcion
   // Toda imagem de marca no app aponta pro mesmo arquivo oficial.
   assert.match(app, /const constancceLogo = "\/constancce-logo\.png";/);
 });
+
+test("Sync: polls de tarefas e hábitos/treinos leem só o que mudou (espelho), não a tabela inteira", () => {
+  // Complementa tests/remote-mirror.test.mjs (comportamento).
+  assert.match(app, /const sinceFilter = since \? `&updated_at=gte\.\$\{encodeURIComponent\(since\)\}` : "";/);
+  const pullTaskState = app.slice(app.indexOf("const pullTaskState = useCallback"), app.indexOf("const flushTaskSync = useCallback"));
+  assert.match(pullTaskState, /fetchAtomicTaskRows\(activeSession, fullRead \? null : deltaCursor\(mirrorState\.rows, \{ readAt: mirrorState\.readAt \}\)\)/);
+  assert.doesNotMatch(pullTaskState, /fetchAtomicTasksForUser\(/);
+  const pullRoutineState = app.slice(app.indexOf("const pullRoutineState = useCallback"), app.indexOf("const flushRoutineSync = useCallback"));
+  assert.match(pullRoutineState, /fetchAtomicRoutineRows\(activeSession, fullRead \? null : deltaCursor\(mirrorState\.rows, \{ readAt: mirrorState\.readAt \}\)\)/);
+  assert.doesNotMatch(pullRoutineState, /fetchAtomicRoutineForUser\(/);
+  // Espelhos são por conta: zerados no logout/troca de conta.
+  assert.ok((app.match(/taskMirrorRef\.current = \{ rows: \{\}, fullAt: 0, readAt: null, outboxSig: null \};/g) || []).length >= 3);
+  const flushRoutineSync = app.slice(app.indexOf("const flushRoutineSync = useCallback"), app.indexOf("const flushRoutineSync = useCallback") + 6000);
+  assert.match(flushRoutineSync, /absorbMirrorRows\(routineMirrorRef, \{ rows: \[confirmedRow\] \}, routineRowKey, false\);\n\s*removeSentOp\(op\);/);
+  // O bootstrap já preenche os espelhos (sem leitura completa duplicada ao abrir).
+  assert.match(app, /onTaskRows: \(result\) => absorbMirrorRows\(taskMirrorRef, result, taskRowKey, true\)/);
+  assert.match(app, /onRows: \(result\) => absorbMirrorRows\(routineMirrorRef, result, routineRowKey, true\)/);
+});

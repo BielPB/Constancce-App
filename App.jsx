@@ -3,8 +3,9 @@ import React, { useState, useEffect, useMemo, useCallback, useRef, useId, lazy, 
 import { DATA_SCHEMA_VERSION, migrateUserData } from "./src/lib/schema.js";
 import { DOMAIN_FIELDS, mergeDomainRows, pickDataForKeys } from "./src/lib/syncDomains.js";
 import { mergePendingPayloadV3, mergeRemoteWithPendingV3, rebasePendingV3, newMutationId, mergeEntityArray3Way } from "./src/lib/syncV3.js";
-import { compactTaskOutbox, applyTaskOutbox, makeTaskUpsert, makeTaskDelete, recordConfirmedTaskWrite, mergeTaskRevisions, reconcileRemoteTasks, settleSentTaskOp } from "./src/lib/taskSyncV6.js";
-import { ROUTINE_COLLECTIONS, ROUTINE_FIELDS, compactRoutineOutbox, buildRoutineOps, routineFieldsFromRows, applyRoutineOutbox, mergeRoutineBootstrap } from "./src/lib/routineSyncV1.js";
+import { compactTaskOutbox, applyTaskOutbox, makeTaskUpsert, makeTaskDelete, recordConfirmedTaskWrite, mergeTaskRevisions, reconcileRemoteTasks, settleSentTaskOp, atomicTasksFromRows } from "./src/lib/taskSyncV6.js";
+import { mergeMirrorRows, mirrorRows, deltaCursor, needsFullResync, serverTimeFromHeaders } from "./src/lib/remoteMirror.js";
+import { ROUTINE_COLLECTIONS, ROUTINE_FIELDS, compactRoutineOutbox, buildRoutineOps, routineFieldsFromRows, applyRoutineOutbox, mergeRoutineBootstrap, confirmedEntityRow } from "./src/lib/routineSyncV1.js";
 import { captureClientError, consumeQueuedErrors, sendTelemetry, analyticsEvent } from "./src/lib/observability.js";
 import { ErrorBoundary } from "./src/components/ErrorBoundary.jsx";
 import { useConstancceData } from "./src/hooks/useConstancceData.js";
@@ -470,33 +471,71 @@ async function sendPasswordRecovery(email) {
 const SYNC_TABLE_URL = `${SUPABASE_URL}/rest/v1/device_sync`;
 const DOMAIN_SYNC_TABLE_URL = `${SUPABASE_URL}/rest/v1/constancce_domain_sync`;
 
-async function fetchAtomicTasksForUser(session) {
+// Lê linhas de uma tabela atômica da conta, paginadas. Com `since`, só as
+// alteradas a partir dali (inclusive tombstones) — ver src/lib/remoteMirror.js.
+// Devolve { rows, serverTime } — serverTime é a hora do servidor na primeira
+// página (cabeçalho Date), usada como âncora do próximo cursor incremental.
+async function fetchAtomicRows(session, { table, select, since = null, pageSize = 1000, maxPages = 40, errorPrefix }) {
   const userId = session?.user?.id;
   if (!userId) throw new Error("missing_user");
   const list = [];
-  const pageSize = 500;
-  let offset = 0;
-  for (let page = 0; page < 40; page += 1) {
+  let serverTime = NaN;
+  const sinceFilter = since ? `&updated_at=gte.${encodeURIComponent(since)}` : "";
+  for (let page = 0, offset = 0; page < maxPages; page += 1, offset += pageSize) {
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/constancce_tasks?user_id=eq.${encodeURIComponent(userId)}&select=task_id,payload,revision,deleted_at,updated_at&order=updated_at.asc&limit=${pageSize}&offset=${offset}`,
+      `${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${encodeURIComponent(userId)}${sinceFilter}&select=${select}&order=updated_at.asc&limit=${pageSize}&offset=${offset}`,
       { headers: authHeaders(session), cache: "no-store" }
     );
     const rows = await res.json().catch(() => []);
     if (!res.ok) {
-      const error = new Error(rows?.message || rows?.error || `task_sync_fetch_${res.status}`);
+      const error = new Error(rows?.message || rows?.error || `${errorPrefix}_${res.status}`);
       error.status = res.status;
       throw error;
     }
+    if (!Number.isFinite(serverTime)) serverTime = serverTimeFromHeaders(res.headers);
     const batch = Array.isArray(rows) ? rows : [];
     list.push(...batch);
     if (batch.length < pageSize) break;
-    offset += pageSize;
   }
-  return {
-    tasks: list.filter((row) => !row?.deleted_at).map((row) => row?.payload).filter(Boolean),
-    taskRevisions: Object.fromEntries(list.map((row) => [String(row?.task_id || ""), Number(row?.revision || 0)]).filter(([id]) => id)),
-    updatedAt: list.map((row) => row?.updated_at).filter(Boolean).sort().at(-1) || null,
+  return { rows: list, serverTime };
+}
+
+const TASK_ROW_SELECT = "task_id,payload,revision,deleted_at,updated_at";
+const ROUTINE_ROW_SELECT = "collection,entity_id,payload,revision,deleted_at,updated_at";
+
+function fetchAtomicTaskRows(session, since = null) {
+  return fetchAtomicRows(session, { table: "constancce_tasks", select: TASK_ROW_SELECT, since, pageSize: 500, maxPages: 40, errorPrefix: "task_sync_fetch" });
+}
+
+function fetchAtomicRoutineRows(session, since = null) {
+  return fetchAtomicRows(session, { table: "constancce_sync_entities", select: ROUTINE_ROW_SELECT, since, pageSize: 1000, maxPages: 20, errorPrefix: "routine_sync_fetch" });
+}
+
+// onRows recebe a leitura completa crua — o bootstrap usa pra já preencher o
+// espelho de tarefas e não repetir a mesma leitura no primeiro poll.
+const taskRowKey = (row) => String(row?.task_id || "");
+const routineRowKey = (row) => `${row?.collection || ""}:${row?.entity_id || ""}`;
+
+// Junta uma leitura ({ rows, serverTime }) no espelho de um ref. `readAt` só
+// avança (a leitura mais recente viu tudo que comitou antes dela), então uma
+// resposta atrasada não puxa o cursor pra trás.
+function absorbMirrorRows(mirrorRef, result, keyOf, fullRead) {
+  const current = mirrorRef.current;
+  const merged = mergeMirrorRows(current.rows, result?.rows || [], keyOf);
+  const serverTime = Number(result?.serverTime);
+  mirrorRef.current = {
+    ...current,
+    rows: merged.mirror,
+    fullAt: fullRead ? Date.now() : current.fullAt,
+    readAt: Number.isFinite(serverTime) ? Math.max(Number(current.readAt) || 0, serverTime) : current.readAt,
   };
+  return merged;
+}
+
+async function fetchAtomicTasksForUser(session, { onRows } = {}) {
+  const result = await fetchAtomicTaskRows(session);
+  onRows?.(result);
+  return atomicTasksFromRows(result.rows);
 }
 
 async function applyAtomicTaskOpForUser(session, op, options = {}) {
@@ -522,29 +561,10 @@ async function applyAtomicTaskOpForUser(session, op, options = {}) {
   return Array.isArray(data) ? data[0] : data;
 }
 
-async function fetchAtomicRoutineForUser(session) {
-  const userId = session?.user?.id;
-  if (!userId) throw new Error("missing_user");
-  const list = [];
-  const pageSize = 1000;
-  let offset = 0;
-  for (let page = 0; page < 20; page += 1) {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/constancce_sync_entities?user_id=eq.${encodeURIComponent(userId)}&select=collection,entity_id,payload,revision,deleted_at,updated_at&order=updated_at.asc&limit=${pageSize}&offset=${offset}`,
-      { headers: authHeaders(session), cache: "no-store" }
-    );
-    const rows = await res.json().catch(() => []);
-    if (!res.ok) {
-      const error = new Error(rows?.message || rows?.error || `routine_sync_fetch_${res.status}`);
-      error.status = res.status;
-      throw error;
-    }
-    const batch = Array.isArray(rows) ? rows : [];
-    list.push(...batch);
-    if (batch.length < pageSize) break;
-    offset += pageSize;
-  }
-  return routineFieldsFromRows(list);
+async function fetchAtomicRoutineForUser(session, { onRows } = {}) {
+  const result = await fetchAtomicRoutineRows(session);
+  onRows?.(result);
+  return routineFieldsFromRows(result.rows);
 }
 
 async function applyAtomicRoutineOpForUser(session, op, options = {}) {
@@ -625,7 +645,7 @@ async function saveDomainRemoteForUser(session, data, options = {}) {
   return response;
 }
 
-async function fetchRemoteForUser(session) {
+async function fetchRemoteForUser(session, { onTaskRows } = {}) {
   const userId = session?.user?.id;
   if (!userId) throw new Error("missing_user");
 
@@ -634,7 +654,7 @@ async function fetchRemoteForUser(session) {
   // entre dispositivos e não ficam presas à Edge Function genérica.
   let atomicTasks = null;
   try {
-    atomicTasks = await fetchAtomicTasksForUser(session);
+    atomicTasks = await fetchAtomicTasksForUser(session, { onRows: onTaskRows });
   } catch (error) {
     captureClientError(error, { module: "sync", action: "fetch_atomic_tasks_v5" });
   }
@@ -10785,6 +10805,9 @@ function ConstancceApp() {
   const taskRevisionRef = useRef({});
   // Maior revisão já vista de cada tarefa + estado nela (ver reconcileRemoteTasks).
   const knownTaskVersionsRef = useRef({});
+  // Espelhos das tabelas atômicas: os polls leem só o que mudou (src/lib/remoteMirror.js).
+  const taskMirrorRef = useRef({ rows: {}, fullAt: 0, readAt: null, outboxSig: null });
+  const routineMirrorRef = useRef({ rows: {}, fullAt: 0, readAt: null, outboxSig: null });
   // Espelho síncrono de `tasks`: as mutações leem o valor atual daqui (fora de
   // updaters de setState) e setVisibleTasks é o ÚNICO lugar que chama setTasks.
   const tasksRef = useRef([]);
@@ -11332,9 +11355,11 @@ function ConstancceApp() {
     // 1.1.28 — Hábitos e Treinos são carregados de uma tabela atômica própria
     // antes do snapshot genérico. Isso impede o desktop de receber uma versão
     // antiga enquanto o celular já concluiu hábitos ou treino.
+    // As leituras completas do bootstrap já preenchem os espelhos: o primeiro
+    // poll depois de abrir o app é incremental em vez de baixar tudo de novo.
     const [genericResult, routineResult] = await Promise.allSettled([
-      fetchRemoteForUser(activeSession),
-      fetchAtomicRoutineForUser(activeSession),
+      fetchRemoteForUser(activeSession, { onTaskRows: (result) => absorbMirrorRows(taskMirrorRef, result, taskRowKey, true) }),
+      fetchAtomicRoutineForUser(activeSession, { onRows: (result) => absorbMirrorRows(routineMirrorRef, result, routineRowKey, true) }),
     ]);
     if (isCancelled()) return { cancelled: true, remote: null };
     const genericRemote = genericResult.status === "fulfilled" ? genericResult.value : null;
@@ -11499,6 +11524,8 @@ function ConstancceApp() {
       pendingSyncRef.current = null;
       taskOutboxRef.current = [];
       knownTaskVersionsRef.current = {};
+      taskMirrorRef.current = { rows: {}, fullAt: 0, readAt: null, outboxSig: null };
+      routineMirrorRef.current = { rows: {}, fullAt: 0, readAt: null, outboxSig: null };
       taskRevisionRef.current = {};
       routineOutboxRef.current = [];
       routineVisibleRef.current = null;
@@ -11516,6 +11543,8 @@ function ConstancceApp() {
       // Revisões/escritas confirmadas são por conta: nada da sessão anterior
       // pode proteger (ou bloquear) tarefas desta.
       knownTaskVersionsRef.current = {};
+      taskMirrorRef.current = { rows: {}, fullAt: 0, readAt: null, outboxSig: null };
+      routineMirrorRef.current = { rows: {}, fullAt: 0, readAt: null, outboxSig: null };
       taskRevisionRef.current = {};
 
       const cached = loadUserLocalData(userId);
@@ -11627,7 +11656,7 @@ function ConstancceApp() {
     setTaskSyncError("");
   }, [session?.user?.id]);
 
-  const pullTaskState = useCallback(async ({ preservePending = true } = {}) => {
+  const pullTaskState = useCallback(async ({ preservePending = true, full = false } = {}) => {
     if (!session?.user?.id) return false;
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       setTaskSyncStatus("offline");
@@ -11636,7 +11665,21 @@ function ConstancceApp() {
     try {
       let activeSession = session;
       try { activeSession = await getFreshSession(false); } catch (_) {}
-      const remote = await fetchAtomicTasksForUser(activeSession);
+      const mirrorState = taskMirrorRef.current;
+      const fullRead = needsFullResync({ mirror: mirrorState.rows, lastFullAt: mirrorState.fullAt, force: full });
+      const result = await fetchAtomicTaskRows(activeSession, fullRead ? null : deltaCursor(mirrorState.rows, { readAt: mirrorState.readAt }));
+      const merged = absorbMirrorRows(taskMirrorRef, result, taskRowKey, fullRead);
+
+      // Nada mudou no servidor nem na outbox desde a última leitura: o estado
+      // visível já reflete espelho + outbox — evita reprocessar a lista a cada 3s.
+      const outboxSig = (taskOutboxRef.current || []).map((op) => `${op.id}:${op.mutationId}`).join("|");
+      if (!fullRead && !merged.changed && preservePending && outboxSig === taskMirrorRef.current.outboxSig) {
+        setTaskSyncStatus(taskOutboxRef.current?.length ? "syncing" : "idle");
+        setTaskSyncError("");
+        return true;
+      }
+      taskMirrorRef.current.outboxSig = outboxSig;
+      const remote = atomicTasksFromRows(mirrorRows(taskMirrorRef.current.rows));
 
       // A outbox é relida só AGORA, depois do await: uma tarefa marcada enquanto
       // esta leitura estava em voo continua visível por cima do snapshot, e uma
@@ -11844,13 +11887,26 @@ function ConstancceApp() {
     persistRoutineLocalState(after);
   }, [session?.user?.id, routineFieldsSnapshot, buildDataPayload, persistRoutineLocalState]);
 
-  const pullRoutineState = useCallback(async ({ preservePending = true, bootstrapLocal = null } = {}) => {
+  const pullRoutineState = useCallback(async ({ preservePending = true, bootstrapLocal = null, full = false } = {}) => {
     if (!session?.user?.id) return false;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
     try {
       let activeSession = session;
       try { activeSession = await getFreshSession(false); } catch (_) {}
-      const remote = await fetchAtomicRoutineForUser(activeSession);
+      const mirrorState = routineMirrorRef.current;
+      const fullRead = Boolean(bootstrapLocal) || needsFullResync({ mirror: mirrorState.rows, lastFullAt: mirrorState.fullAt, force: full });
+      const result = await fetchAtomicRoutineRows(activeSession, fullRead ? null : deltaCursor(mirrorState.rows, { readAt: mirrorState.readAt }));
+      const merged = absorbMirrorRows(routineMirrorRef, result, routineRowKey, fullRead);
+
+      // Mesmo atalho do pull de tarefas: sem linha nova e outbox igual, a tela
+      // já está certa — não recalcula o histórico inteiro a cada 3s.
+      const outboxSig = (routineOutboxRef.current || []).map((op) => `${op.collection}:${op.id}:${op.mutationId}`).join("|");
+      if (!fullRead && !merged.changed && preservePending && outboxSig === routineMirrorRef.current.outboxSig) return true;
+      routineMirrorRef.current.outboxSig = outboxSig;
+
+      // Espelho junta por maior revisão, então uma leitura atrasada também não
+      // faz um hábito/treino voltar ao estado anterior.
+      const remote = routineFieldsFromRows(mirrorRows(routineMirrorRef.current.rows));
       routineRevisionRef.current = { ...(remote.revisions || {}) };
 
       let outbox = preservePending
@@ -11989,6 +12045,10 @@ function ConstancceApp() {
             [`${response.collection}:${response.entity_id}`]: Number(response.revision || 0),
           };
         }
+        // Escrita confirmada entra no espelho ANTES de sair da outbox (mesmo
+        // tick): uma leitura que saiu antes do commit não a esconde mais.
+        const confirmedRow = confirmedEntityRow(op, response);
+        if (confirmedRow) absorbMirrorRows(routineMirrorRef, { rows: [confirmedRow] }, routineRowKey, false);
         removeSentOp(op);
       }
 
@@ -12549,10 +12609,11 @@ function ConstancceApp() {
         document.visibilityState === "visible" &&
         (typeof navigator === "undefined" || navigator.onLine !== false)
       ) {
-        pullTaskState({ preservePending: true }).then(() => {
+        // Voltar pro app relê tudo (rede de segurança da leitura incremental).
+        pullTaskState({ preservePending: true, full: true }).then(() => {
           if (taskOutboxRef.current.length) flushTaskSync();
         });
-        pullRoutineState({ preservePending: true }).then(() => {
+        pullRoutineState({ preservePending: true, full: true }).then(() => {
           if (routineOutboxRef.current.length) flushRoutineSync();
         });
         if (Date.now() - lastRemotePullAtRef.current > 4000) {
@@ -12592,9 +12653,9 @@ function ConstancceApp() {
     const handleOnline = () => {
       clearTimeout(retrySyncTimer.current);
       retrySyncTimer.current = setTimeout(async () => {
-        await pullTaskState({ preservePending: true });
+        await pullTaskState({ preservePending: true, full: true });
         if (taskOutboxRef.current.length) await flushTaskSync();
-        await pullRoutineState({ preservePending: true });
+        await pullRoutineState({ preservePending: true, full: true });
         if (routineOutboxRef.current.length) await flushRoutineSync();
         await pullRemoteState({ preservePending: true, flushAfterPull: true });
       }, 120);
@@ -12630,6 +12691,8 @@ function ConstancceApp() {
     materializedDietPlanRef.current = new Set();
     taskOutboxRef.current = [];
     knownTaskVersionsRef.current = {};
+    taskMirrorRef.current = { rows: {}, fullAt: 0, readAt: null, outboxSig: null };
+    routineMirrorRef.current = { rows: {}, fullAt: 0, readAt: null, outboxSig: null };
     taskRevisionRef.current = {};
     clearTimeout(taskRetryTimerRef.current);
     routineOutboxRef.current = [];
@@ -12665,8 +12728,8 @@ function ConstancceApp() {
     setSyncStatus("syncing");
     setTaskSyncStatus("syncing");
     const [tasksPulled, routinePulled] = await Promise.all([
-      pullTaskState({ preservePending: true }),
-      pullRoutineState({ preservePending: true }),
+      pullTaskState({ preservePending: true, full: true }),
+      pullRoutineState({ preservePending: true, full: true }),
     ]);
     const [tasksFlushed, routineFlushed] = await Promise.all([
       taskOutboxRef.current.length ? flushTaskSync() : Promise.resolve(true),

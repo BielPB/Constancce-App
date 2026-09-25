@@ -166,3 +166,14 @@ export function settleSentTaskOp(outbox = [], sentOp = {}, confirmedRevision = 0
     .filter((item) => item.id !== id || String(item.mutationId || "") !== mutationId)
     .map((item) => (item.id === id && revision > 0 ? { ...item, baseRevision: revision } : item));
 }
+
+// Linhas de constancce_tasks → formato usado pelo app. Revisões incluem as
+// linhas apagadas (tombstones), que é como uma exclusão remota é reconhecida.
+export function atomicTasksFromRows(rows = []) {
+  const list = Array.isArray(rows) ? rows : [];
+  return {
+    tasks: list.filter((row) => !row?.deleted_at).map((row) => row?.payload).filter(Boolean),
+    taskRevisions: Object.fromEntries(list.map((row) => [String(row?.task_id || ""), Number(row?.revision || 0)]).filter(([id]) => id)),
+    updatedAt: list.map((row) => row?.updated_at).filter(Boolean).sort().at(-1) || null,
+  };
+}

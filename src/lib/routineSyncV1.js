@@ -260,3 +260,24 @@ export function mergeRoutineBootstrap(remoteFields = {}, localFields = {}) {
     workoutSessions: unionByEntity("workout_session", remoteFields.workoutSessions, localFields.workoutSessions, mergeWorkoutSession),
   };
 }
+
+// Linha de constancce_sync_entities que o RPC acabou de confirmar, no mesmo
+// formato da leitura — vai direto pro espelho no instante em que o op sai da
+// outbox. Sem isso, uma leitura que saiu antes do commit e chega depois fazia o
+// hábito/treino recém-marcado "voltar" por um poll (mesmo bug que as tarefas
+// tinham). Numa resposta "duplicate" o servidor manda o estado ATUAL (entity).
+export function confirmedEntityRow(op = {}, response = {}) {
+  const collection = String(response?.collection || op?.collection || "");
+  const entityId = String(response?.entity_id || op?.id || "");
+  const revision = Number(response?.revision || 0);
+  if (!collection || !entityId || !(revision > 0)) return null;
+  const deleted = Boolean(response?.deleted_at) || (op?.op === "delete" && !response?.entity);
+  return {
+    collection,
+    entity_id: entityId,
+    payload: deleted ? null : clone(response?.entity || op?.payload || null),
+    revision,
+    deleted_at: deleted ? (response?.deleted_at || response?.updated_at || new Date().toISOString()) : null,
+    updated_at: response?.updated_at || null,
+  };
+}
