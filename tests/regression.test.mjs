@@ -1354,3 +1354,11 @@ test("Sync: polls de tarefas e hábitos/treinos leem só o que mudou (espelho), 
   assert.match(app, /onTaskRows: \(result\) => absorbMirrorRows\(taskMirrorRef, result, taskRowKey, true\)/);
   assert.match(app, /onRows: \(result\) => absorbMirrorRows\(routineMirrorRef, result, routineRowKey, true\)/);
 });
+
+test("Mapa: substitui Progresso no menu sem perder os gráficos (aba Números) nem as preferências salvas", () => {
+  // Complementa tests/trajectory-map.test.mjs (comportamento).
+  assert.match(app, /\{ id: "progress", label: "Mapa", icon: Waypoints, group: "Evolução" \}/);
+  assert.match(app, /const TrajectoryMapView = lazy\(\(\) => import\("\.\/src\/features\/map\/TrajectoryMapView\.jsx"\)\);/);
+  assert.match(app, /case "progress": return \(\s*<TrajectoryMapView[\s\S]*?numbers=\{<ProgressView [^>]*embedded \/>\}/);
+  assert.match(app, /\["progress", "Mapa"\]/);
+});

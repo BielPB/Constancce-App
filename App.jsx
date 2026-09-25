@@ -5,6 +5,7 @@ import { DOMAIN_FIELDS, mergeDomainRows, pickDataForKeys } from "./src/lib/syncD
 import { mergePendingPayloadV3, mergeRemoteWithPendingV3, rebasePendingV3, newMutationId, mergeEntityArray3Way } from "./src/lib/syncV3.js";
 import { compactTaskOutbox, applyTaskOutbox, makeTaskUpsert, makeTaskDelete, recordConfirmedTaskWrite, mergeTaskRevisions, reconcileRemoteTasks, settleSentTaskOp, atomicTasksFromRows } from "./src/lib/taskSyncV6.js";
 import { mergeMirrorRows, mirrorRows, deltaCursor, needsFullResync, serverTimeFromHeaders } from "./src/lib/remoteMirror.js";
+import { MAP_AREAS } from "./src/lib/trajectoryMap.js";
 import { ROUTINE_COLLECTIONS, ROUTINE_FIELDS, compactRoutineOutbox, buildRoutineOps, routineFieldsFromRows, applyRoutineOutbox, mergeRoutineBootstrap, confirmedEntityRow } from "./src/lib/routineSyncV1.js";
 import { captureClientError, consumeQueuedErrors, sendTelemetry, analyticsEvent } from "./src/lib/observability.js";
 import { ErrorBoundary } from "./src/components/ErrorBoundary.jsx";
@@ -25,7 +26,7 @@ import { Progress, Modal, Field, EmptyState, StatMini, Toast, ProBadge, ProLockC
 import WorkoutTemplateForm from "./src/features/workouts/WorkoutTemplateForm.jsx";
 import FinanceBillForm from "./src/features/finance/FinanceBillForm.jsx";
 import {
-  Flame, CheckCircle2, Circle, Plus, X, Calendar as CalendarIcon,
+  Flame, CheckCircle2, Circle, Plus, X, Calendar as CalendarIcon, Waypoints,
   Target, Trophy, User, LayoutGrid, ListChecks, ChevronLeft, ChevronRight,
   Pencil, Trash2, Copy, GripVertical, ChevronUp, ChevronDown, Pause, Play, Sun, Moon, Monitor, TrendingUp, Award,
   Dumbbell, Apple, Wallet, Bell, FileBarChart, MoreHorizontal, ArrowUpRight,
@@ -41,6 +42,7 @@ const ReportsView = lazy(() => import("./src/features/reports/ReportsView.jsx"))
 const ProfessionalView = lazy(() => import("./src/features/professional/ProfessionalView.jsx"));
 const WorkoutsView = lazy(() => import("./src/features/workouts/WorkoutsView.jsx"));
 const FinanceView = lazy(() => import("./src/features/finance/FinanceView.jsx"));
+const TrajectoryMapView = lazy(() => import("./src/features/map/TrajectoryMapView.jsx"));
 
 
 
@@ -9020,7 +9022,9 @@ function ProgressFriendComparison({ session, profile, game, streaks }) {
   );
 }
 
-function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade }) {
+// `embedded`: dentro do Mapa (aba "Números") o cabeçalho e a dica de primeira
+// visita já vêm do Mapa — aqui ficam só os gráficos.
+function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade, embedded = false }) {
   const [range, setRange] = useState("7d");
 
   const chartData = stats.rangeCharts?.[range] || stats.last14Chart || [];
@@ -9060,6 +9064,7 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
 
   return (
     <div className="progress-view flex flex-col gap-4 md:gap-5">
+      {!embedded && <>
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -9076,6 +9081,7 @@ function ProgressView({ streaks, stats, game, session, profile, isPro, onUpgrade
       <FirstVisitTip id="progress" icon={TrendingUp} title="Progresso é onde seus registros viram resposta.">
         Aqui você não precisa interpretar dezenas de números: acompanhe tendência, consistência e o ponto que merece mais atenção agora.
       </FirstVisitTip>
+      </>}
 
       <div className="progress-command-center surface glass-panel rounded-2xl p-4 md:p-6">
         <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_.95fr] gap-5 lg:gap-7">
@@ -10225,7 +10231,7 @@ function ProfileView({ profile, setProfile, theme, setTheme, streaks, stats, gam
             ["habits", "Hábitos"], ["tasks", "Tarefas"], ["calendar", "Calendário"], ["goals", "Metas"],
             ["workouts", "Treinos"], ["food", "Dieta"], ["finance", "Finanças"], ["friends", "Amigos"],
             ["professional", "Personal & Nutri"],
-            ["progress", "Progresso"], ["achievements", "Conquistas"],
+            ["progress", "Mapa"], ["achievements", "Conquistas"],
           ].map(([id, label]) => {
             const enabled = profile?.moduleVisibility?.[id] !== false;
             return (
@@ -10647,7 +10653,9 @@ const NAV = [
   { id: "food", label: "Dieta", icon: Apple, group: "Saúde" },
   { id: "friends", label: "Amigos", icon: Users, group: "Social" },
   { id: "professional", label: "Personal & Nutri", icon: Stethoscope, group: "Social" },
-  { id: "progress", label: "Progresso", icon: TrendingUp, group: "Evolução" },
+  // id continua "progress": preserva a ordem de menu e a visibilidade que cada
+  // usuário já personalizou, e links antigos (?view=progress).
+  { id: "progress", label: "Mapa", icon: Waypoints, group: "Evolução" },
   { id: "achievements", label: "Conquistas", icon: Trophy, group: "Evolução" },
   { id: "notifications", label: "Notificações", icon: Bell, group: "Conta" },
   { id: "reports", label: "Relatórios", icon: FileBarChart, group: "Evolução" },
@@ -13574,6 +13582,14 @@ function ConstancceApp() {
   // do app (usageStreaks, mostrado no foguinho do topo) — os dois números
   // divergem por design e não devem compartilhar o nome genérico "streak" na UI.
   const habitStreaks = useMemo(() => computeStreaks(habits, completions, today()), [habits, completions]);
+  const mapData = useMemo(
+    () => ({ habits, completions, tasks, workoutSessions, goals, transactions, mealLog }),
+    [habits, completions, tasks, workoutSessions, goals, transactions, mealLog]
+  );
+  const mapEnabledAreas = useMemo(
+    () => MAP_AREAS.filter((area) => moduleEnabled(profile, area.module)).map((area) => area.id),
+    [profile]
+  );
   const usageStreaks = useMemo(
     () => computeUsageStreaks(usageDaysForToday, today()),
     [usageDaysForToday]
@@ -14207,7 +14223,19 @@ function ConstancceApp() {
       case "finance": return <FinanceView transactions={transactions} addTransaction={addTransaction} addGoalProgress={addGoalProgress} deleteTransaction={deleteTransaction} removeTransactionRecord={removeTransactionRecord} profile={profile} setProfile={setProfile} goals={goals} autoOpen={quickTrigger.finance} isPro={isPro} onUpgrade={requestPro} />;
       case "friends": return <FriendsView session={session} profile={profile} game={game} streaks={habitStreaks} isPro={isPro} onUpgrade={requestPro} />;
       case "professional": return <ProfessionalView session={session} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} saveWorkoutTemplate={saveWorkoutTemplate} />;
-      case "progress": return <ProgressView streaks={habitStreaks} stats={stats} game={game} session={session} profile={profile} isPro={isPro} onUpgrade={requestPro} />;
+      case "progress": return (
+        <TrajectoryMapView
+          data={mapData}
+          today={today()}
+          game={game}
+          streaks={habitStreaks}
+          unlockedCount={unlocked.length}
+          enabledAreas={mapEnabledAreas}
+          isPro={isPro}
+          onUpgrade={requestPro}
+          numbers={<ProgressView streaks={habitStreaks} stats={stats} game={game} session={session} profile={profile} isPro={isPro} onUpgrade={requestPro} embedded />}
+        />
+      );
       case "achievements": return <AchievementsView unlocked={unlocked} stats={stats} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
       case "notifications": return <NotificationsView items={notifications} profile={profile} setProfile={setProfile} notificationPermission={notificationPermission} pushEnabled={pushEnabled} pushSupported={pushSupported} notificationBusy={notificationBusy} onEnableNotifications={handleEnableNotifications} onDisableNotifications={handleDisableNotifications} isPro={isPro} onUpgrade={requestPro} />;
       case "reports": return <ReportsView habits={habits} completions={completions} tasks={tasks} workoutSessions={workoutSessions} transactions={transactions} goals={goals} isPro={isPro} onUpgrade={requestPro} today={today} startOfMonth={startOfMonth} habitValidOnDate={habitValidOnDate} addDays={addDays} money={money} months={MONTHS} stats={stats} />;

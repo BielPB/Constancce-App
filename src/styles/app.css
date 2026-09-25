@@ -3138,3 +3138,15 @@ td.habit-grid-today .habit-grid-cell.habit-grid-cell-done{
     break-inside:avoid;
   }
 }
+
+/* ---------------------------------------------------------------
+   Mapa da trajetória (src/features/map/TrajectoryMapView.jsx)
+----------------------------------------------------------------*/
+.trajectory-svg{ overflow:visible; touch-action:manipulation; }
+.trajectory-hit{ cursor:pointer; outline:none; }
+.trajectory-node{ transform-box:fill-box; transform-origin:center; transition:transform 160ms ease; }
+@media (hover:hover){ .trajectory-node:hover{ transform:scale(1.25); } }
+.trajectory-node:focus-visible .trajectory-node-ring{ opacity:1 !important; }
+.trajectory-hit:focus-visible text{ text-decoration:underline; }
+.trajectory-hit:focus-visible > circle[stroke="var(--brass)"]{ stroke-width:3; }
+@media (prefers-reduced-motion: reduce){ .trajectory-node{ transition:none; } .trajectory-node:hover{ transform:none; } }
