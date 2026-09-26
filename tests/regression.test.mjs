@@ -1399,3 +1399,17 @@ test("Treinos: 'Montar treino' junta os exercícios dos músculos escolhidos; tr
   assert.match(app, /const saveBuiltWorkout = \(draft\) => \{/);
   assert.match(app, /while \(targetIndex >= 0 && targetIndex < prev\.length && prev\[targetIndex\]\?\.generated\) targetIndex \+= step;/);
 });
+
+test("SQL 1.1.30: limite Free de treinos ignora treinos montados e fecha as brechas", async () => {
+  // Executado de verdade num Postgres (PGlite) durante o desenvolvimento; aqui
+  // garante que a migração continua com as três regras e o v_exists.
+  const sql = await readFile(new URL("../supabase/sql/SUPABASE_WORKOUT_BUILDER_LIMIT_1_1_30.sql", import.meta.url), "utf8");
+  assert.equal(sql.match(/and \(e\.payload->>'generated'\) is distinct from 'true'/g)?.length, 2, "contagem ignora montados (criar e converter)");
+  assert.match(sql, /if \(v_payload->>'generated'\) is not distinct from 'true' then\s*raise exception 'free_limit_workouts';/);
+  assert.match(sql, /and \(v_old_payload->>'generated'\) is not distinct from 'true'\s*and \(v_payload->>'generated'\) is distinct from 'true' then/);
+  // FOUND é sobrescrito pela consulta do plano: a existência fica em v_exists.
+  assert.match(sql, /v_exists := found;/);
+  assert.doesNotMatch(sql, /\bif found then/);
+  const root = await readFile(new URL("../SUPABASE_WORKOUT_BUILDER_LIMIT_1_1_30.sql", import.meta.url), "utf8");
+  assert.equal(root, sql, "cópia da raiz igual à de supabase/sql");
+});
