@@ -21,6 +21,7 @@ export const PRO_FEATURE_COPY = {
   professional: ["Personal & Nutricionista", "Convidar alunos/pacientes e prescrever treinos ou dietas é exclusivo do PRO. Aceitar um convite e receber prescrições é grátis."],
   history: ["Histórico completo", "No Free, o histórico detalhado fica limitado aos últimos 30 dias."],
   progress: ["Progresso avançado", "Compare 30, 90 e 365 dias e descubra tendências de longo prazo."],
+  workoutBuilder: ["Montar treino do dia", "Escolha os músculos que quer treinar hoje e o app junta todos os exercícios deles a partir dos seus treinos."],
   map: ["Mapa completo", "Veja sua trajetória dos últimos 90 dias, do último ano e desde o início."],
   finance: ["Finanças avançadas", "No Free você pode manter até 8 lançamentos financeiros. Previsões, recorrências, contas a pagar, orçamentos e análises avançadas são PRO."],
   diet: ["Dieta avançada", "No Free você pode registrar até 2 alimentos por refeição do dia. Refeições salvas ampliadas, TMB e Nutrition Intelligence ficam disponíveis no PRO."],

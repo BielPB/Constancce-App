@@ -3,12 +3,13 @@ import {
   ArrowRightLeft, BrainCircuit, Calendar as CalendarIcon, CheckCircle2, ChevronDown, ChevronUp,
   ChevronLeft, ChevronRight,
   Circle, Copy, Dumbbell, GripVertical, Lock, Pencil, Play, Plus, RefreshCw, Repeat2, RotateCcw,
-  Share2, Sparkles, Star, Stethoscope, Timer, Trash2, Trophy, Upload,
+  Share2, Sparkles, Star, Stethoscope, Timer, Trash2, Trophy, Upload, Wand2,
 } from "lucide-react";
 import {
   Modal, Field, EmptyState, Progress, ProLockCard, FirstVisitTip, MiniLineChart, usePrompt,
 } from "../../components/ui.jsx";
 import { PRO_LIMITS } from "../../lib/plans.js";
+import { exerciseMuscleGroup, availableMuscleGroups, buildWorkoutFromGroups } from "../../lib/workoutMuscles.js";
 import { fetchProfessionalLinks, sendPrescription } from "../../lib/professionalLinks.js";
 import { useRestCountdown } from "../../hooks/useWorkoutRestTimer.js";
 import WorkoutTemplateForm from "./WorkoutTemplateForm.jsx";
@@ -70,7 +71,7 @@ const encodeWorkoutShare = (workout) => {
       sets: Math.max(1, Number(exercise?.sets) || 1),
       reps: String(exercise?.reps || ""),
       load: exercise?.load ?? "",
-      muscleGroup: String(exercise?.muscleGroup || inferWorkoutMuscleGroup(exercise?.name || "")),
+      muscleGroup: String(exerciseMuscleGroup(exercise || {})),
       restSeconds: Number(exercise?.restSeconds || 90),
       videoUrl: String(exercise?.videoUrl || ""),
     })),
@@ -104,20 +105,6 @@ const decodeWorkoutShare = (value) => {
 /* ---------------------------------------------------------------
    WORKOUTS
 ----------------------------------------------------------------*/
-const WORKOUT_MUSCLE_GROUPS = ["Peito", "Costas", "Pernas", "Ombros", "Braços", "Core", "Cardio", "Outro"];
-
-const inferWorkoutMuscleGroup = (name = "") => {
-  const value = String(name).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  if (/(supino|peito|crucifixo|voador|crossover)/.test(value)) return "Peito";
-  if (/(remada|puxada|costas|pulldown|barra fixa)/.test(value)) return "Costas";
-  if (/(agach|leg press|extensora|flexora|panturr|stiff|terra|glute)/.test(value)) return "Pernas";
-  if (/(ombro|elevacao lateral|desenvolvimento)/.test(value)) return "Ombros";
-  if (/(biceps|triceps|rosca|pulley|frances)/.test(value)) return "Braços";
-  if (/(abd|prancha|core)/.test(value)) return "Core";
-  if (/(corrida|esteira|bike|bicicleta|cardio|eliptico)/.test(value)) return "Cardio";
-  return "Outro";
-};
-
 const normalizeWorkoutExerciseName = (name = "") =>
   String(name || "")
     .normalize("NFD")
@@ -349,7 +336,7 @@ const workoutMuscleWeekGrid = (templates, sessions, days) => {
       .forEach((session) => {
         const template = (templates || []).find((item) => item.id === session.templateId);
         (template?.exercises || []).forEach((exercise) => {
-          const group = exercise.muscleGroup || inferWorkoutMuscleGroup(exercise.name);
+          const group = exerciseMuscleGroup(exercise);
           dayGroups.add(group);
           groupSet.add(group);
         });
@@ -605,6 +592,7 @@ function WorkoutsView({
   moveTemplateByStep,
   startOrGetSession,
   scheduleWorkoutSession,
+  saveBuiltWorkout,
   toggleSet,
   toggleExercise,
   updateLoad,
@@ -708,6 +696,43 @@ function WorkoutsView({
 
 
 
+  // Treinos montados pelo "Montar treino" ficam ocultos: existem só para o
+  // histórico. Lista, contador do Free e reordenação usam os registrados.
+  const libraryTemplates = templates.filter((template) => !template.generated);
+
+  // "Montar treino": o usuário escolhe os músculos de hoje e o app junta TODOS
+  // os exercícios desses músculos que existem nos treinos registrados.
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [builderGroups, setBuilderGroups] = useState([]);
+  const muscleOptions = useMemo(() => availableMuscleGroups(templates), [templates]);
+  const builderPreview = useMemo(
+    () => (builderGroups.length ? buildWorkoutFromGroups(templates, builderGroups, { newId: uid }) : null),
+    [templates, builderGroups]
+  );
+  const templateNameById = useMemo(() => new Map(templates.map((tpl) => [tpl.id, tpl.name])), [templates]);
+  const openBuilder = () => {
+    if (!isPro) { onUpgrade("workoutBuilder"); return; }
+    setBuilderGroups([]);
+    setBuilderOpen(true);
+  };
+  const toggleBuilderGroup = (group) =>
+    setBuilderGroups((current) => (current.includes(group) ? current.filter((g) => g !== group) : [...current, group]));
+  const startBuiltWorkout = () => {
+    if (!builderPreview?.exercises.length) return;
+    // Carga inicial = a última registrada para aquele exercício em qualquer treino.
+    const draft = {
+      ...builderPreview,
+      exercises: builderPreview.exercises.map((exercise) => ({
+        ...exercise,
+        load: workoutLoadHistoryByName(sessions, templates, exercise.name, today()) ?? exercise.load,
+      })),
+    };
+    const template = saveBuiltWorkout?.(draft);
+    if (!template) return;
+    setBuilderOpen(false);
+    setBuilderGroups([]);
+    openTodaySession(template);
+  };
   const t = today();
   const yesterday = addDays(t, -1);
   const activeSession = activeSessionId
@@ -881,7 +906,7 @@ function WorkoutsView({
         rows.set(key, {
           name: exercise.name,
           favorite: Boolean(exercise.favorite) || Boolean(current?.favorite),
-          muscleGroup: exercise.muscleGroup || inferWorkoutMuscleGroup(exercise.name),
+          muscleGroup: exerciseMuscleGroup(exercise),
           lastLoad: Number(latestLoad || current?.lastLoad || exercise.load || 0),
           videoUrl: String(exercise.videoUrl || current?.videoUrl || ""),
         });
@@ -1096,7 +1121,7 @@ function WorkoutsView({
         sets: Math.max(1, Number(exercise.sets) || 1),
         reps: String(exercise.reps || ""),
         load: exercise.load ?? "",
-        muscleGroup: exercise.muscleGroup || inferWorkoutMuscleGroup(exercise.name),
+        muscleGroup: exerciseMuscleGroup(exercise),
         restSeconds: Number(exercise.restSeconds || 90),
         favorite: false,
         videoUrl: String(exercise.videoUrl || ""),
@@ -1151,11 +1176,71 @@ function WorkoutsView({
 
   return (
     <div className="workouts-view flex flex-col gap-4">
+      {builderOpen && (
+        <Modal title="Montar treino do dia" onClose={() => setBuilderOpen(false)} width={560}>
+          <p className="text-sm text-dim">Toque nos músculos que você quer treinar hoje.</p>
+          <div className="flex flex-wrap gap-2 mt-3" role="group" aria-label="Músculos">
+            {muscleOptions.map(({ group, count }) => {
+              const selected = builderGroups.includes(group);
+              return (
+                <button
+                  key={group}
+                  type="button"
+                  aria-pressed={selected}
+                  className={`chip ${selected ? "text-brass" : ""}`}
+                  style={selected ? { borderColor: "var(--brass-dim)", background: "var(--surface-2)" } : {}}
+                  onClick={() => toggleBuilderGroup(group)}
+                >
+                  {group} · {count}
+                </button>
+              );
+            })}
+          </div>
+
+          {builderPreview ? (
+            <div className="mt-4 flex flex-col gap-3">
+              <p className="text-[10px] text-faint uppercase tracking-widest">
+                {builderPreview.name} · {builderPreview.exercises.length} exercício{builderPreview.exercises.length === 1 ? "" : "s"}
+              </p>
+              {builderPreview.groups.map((group) => {
+                const list = builderPreview.exercises.filter((exercise) => exercise.muscleGroup === group);
+                return (
+                  <div key={group}>
+                    <p className="text-xs font-medium text-brass">{group}</p>
+                    <ul className="mt-1.5 flex flex-col gap-1.5">
+                      {list.map((exercise) => (
+                        <li key={exercise.id} className="surface-2 rounded-xl px-3 py-2 flex items-center justify-between gap-3">
+                          <span className="text-sm min-w-0 truncate">{exercise.name}</span>
+                          <span className="text-[10px] text-faint shrink-0 text-right">
+                            {exercise.sets}× {exercise.reps} · {templateNameById.get(exercise.sourceTemplateId)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-faint mt-4">Os exercícios aparecem aqui assim que você escolher um músculo.</p>
+          )}
+
+          <button
+            type="button"
+            className="btn-primary w-full rounded-xl py-3 mt-5 text-sm font-semibold disabled:opacity-40 inline-flex items-center justify-center gap-2"
+            disabled={!builderPreview?.exercises.length}
+            onClick={startBuiltWorkout}
+          >
+            <Play size={15} aria-hidden="true" /> Começar treino
+          </button>
+        </Modal>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="font-display text-2xl">Treinos</h2>
-            {!isPro && <span className="chip">{templates.length}/{PRO_LIMITS.workouts} Free</span>}
+            {!isPro && <span className="chip">{libraryTemplates.length}/{PRO_LIMITS.workouts} Free</span>}
           </div>
           <p className="text-faint text-xs mt-1">
             Execute o treino, registre cargas e acompanhe sua evolução sem complicação.
@@ -1165,7 +1250,7 @@ function WorkoutsView({
         <button
           className="btn-primary rounded-xl px-3 py-2 text-sm flex items-center justify-center gap-1 self-start sm:self-auto"
           onClick={() => {
-            if (!isPro && templates.length >= PRO_LIMITS.workouts) {
+            if (!isPro && libraryTemplates.length >= PRO_LIMITS.workouts) {
               onUpgrade("workouts");
               return;
             }
@@ -1206,6 +1291,25 @@ function WorkoutsView({
 
       {section === "today" && (
         <>
+          {muscleOptions.length > 0 && (
+            <div className="workout-builder-card surface rounded-2xl p-4 md:p-5 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] text-brass uppercase tracking-widest flex items-center gap-1.5">
+                  <Wand2 size={11} aria-hidden="true" /> Montar treino
+                </p>
+                <p className="font-display text-lg mt-1">O que você quer treinar hoje?</p>
+                <p className="text-xs text-dim mt-1">Escolha os músculos e o app junta os exercícios deles a partir dos seus treinos.</p>
+              </div>
+              <button
+                type="button"
+                className="btn-primary rounded-xl px-3 py-2 text-sm shrink-0 inline-flex items-center gap-1.5"
+                onClick={openBuilder}
+              >
+                {!isPro && <Lock size={13} aria-hidden="true" />} Montar
+              </button>
+            </div>
+          )}
+
           <div className="workout-week-strip surface rounded-2xl p-3 md:p-4">
             <div className="flex items-center justify-between gap-3 mb-3">
               <div>
@@ -1277,7 +1381,7 @@ function WorkoutsView({
             </div>
           </div>
 
-          {templates.length === 0 && (
+          {libraryTemplates.length === 0 && (
             <EmptyState
               icon={Dumbbell}
               title="Nenhum treino cadastrado."
@@ -1395,7 +1499,7 @@ function WorkoutsView({
                 </button>
               </div>
             </div>
-          ) : templates.length > 0 ? (
+          ) : libraryTemplates.length > 0 ? (
             <div className="surface rounded-2xl p-4 md:p-5">
               <p className="text-[10px] text-faint uppercase tracking-widest">Hoje</p>
               <p className="font-display text-xl mt-1">Nenhum treino programado.</p>
@@ -1471,7 +1575,7 @@ function WorkoutsView({
             </div>
           )}
 
-          {templates.length === 0 && (
+          {libraryTemplates.length === 0 && (
             <EmptyState
               icon={Dumbbell}
               title="Nenhum treino cadastrado."
@@ -1479,7 +1583,7 @@ function WorkoutsView({
             />
           )}
 
-          {templates.length > 1 && (
+          {libraryTemplates.length > 1 && (
             <div className="flex items-center gap-2 text-[11px] text-faint px-1">
               <GripVertical size={13} />
               <span>Arraste ou use as setas para organizar a ordem.</span>
@@ -1487,7 +1591,7 @@ function WorkoutsView({
           )}
 
           <div className="flex flex-col gap-2">
-            {templates.map((template, index) => {
+            {libraryTemplates.map((template, index) => {
               const doneToday = sessions.some((session) =>
                 session.templateId === template.id &&
                 session.date === t &&
@@ -1500,7 +1604,7 @@ function WorkoutsView({
 
               const groups = [...new Set(
                 template.exercises.map((exercise) =>
-                  exercise.muscleGroup || inferWorkoutMuscleGroup(exercise.name)
+                  exerciseMuscleGroup(exercise)
                 )
               )].filter((group) => group !== "Outro");
 
@@ -1586,7 +1690,7 @@ function WorkoutsView({
                       </button>
                       <button
                         className="btn-ghost rounded-lg p-2"
-                        disabled={index === templates.length - 1}
+                        disabled={index === libraryTemplates.length - 1}
                         onClick={() => moveTemplateByStep(template.id, "down")}
                         aria-label={`Mover ${template.name} para baixo`}
                       >
@@ -1623,7 +1727,7 @@ function WorkoutsView({
                       <button
                         className="btn-ghost rounded-lg p-2"
                         onClick={() => {
-                          if (!isPro && templates.length >= PRO_LIMITS.workouts) {
+                          if (!isPro && libraryTemplates.length >= PRO_LIMITS.workouts) {
                             onUpgrade("workouts");
                             return;
                           }
@@ -1679,7 +1783,7 @@ function WorkoutsView({
                               </p>
                             </div>
                             <span className="chip text-[8px] shrink-0">
-                              {exercise.muscleGroup || inferWorkoutMuscleGroup(exercise.name)}
+                              {exerciseMuscleGroup(exercise)}
                             </span>
                           </div>
                         ))}
@@ -2201,9 +2305,11 @@ function WorkoutsView({
               // "leg press" — nunca pra uma troca de exercício de verdade (nesse
               // caso fica "—", como antes, pra não misturar cargas de exercícios
               // diferentes).
-              const previousLoad = isSwapped
+              // Treino montado: os exercícios são cópias (ids novos a cada montagem),
+              // então a carga anterior vem pelo NOME, do histórico de todos os treinos.
+              const previousLoad = isSwapped || activeTemplate.generated
                 ? workoutLoadHistoryByName(sessions, templates, displayName, activeSession.date, activeTemplate.id)
-                  ?? (isLikelyWorkoutExerciseRename(exercise.name, displayName)
+                  ?? (isSwapped && isLikelyWorkoutExerciseRename(exercise.name, displayName)
                     ? workoutPreviousExerciseLoad(sessions, activeTemplate.id, exercise.id, activeSession.date)
                     : null)
                 : workoutPreviousExerciseLoad(sessions, activeTemplate.id, exercise.id, activeSession.date);
@@ -2263,7 +2369,7 @@ function WorkoutsView({
                               );
                               setExerciseGuide({
                                 name: displayName,
-                                muscleGroup: exercise.muscleGroup || inferWorkoutMuscleGroup(exercise.name),
+                                muscleGroup: exerciseMuscleGroup(exercise),
                                 videoUrl: String(exercise.videoUrl || libraryGuide?.videoUrl || ""),
                               });
                             }}
@@ -2283,7 +2389,7 @@ function WorkoutsView({
                           {exercise.favorite && <Star size={11} className="text-brass" fill="currentColor" />}
                         </div>
                         <p className="text-[10px] text-faint mt-0.5">
-                          {exercise.muscleGroup || inferWorkoutMuscleGroup(exercise.name)} · {exercise.sets}× {exercise.reps}
+                          {exerciseMuscleGroup(exercise)} · {exercise.sets}× {exercise.reps}
                         </p>
                       </div>
                     </div>

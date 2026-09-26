@@ -1,3 +1,4 @@
+import { WORKOUT_MUSCLE_GROUPS, inferWorkoutMuscleGroup, exerciseMuscleGroup } from "../../lib/workoutMuscles.js";
 import React, { useState } from "react";
 import { Star, X, Plus } from "lucide-react";
 import { Modal, Field, useConfirm } from "../../components/ui.jsx";
@@ -10,25 +11,12 @@ import { Modal, Field, useConfirm } from "../../components/ui.jsx";
 // WorkoutsView.jsx.
 const uid = () => Math.random().toString(36).slice(2, 10);
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-const WORKOUT_MUSCLE_GROUPS = ["Peito", "Costas", "Pernas", "Ombros", "Braços", "Core", "Cardio", "Outro"];
 const normalizeWorkoutExerciseName = (name = "") =>
   String(name || "")
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .trim()
     .toLowerCase();
-const inferWorkoutMuscleGroup = (name = "") => {
-  const value = String(name).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-  if (/(supino|peito|crucifixo|voador|crossover)/.test(value)) return "Peito";
-  if (/(remada|puxada|costas|pulldown|barra fixa)/.test(value)) return "Costas";
-  if (/(agach|leg press|extensora|flexora|panturr|stiff|terra|glute)/.test(value)) return "Pernas";
-  if (/(ombro|elevacao lateral|desenvolvimento)/.test(value)) return "Ombros";
-  if (/(biceps|triceps|rosca|pulley|frances)/.test(value)) return "Braços";
-  if (/(abd|prancha|core)/.test(value)) return "Core";
-  if (/(corrida|esteira|bike|bicicleta|cardio|eliptico)/.test(value)) return "Cardio";
-  return "Outro";
-};
-
 export default function WorkoutTemplateForm({ initial, onSave, onClose, exerciseLibrary = [], defaultScheduleDays = [] }) {
   const isCopy = Boolean(initial?.__copyMode);
   const [confirm, confirmDialog] = useConfirm();
@@ -39,7 +27,7 @@ export default function WorkoutTemplateForm({ initial, onSave, onClose, exercise
       ? initial.exercises.map((exercise) => ({
           ...exercise,
           load: exercise.load ?? "",
-          muscleGroup: exercise.muscleGroup || inferWorkoutMuscleGroup(exercise.name),
+          muscleGroup: exerciseMuscleGroup(exercise),
           restSeconds: Number(exercise.restSeconds || 90),
           favorite: Boolean(exercise.favorite),
           videoUrl: String(exercise.videoUrl || ""),
@@ -255,7 +243,7 @@ export default function WorkoutTemplateForm({ initial, onSave, onClose, exercise
             sets: Math.max(1, Number(exercise.sets) || 1),
             reps: String(exercise.reps || "").trim(),
             load: exercise.load === "" ? "" : Number(exercise.load || 0),
-            muscleGroup: exercise.muscleGroup || inferWorkoutMuscleGroup(exercise.name),
+            muscleGroup: exerciseMuscleGroup(exercise),
             restSeconds: Number(exercise.restSeconds || 90),
             favorite: Boolean(exercise.favorite),
             videoUrl: String(exercise.videoUrl || "").trim(),

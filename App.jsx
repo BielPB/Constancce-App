@@ -13113,7 +13113,11 @@ function ConstancceApp() {
     const index = prev.findIndex((item) => item.id === templateId);
     if (index < 0) return prev;
 
-    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    // Pula treinos montados (ocultos na lista): senão "subir" trocaria de lugar
+    // com um treino invisível e pareceria não fazer nada.
+    const step = direction === "up" ? -1 : 1;
+    let targetIndex = index + step;
+    while (targetIndex >= 0 && targetIndex < prev.length && prev[targetIndex]?.generated) targetIndex += step;
     if (targetIndex < 0 || targetIndex >= prev.length) return prev;
 
     const next = [...prev];
@@ -13123,6 +13127,36 @@ function ConstancceApp() {
     return next;
   });
   const deleteWorkoutTemplate = async (id) => { if (!(await confirm("Tem certeza que deseja excluir este treino?"))) return; setWorkoutTemplates((prev) => { const next = prev.filter((tp) => tp.id !== id); persist({ workoutTemplates: next }); return next; }); };
+  // "Montar treino": guarda o treino montado (oculto na lista, só para o
+  // histórico) e devolve o treino a abrir. Mesma combinação de grupos reaproveita
+  // o mesmo treino; se ele já está em andamento hoje, não troca os exercícios
+  // no meio da sessão.
+  const saveBuiltWorkout = (draft) => {
+    if (!draft?.exercises?.length) return null;
+    const t = today();
+    const existing = workoutTemplates.find((tpl) => tpl.generated && tpl.generatedKey === draft.generatedKey);
+    if (existing && workoutSessions.some((row) => row.templateId === existing.id && row.date === t && !row.completed && row.startedAt)) {
+      return existing;
+    }
+    const template = { ...(existing || {}), ...draft, id: existing?.id || uid(), updatedAt: new Date().toISOString() };
+    if (existing) {
+      // Sessão só planejada (não iniciada) de hoje aponta para os exercícios
+      // antigos: sai para a prévia ser recriada com os novos.
+      setWorkoutSessions((prev) => {
+        const next = prev.filter((row) => !(row.templateId === existing.id && row.date === t && row.plannedOnly && !row.startedAt));
+        if (next.length === prev.length) return prev;
+        persist({ workoutSessions: next });
+        return next;
+      });
+    }
+    setWorkoutTemplates((prev) => {
+      const next = existing ? prev.map((tpl) => (tpl.id === existing.id ? template : tpl)) : [...prev, template];
+      persist({ workoutTemplates: next });
+      return next;
+    });
+    return template;
+  };
+
   const startOrGetSession = (templateId) => {
     const t = today();
     setWorkoutSessions((prev) => {
@@ -14244,7 +14278,7 @@ function ConstancceApp() {
       case "tasks": return <TasksView tasks={tasks} saveTask={saveTask} deleteTask={deleteTask} setStatus={setTaskStatus} moveTask={moveTaskKanban} autoOpen={quickTrigger.tasks} isPro={isPro} onUpgrade={requestPro} />;
       case "calendar": return <CalendarView habits={habits} completions={completions} tasks={tasks} saveTask={saveTask} setTaskStatus={setTaskStatus} workoutTemplates={workoutTemplates} workoutSessions={workoutSessions} saveWorkoutTemplate={saveWorkoutTemplate} scheduleWorkoutSession={scheduleWorkoutSession} goals={goals} profile={profile} setProfile={setProfile} isPro={isPro} onUpgrade={requestPro} />;
       case "goals": return <GoalsView goals={goals} saveGoal={saveGoal} addProgress={addGoalProgress} updateProgress={updateProgress} toggleGoalChecklist={toggleGoalChecklist} deleteGoal={deleteGoal} goalProgressLog={goalProgressLog} tasks={tasks} habits={habits} autoOpen={quickTrigger.goals} openGoalRequest={goalOpenRequest} isPro={isPro} onUpgrade={requestPro} />;
-      case "workouts": return <WorkoutsView session={session} profile={profile} setProfile={setProfile} templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} scheduleWorkoutSession={scheduleWorkoutSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateReps={updateWorkoutReps} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ timer: workoutRest.timer, total: workoutRest.total }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} onAdjustRest={workoutRest.adjust} resumeSessionId={workoutResumeSessionId} onResumeHandled={() => setWorkoutResumeSessionId(null)} />;
+      case "workouts": return <WorkoutsView session={session} profile={profile} setProfile={setProfile} templates={workoutTemplates} sessions={workoutSessions} saveTemplate={saveWorkoutTemplate} deleteTemplate={deleteWorkoutTemplate} reorderTemplates={reorderWorkoutTemplates} moveTemplateByStep={moveWorkoutTemplateByStep} startOrGetSession={startOrGetSession} saveBuiltWorkout={saveBuiltWorkout} scheduleWorkoutSession={scheduleWorkoutSession} toggleSet={toggleSet} toggleExercise={toggleExercise} updateLoad={updateWorkoutLoad} updateReps={updateWorkoutReps} updateSession={updateWorkoutSession} completeSession={completeSession} undoCompleteSession={undoCompleteSession} autoOpen={quickTrigger.workouts} isPro={isPro} onUpgrade={requestPro} restTimer={{ timer: workoutRest.timer, total: workoutRest.total }} onStartRest={workoutRest.start} onCancelRest={workoutRest.cancel} onAdjustRest={workoutRest.adjust} resumeSessionId={workoutResumeSessionId} onResumeHandled={() => setWorkoutResumeSessionId(null)} />;
       case "food": return <FoodView foodBase={dietFoodBase} foods={foods} mealLog={mealLog} addMeal={addMeal} updateMeal={updateMeal} toggleMealConsumed={toggleMealConsumed} deleteMeal={deleteMeal} deleteFood={deleteFood} persistMealTemplate={persistMealTemplate} profile={profile} setProfile={setProfile} session={session} autoOpen={quickTrigger.food} isPro={isPro} onUpgrade={requestPro} />;
       case "finance": return <FinanceView transactions={transactions} addTransaction={addTransaction} addGoalProgress={addGoalProgress} deleteTransaction={deleteTransaction} removeTransactionRecord={removeTransactionRecord} profile={profile} setProfile={setProfile} goals={goals} autoOpen={quickTrigger.finance} isPro={isPro} onUpgrade={requestPro} />;
       case "friends": return <FriendsView session={session} profile={profile} game={game} streaks={habitStreaks} isPro={isPro} onUpgrade={requestPro} />;

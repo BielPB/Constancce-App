@@ -1388,3 +1388,14 @@ test("Metas: mutações leem o valor atual (refs) e salvam fora dos updaters de 
   assert.equal(app.match(/\[\.\.\.goalProgressLogRef\.current, logEntry\]/g)?.length, 3);
   assert.match(app, /const saveGoal = \(g\) => \{\n\s*const prev = goalsRef\.current;/);
 });
+
+test("Treinos: 'Montar treino' junta os exercícios dos músculos escolhidos; treino montado fica oculto e é PRO", () => {
+  // Complementa tests/workout-muscles.test.mjs (montagem).
+  const workouts = workoutsView;
+  assert.match(workouts, /const libraryTemplates = templates\.filter\(\(template\) => !template\.generated\);/);
+  assert.match(workouts, /if \(!isPro\) \{ onUpgrade\("workoutBuilder"\); return; \}/);
+  assert.match(workouts, /const template = saveBuiltWorkout\?\.\(draft\);/);
+  assert.match(workouts, /const previousLoad = isSwapped \|\| activeTemplate\.generated/);
+  assert.match(app, /const saveBuiltWorkout = \(draft\) => \{/);
+  assert.match(app, /while \(targetIndex >= 0 && targetIndex < prev\.length && prev\[targetIndex\]\?\.generated\) targetIndex \+= step;/);
+});
